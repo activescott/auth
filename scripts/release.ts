@@ -51,18 +51,25 @@ try {
     console.log(`  Tags: ${newTags.join(", ")}`)
   }
 
-  // Map tags to package directories for npm publish
-  const tagToDir: Record<string, string> = {
-    "@activescott/auth": "packages/auth",
-    "@activescott/auth-provider-email": "packages/auth-provider-email",
-    "@activescott/auth-adapter-react-router":
-      "packages/auth-adapter-react-router",
+  // Map tag prefixes to package directories for npm publish.
+  // simple-release creates tags like "auth@0.1.1" (package dir name, not npm name).
+  const tagPrefixToPackage: Record<string, { name: string; dir: string }> = {
+    auth: { name: "@activescott/auth", dir: "packages/auth" },
+    "auth-provider-email": {
+      name: "@activescott/auth-provider-email",
+      dir: "packages/auth-provider-email",
+    },
+    "auth-adapter-react-router": {
+      name: "@activescott/auth-adapter-react-router",
+      dir: "packages/auth-adapter-react-router",
+    },
   }
 
   const packagesToPublish = newTags
     .map((tag) => {
-      const name = tag.replace(/@[^@]+$/, "")
-      return tagToDir[name] ? { name, dir: tagToDir[name], tag } : null
+      const prefix = tag.replace(/@[^@]+$/, "")
+      const pkg = tagPrefixToPackage[prefix]
+      return pkg ? { name: pkg.name, dir: pkg.dir, tag } : null
     })
     .filter(Boolean)
 
