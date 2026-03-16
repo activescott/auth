@@ -1,0 +1,27 @@
+{
+  "name": "activescott-auth",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Framework-agnostic authentication with provider pattern for magic links, OAuth, and more",
+  "type": "module",
+  "workspaces": [
+    "packages/auth",
+    "packages/auth-provider-email",
+    "packages/auth-adapter-react-router"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "prettier --check .",
+    "prepare": "husky"
+  },
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "husky": "^9.0.0",
+    "prettier": "^3.0.0"
+  }
+}

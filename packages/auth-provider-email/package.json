@@ -1,0 +1,47 @@
+{
+  "name": "@activescott/auth-provider-email",
+  "version": "0.1.2",
+  "description": "Email magic link provider for @activescott/auth",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "authentication",
+    "magic-link",
+    "email",
+    "nodemailer"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "dependencies": {
+    "nodemailer": "^7.0.12"
+  },
+  "peerDependencies": {
+    "@activescott/auth": "*"
+  },
+  "devDependencies": {
+    "@activescott/auth": "*",
+    "@types/nodemailer": "^7.0.9",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.16"
+  }
+}
