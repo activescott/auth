@@ -35,7 +35,7 @@
     "directory": "packages/auth-adapter-react-router"
   },
   "peerDependencies": {
-    "@activescott/auth": "*",
+    "@activescott/auth": "^0.1.1",
     "react-router": "^7.0.0"
   },
   "devDependencies": {
