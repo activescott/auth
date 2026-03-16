@@ -7,6 +7,8 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## 0.1.1 (2026-03-16)
 
+## 0.1.1 (2026-03-16)
+
 ## [0.1.1](https://github.com/activescott/tinkerbell/compare/auth-adapter-react-router@0.1.0...auth-adapter-react-router@0.1.1) (2026-01-30)
 
 ### Bug Fixes
