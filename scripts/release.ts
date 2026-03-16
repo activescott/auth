@@ -78,10 +78,7 @@ try {
     })
     .filter(Boolean)
 
-  writeFileSync(
-    "packages-to-publish.json",
-    JSON.stringify(packagesToPublish, null, 2),
-  )
+  writeFileSync("packages-to-publish.json", JSON.stringify(packagesToPublish))
   console.log(
     `Packages to publish: ${packagesToPublish.length > 0 ? packagesToPublish.map((p) => p!.name).join(", ") : "none"}`,
   )
