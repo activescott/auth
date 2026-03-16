@@ -7,7 +7,6 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
@@ -30,6 +29,11 @@
   ],
   "author": "Scott Willeke",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-adapter-react-router"
+  },
   "peerDependencies": {
     "@activescott/auth": "*",
     "react-router": "^7.0.0"

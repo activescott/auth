@@ -7,7 +7,6 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
@@ -31,6 +30,11 @@
   ],
   "author": "Scott Willeke",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth"
+  },
   "dependencies": {
     "jsonwebtoken": "^9.0.2",
     "zod": "^4.3.6"

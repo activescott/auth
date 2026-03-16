@@ -6,8 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write # Required for creating releases and pushing tags
+  id-token: write # Required for npm trusted publishing (OIDC)
+
 jobs:
-  test:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,3 +23,77 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
+
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      packages: ${{ steps.get-packages.outputs.packages }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run release script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx tsx scripts/release.ts
+
+      - name: Get packages to publish
+        id: get-packages
+        run: |
+          if [ -f packages-to-publish.json ]; then
+            packages=$(cat packages-to-publish.json)
+            echo "packages=${packages}" >> "$GITHUB_OUTPUT"
+          else
+            echo "packages=[]" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    if: needs.release.outputs.packages != '[]'
+    strategy:
+      matrix:
+        package: ${{ fromJson(needs.release.outputs.packages) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Publish ${{ matrix.package.name }}
+        working-directory: ${{ matrix.package.dir }}
+        run: npm publish --access public
+        env:
+          # For initial publish: set NPM_TOKEN secret, then remove it after
+          # configuring trusted publishing on npmjs.com for each package.
+          # Once trusted publishing is active, OIDC handles auth automatically
+          # and NPM_TOKEN is no longer needed.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
