@@ -28,6 +28,11 @@ try {
   const tagsBefore = getAllTags()
   console.log(`Tags before release: ${tagsBefore.size} total`)
 
+  // If no tags exist yet, this is the first release — use firstRelease
+  // to publish current versions without requiring conventional commit history.
+  const hasExistingTags = tagsBefore.size > 0
+  const bumpOptions = hasExistingTags ? {} : { firstRelease: true }
+
   await new Releaser({
     project,
     hosting: new GithubHosting({
@@ -35,7 +40,7 @@ try {
     }),
     verbose: true,
   })
-    .bump({})
+    .bump(bumpOptions)
     .commit()
     .tag()
     .push()
