@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.3](https://github.com/activescott/auth/compare/auth@0.1.2...auth@0.1.3) (2026-05-09)
+
+### Bug Fixes
+
+* add npm version and license badges to README ([e0175df](https://github.com/activescott/auth/commit/e0175dfd3face870edf7196b6897240f0bd697a2)), closes [#6](https://github.com/activescott/auth/issues/6)
+
 ## [0.1.2](https://github.com/activescott/auth/compare/auth@0.1.1...auth@0.1.2) (2026-05-09)
 
 ### Bug Fixes

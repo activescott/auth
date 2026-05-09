@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.4](https://github.com/activescott/auth/compare/auth-provider-email@0.1.3...auth-provider-email@0.1.4) (2026-05-09)
+
+### Bug Fixes
+
+* add npm version and license badges to README ([82c2870](https://github.com/activescott/auth/commit/82c2870baebe542cdfdbefb917443f632f4de0f7)), closes [#6](https://github.com/activescott/auth/issues/6)
+
 ## [0.1.3](https://github.com/activescott/auth/compare/auth-provider-email@0.1.2...auth-provider-email@0.1.3) (2026-05-09)
 
 ### Bug Fixes
