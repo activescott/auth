@@ -1,5 +1,8 @@
 # @activescott/auth
 
+[![npm version](https://img.shields.io/npm/v/@activescott/auth.svg)](https://www.npmjs.com/package/@activescott/auth)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Framework-agnostic authentication core for TypeScript. Designed to run on Node and edge runtimes (Workers, Vercel Edge, etc.).
 
 This package provides the `Auth` class, JWT-cookie session management, and the provider/store interfaces. It does not handle any specific authentication method by itself — pair it with a provider package:
