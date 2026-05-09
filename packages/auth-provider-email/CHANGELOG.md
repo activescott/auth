@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.3](https://github.com/activescott/auth/compare/auth-provider-email@0.1.2...auth-provider-email@0.1.3) (2026-05-09)
+
+### Bug Fixes
+
+* add package README so npm page is no longer blank ([e04af71](https://github.com/activescott/auth/commit/e04af719b2dc9dc690f1098df76134c9a4c66b3f))
+
 ## 0.1.2 (2026-03-16)
 
 ## 0.1.2 (2026-03-16)

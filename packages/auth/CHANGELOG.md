@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.2](https://github.com/activescott/auth/compare/auth@0.1.1...auth@0.1.2) (2026-05-09)
+
+### Bug Fixes
+
+* add package README so npm page is no longer blank ([ff7c04d](https://github.com/activescott/auth/commit/ff7c04dd74117d4349652c656a8c4f7fc972e5c4))
+
 ## 0.1.1 (2026-03-16)
 
 ### Features
