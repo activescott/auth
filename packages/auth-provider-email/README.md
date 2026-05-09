@@ -1,5 +1,8 @@
 # @activescott/auth-provider-email
 
+[![npm version](https://img.shields.io/npm/v/@activescott/auth-provider-email.svg)](https://www.npmjs.com/package/@activescott/auth-provider-email)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Email magic-link authentication provider for [`@activescott/auth`](https://www.npmjs.com/package/@activescott/auth).
 
 Sends a signed JWT in a clickable link; on click, verifies the token, finds-or-creates the user via your `UserStore`/`IdentityStore`, and hands control back to the auth core to issue a session cookie.
