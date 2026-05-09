@@ -24,8 +24,36 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  example-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build auth packages
+        run: npm run build --workspace=@activescott/auth --workspace=@activescott/auth-provider-email --workspace=@activescott/auth-adapter-react-router
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('examples/react-router/tests/package.json') }}
+      - name: Install Playwright browsers
+        run: npm run install-browsers --workspace=@activescott/auth-example-react-router-e2e
+      - name: Run e2e tests
+        run: npm run e2e --workspace=@activescott/auth-example-react-router-e2e
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: examples/react-router/tests/playwright-report
+          retention-days: 7
+
   release:
-    needs: validate
+    needs: [validate, example-e2e]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
