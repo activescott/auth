@@ -228,6 +228,18 @@ If no packages were bumped (e.g. a `chore:` commit), the publish job is skipped.
 
 There is no manual release command. To release: merge a PR with conventional-commit messages into `main`. CI handles the rest.
 
+### Branch protection on `main` — why "Require pull request" is OFF
+
+`main` is protected with required status checks (`validate`, `example-e2e`) but **does not** require a pull request before merging. That's deliberate.
+
+The release job needs to push the `chore(release): monorepo release` bump commit + per-package tags directly to `main`. On a personal GitHub repo (not org-owned), there's no way to grant `github-actions[bot]` a bypass for the "require pull request" rule:
+
+- Classic branch protection's `bypass_pull_request_allowances` is org-only — the API rejects it on personal repos with `"Only organization repositories can have users and team restrictions"`.
+- Repo rulesets accept an `Integration` bypass actor, but require the integration to be installed at the org level — the GitHub Actions integration on a personal repo isn't, so the API rejects with `"Actor GitHub Actions integration must be part of the ruleset source or owner organization"`.
+- The available bypass actor types on a personal repo (`RepositoryRole`, `DeployKey`) don't map to the `github-actions[bot]` identity.
+
+So on a personal repo the realistic options are: (a) drop the PR requirement and rely on status checks alone, (b) wire the release job to a PAT/GitHub App token that bypasses protection, or (c) refactor the release flow to land bumps via auto-merging PRs. We've picked (a) — status checks still gate every push, and human contributors are still expected to use PRs by convention. The trade-off: an admin with direct push access could in principle bypass review. For this repo's scale that's acceptable; revisit if/when the project moves under an org.
+
 ## License
 
 MIT
