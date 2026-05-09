@@ -1,6 +1,9 @@
 # @activescott/auth
 
-Framework-agnostic authentication for TypeScript with a provider pattern. Designed to run on Node and edge runtimes (Workers, Vercel Edge, etc.).
+[![npm version](https://img.shields.io/npm/v/@activescott/auth.svg)](https://www.npmjs.com/package/@activescott/auth)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Framework-agnostic authentication for TypeScript with a provider pattern. Designed to run on Node and edge runtimes (e.g. Cloudflare Workers).
 
 Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbot.com](https://tinkerbellbot.com).
 
