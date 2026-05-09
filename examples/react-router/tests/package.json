@@ -1,0 +1,17 @@
+{
+  "name": "@activescott/auth-example-react-router-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "install-browsers": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22",
+    "jsonwebtoken": "^9.0.2",
+    "typescript": "^5.9.3"
+  }
+}

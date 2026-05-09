@@ -7,7 +7,9 @@
   "workspaces": [
     "packages/auth",
     "packages/auth-provider-email",
-    "packages/auth-adapter-react-router"
+    "packages/auth-adapter-react-router",
+    "examples/react-router",
+    "examples/react-router/tests"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
