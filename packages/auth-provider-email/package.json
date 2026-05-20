@@ -36,14 +36,14 @@
     "directory": "packages/auth-provider-email"
   },
   "dependencies": {
-    "nodemailer": "^7.0.12"
+    "nodemailer": "^8.0.7"
   },
   "peerDependencies": {
     "@activescott/auth": "^0.1.1"
   },
   "devDependencies": {
     "@activescott/auth": "*",
-    "@types/nodemailer": "^7.0.9",
+    "@types/nodemailer": "^8.0.0",
     "@types/node": "^22",
     "typescript": "^5.7.2",
     "vitest": "^4.0.16"
