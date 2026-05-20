@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.5](https://github.com/activescott/auth/compare/auth-provider-email@0.1.4...auth-provider-email@0.1.5) (2026-05-20)
+
+### Bug Fixes
+
+* bump nodemailer and @types/nodemailer to v8 ([c5f48ea](https://github.com/activescott/auth/commit/c5f48ea2c96e24ccc40bcf93ed27a4d155810bd2)), closes [activescott/tinkerbell#66](https://github.com/activescott/tinkerbell/issues/66)
+
 ## [0.1.4](https://github.com/activescott/auth/compare/auth-provider-email@0.1.3...auth-provider-email@0.1.4) (2026-05-09)
 
 ### Bug Fixes
