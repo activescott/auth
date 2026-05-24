@@ -8,6 +8,7 @@ OAuth 2.0 / OIDC social login providers for [`@activescott/auth`](../auth).
 | --- | --- | --- |
 | `GoogleProvider` | OIDC | yes |
 | `GitHubProvider` | OAuth 2.0 | no |
+| `MicrosoftProvider` | OIDC | yes |
 
 ## Installation
 
@@ -99,6 +100,44 @@ new GitHubProvider({
 - The user's **numeric GitHub ID** is used as `identity.identifier` (not the login, which can change).
 - If a user's email is set to private, the provider automatically calls `GET /user/emails`
   and picks the primary verified address.
+
+## MicrosoftProvider
+
+### Azure AD / Entra ID app registration
+
+1. Open [Azure Portal → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade).
+2. Click **New registration**. Choose a supported account type (single tenant, multi-tenant, or personal Microsoft accounts).
+3. Add `<your-base-url>/auth/microsoft/callback` as a **Redirect URI** (Web platform).
+4. Copy the **Application (client) ID** and **Directory (tenant) ID**.
+5. Under **Certificates & secrets**, create a new client secret and copy it.
+
+### Usage
+
+```typescript
+import { MicrosoftProvider } from '@activescott/auth-provider-oauth';
+
+new MicrosoftProvider({
+  clientId: process.env.MICROSOFT_CLIENT_ID!,
+  clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
+  oauthStateSecret: process.env.OAUTH_STATE_SECRET!,
+  // tenant defaults to 'common' (personal + work/school accounts)
+  // tenant: 'organizations'  // work/school only
+  // tenant: 'consumers'      // personal only
+  // tenant: '<your-tenant-id>'  // single-tenant
+})
+```
+
+### Routes registered
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/auth/microsoft/initiate` | Redirect to Microsoft sign-in |
+| `GET` | `/auth/microsoft/callback` | Exchange code, create session |
+
+### Notes
+
+- Multi-tenant endpoints (`common`, `organizations`, `consumers`) use a relaxed issuer check: the token's `iss` must match `https://login.microsoftonline.com/<tenantid>/v2.0`. For specific tenant IDs, the standard strict issuer check is used.
+- `email_verified` is not present in Microsoft id\_tokens; the provider treats all emails from Microsoft as verified.
 
 ## Building
 

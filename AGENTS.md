@@ -47,15 +47,19 @@ See YAML frontmatter above for current project state.
 
 ## Contribution Goal
 
-**Our specific contribution to this upstream project is implementing OAuth providers** (Google, GitHub, and others). The `AuthProvider` interface in `@activescott/auth` is the extension point — new providers don't require changes to core. See `packages/auth-provider-email/src/email-provider.ts` as the reference implementation.
+**Our contributions to this upstream project:**
 
-OAuth work should land in a new package, e.g. `packages/auth-provider-oauth`, or as individual packages per provider (`packages/auth-provider-google`, etc.). Discuss the packaging approach before starting implementation.
+- `@activescott/auth-provider-oauth` — OAuth 2.0 / OIDC social login with `GoogleProvider`, `GitHubProvider`, and `MicrosoftProvider` (multi-tenant Azure AD). PKCE, CSRF, OIDC discovery, JWKS caching, and email-based account linking are all built into the abstract `OAuthProvider` base class.
+- `@activescott/auth-adapter-core` — shared handler logic extracted from framework adapters.
+- `@activescott/auth-adapter-hono` — Hono / Cloudflare Workers adapter.
+
+The `AuthProvider` interface in `@activescott/auth` is the extension point — new providers don't require changes to core. See `packages/auth-provider-email/src/email-provider.ts` for a minimal example, or `packages/auth-provider-oauth/src/base/oauth-provider.ts` for the abstract OAuth base.
 
 ## Key Decisions
 
 - **NodeNext module resolution** — all imports must use `.js` extensions even for `.ts` source files
 - **`verbatimModuleSyntax`** — always use `import type` for type-only imports
-- **Three-package monorepo** — core (`@activescott/auth`), email provider, and React Router adapter are separate published packages with independent semver
+- **Multi-package monorepo** — core, providers, and adapters are separate published packages with independent semver; adapters re-export from `auth-adapter-core` to share handler logic
 - **Standard `Request`/`Response`** — no framework-specific types in core or providers; only the adapter layer touches framework APIs
 - **JWT-in-HttpOnly-cookie sessions** — sessions are self-contained JWTs; no session store needed
 
@@ -190,7 +194,7 @@ npm run e2e --workspace=@activescott/auth-example-react-router-e2e
 - Prettier — single quotes, semicolons, 2-space indent, 100-char width, no trailing commas
 - ESLint — prefer const, unused vars prefixed with `_`, no floating promises
 - Commits — conventional format: `type(scope): description`
-  - Valid scopes: `auth`, `auth-provider-email`, `auth-provider-oauth`, `auth-adapter-react-router`, `examples`
+  - Valid scopes: `auth`, `auth-provider-email`, `auth-provider-oauth`, `auth-adapter-core`, `auth-adapter-react-router`, `auth-adapter-hono`, `examples`
 - Branches — format: `type/description` (e.g., `feature/sms-provider`, `fix/session-expiry`)
 
 ## Agent Priority Matrix

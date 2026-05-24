@@ -11,7 +11,13 @@ Related documents:
 
 ## Contribution Scope
 
-This local copy of `activescott/auth` exists specifically to implement **OAuth providers** (Google, GitHub, etc.) as contributions to the upstream repository. All OAuth work should be in new packages (e.g. `packages/auth-provider-oauth` or per-provider packages like `packages/auth-provider-google`). Changes to `packages/auth` core should be minimal — the `AuthProvider` interface is already designed for this.
+This local copy of `activescott/auth` exists to extend the upstream project with OAuth providers and Hono framework support. Key additions:
+
+- `packages/auth-provider-oauth` — OAuth 2.0 / OIDC base class + Google, GitHub, Microsoft providers
+- `packages/auth-adapter-core` — shared handler logic extracted from framework adapters
+- `packages/auth-adapter-hono` — Hono / Cloudflare Workers adapter
+
+Changes to `packages/auth` core should be minimal — the `AuthProvider` interface is the extension point.
 
 ## Project Structure
 
@@ -22,6 +28,7 @@ packages/
 │       ├── auth.ts              # Auth class: request routing, session cache
 │       ├── types.ts             # All public interfaces and types
 │       ├── errors.ts            # AuthErrors factory
+│       ├── config.ts            # isProviderEnabled() helper
 │       ├── index.ts             # Public exports
 │       └── session/
 │           └── session-manager.ts  # JWT cookie creation/verification
@@ -32,9 +39,28 @@ packages/
 │       ├── types.ts             # EmailTransport interface
 │       └── transports/
 │           └── nodemailer.ts    # Default SMTP transport
-└── auth-adapter-react-router/   # @activescott/auth-adapter-react-router
+├── auth-provider-oauth/         # @activescott/auth-provider-oauth
+│   └── src/
+│       ├── base/
+│       │   ├── oauth-provider.ts  # Abstract OAuthProvider: PKCE, OIDC discovery, JWKS cache
+│       │   └── state-cookie.ts    # OAuth state cookie (CSRF + PKCE verifier)
+│       ├── providers/
+│       │   ├── google.ts          # GoogleProvider (OIDC)
+│       │   ├── github.ts          # GitHubProvider (OAuth 2.0, non-OIDC)
+│       │   └── microsoft.ts       # MicrosoftProvider (OIDC, multi-tenant aware)
+│       └── index.ts
+├── auth-adapter-core/           # @activescott/auth-adapter-core
+│   └── src/
+│       ├── handlers.ts          # createAuthHandlers, sendMagicLink, all types
+│       └── index.ts             # Public exports
+├── auth-adapter-react-router/   # @activescott/auth-adapter-react-router
+│   └── src/
+│       ├── handlers.ts          # Re-exports from auth-adapter-core
+│       └── index.ts             # Public exports
+└── auth-adapter-hono/           # @activescott/auth-adapter-hono
     └── src/
-        ├── handlers.ts          # createAuthHandlers, sendMagicLink
+        ├── handlers.ts          # Re-exports from auth-adapter-core
+        ├── middleware.ts        # requireAuthMiddleware, optionalAuthMiddleware, createAuthHandler
         └── index.ts             # Public exports
 examples/
 └── react-router/                # Full React Router v7 framework-mode example
@@ -64,7 +90,7 @@ flowchart LR
     app["Your app\n\n• IdentityStore impl\n• UserStore impl\n• login / logout routes"]
     adapter["Framework adapter\n(e.g. react-router)\n\ncreateAuthHandlers()"]
     core["@activescott/auth\n\n• Auth\n• SessionManager (JWT)\n• cookie session cache"]
-    providers["AuthProvider\n\n• email (magic link)\n• sms (planned)\n• oauth (planned)"]
+    providers["AuthProvider\n\n• email (magic link)\n• oauth (Google, GitHub, Microsoft)\n• sms (planned)"]
 
     app -- "calls" --> adapter
     adapter -- "delegates to" --> core
