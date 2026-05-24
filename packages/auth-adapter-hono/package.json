@@ -1,0 +1,49 @@
+{
+  "name": "@activescott/auth-adapter-hono",
+  "version": "0.1.0",
+  "description": "Hono adapter for @activescott/auth",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "authentication",
+    "hono",
+    "cloudflare-workers",
+    "edge"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-adapter-hono"
+  },
+  "peerDependencies": {
+    "@activescott/auth": "^0.1.1",
+    "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "@activescott/auth": "*",
+    "@types/node": "^22",
+    "hono": "^4.12.22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.16"
+  }
+}

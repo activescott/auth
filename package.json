@@ -9,6 +9,7 @@
     "packages/auth-provider-email",
     "packages/auth-provider-oauth",
     "packages/auth-adapter-react-router",
+    "packages/auth-adapter-hono",
     "examples/react-router",
     "examples/react-router/tests"
   ],
