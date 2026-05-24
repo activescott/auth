@@ -187,7 +187,7 @@ type(scope): description
 
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`
 
-Valid scopes: `auth`, `auth-provider-email`, `auth-adapter-react-router`, `examples`
+Valid scopes: `auth`, `auth-provider-email`, `auth-provider-oauth`, `auth-adapter-react-router`, `examples`
 
 Example:
 

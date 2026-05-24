@@ -4,6 +4,11 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -11,11 +16,6 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true
   },
-  "references": [
-    { "path": "packages/auth" },
-    { "path": "packages/auth-provider-email" },
-    { "path": "packages/auth-provider-oauth" },
-    { "path": "packages/auth-adapter-react-router" }
-  ],
-  "files": []
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "src/__tests__"]
 }

@@ -190,7 +190,7 @@ npm run e2e --workspace=@activescott/auth-example-react-router-e2e
 - Prettier — single quotes, semicolons, 2-space indent, 100-char width, no trailing commas
 - ESLint — prefer const, unused vars prefixed with `_`, no floating promises
 - Commits — conventional format: `type(scope): description`
-  - Valid scopes: `auth`, `auth-provider-email`, `auth-adapter-react-router`, `examples`
+  - Valid scopes: `auth`, `auth-provider-email`, `auth-provider-oauth`, `auth-adapter-react-router`, `examples`
 - Branches — format: `type/description` (e.g., `feature/sms-provider`, `fix/session-expiry`)
 
 ## Agent Priority Matrix
