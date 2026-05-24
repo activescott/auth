@@ -253,6 +253,26 @@ describe('createAuthHandlers', () => {
       expect(response.headers.get('Location')).toContain('/login?error=');
     });
 
+    it('should return 404 for a disabled provider callback', async () => {
+      const disabledProvider = {
+        id: 'github',
+        name: 'GitHub',
+        enabled: false,
+        verify: vi.fn(),
+        initiate: vi.fn(),
+        canHandle: vi.fn(),
+        getRoutes: vi.fn()
+      };
+      const mockAuth = createMockAuth({
+        getProvider: vi.fn().mockReturnValue(disabledProvider)
+      });
+      const handlers = createAuthHandlers(mockAuth);
+      const request = new Request(`${TEST_BASE_URL}/auth/github/callback?code=abc&state=xyz`);
+      const response = await handlers.handleAuth({ request });
+      expect(response.status).toBe(404);
+      expect(disabledProvider.verify).not.toHaveBeenCalled();
+    });
+
     it('should use redirectTo query param after successful verify', async () => {
       const provider = {
         id: 'email',

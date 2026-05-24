@@ -99,8 +99,8 @@ export function createAuthHandlers<TUser = AuthUser>(
 
       const provider = auth.getProvider(providerId);
 
-      if (!provider) {
-        return new Response(`Unknown provider: ${providerId}`, { status: 404 });
+      if (!provider || provider.enabled === false) {
+        return new Response('Not Found', { status: 404 });
       }
 
       // Create context and verify
