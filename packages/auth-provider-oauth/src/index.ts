@@ -10,3 +10,4 @@ export {
 export { OAuthProvider } from './base/oauth-provider.js';
 export type { OIDCDiscoveryDocument } from './base/oauth-provider.js';
 export { GoogleProvider } from './providers/google.js';
+export { GitHubProvider } from './providers/github.js';

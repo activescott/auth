@@ -218,7 +218,7 @@ export abstract class OAuthProvider implements AuthProvider {
     };
   }
 
-  private async getDiscovery(): Promise<OIDCDiscoveryDocument> {
+  protected async getDiscovery(): Promise<OIDCDiscoveryDocument> {
     const now = Date.now();
     if (this.discoveryCache && now - this.discoveryCache.fetchedAt < DISCOVERY_CACHE_TTL_MS) {
       return this.discoveryCache.doc;
