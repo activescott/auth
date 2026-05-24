@@ -20,6 +20,40 @@ Format per entry:
 
 ## Log Entries
 
+### 2026-05-24-06
+
+- Agent: Claude
+- Subject: Provider enabled/disabled flag and isProviderEnabled() helper (issue #20)
+- Current Issue: #20
+- Work Done:
+  - Added optional `enabled?` to `AuthProvider` interface in `@activescott/auth`
+  - `Auth.handleRequest` returns 404 for disabled provider paths
+  - `Auth.findProvider` skips disabled providers
+  - New `Auth.getEnabledProviders(): { id, name }[]` for login UI
+  - New `packages/auth/src/config.ts` with `isProviderEnabled(id, defaultValue?)`
+    reading `AUTH_<ID>_ENABLED` env var; exported from core
+  - Added `enabled?` to `OAuthProviderConfig` and `EmailProviderConfig`; both
+    provider base classes set `public readonly enabled` from config
+  - Example app uses `isProviderEnabled()` for Google/GitHub; `login.tsx` uses
+    `getEnabledProviders()` for button rendering
+  - `.env.example` documents `AUTH_*_ENABLED` toggle vars
+  - 19 new tests in `packages/auth/src/__tests__/provider-enabled.test.ts`
+  - Opened PR #24
+- Commits: 45866d2
+- Files Modified:
+  - packages/auth/src/types.ts
+  - packages/auth/src/auth.ts
+  - packages/auth/src/config.ts (new)
+  - packages/auth/src/index.ts
+  - packages/auth/src/__tests__/provider-enabled.test.ts (new)
+  - packages/auth-provider-oauth/src/types.ts
+  - packages/auth-provider-oauth/src/base/oauth-provider.ts
+  - packages/auth-provider-email/src/types.ts
+  - packages/auth-provider-email/src/email-provider.ts
+  - examples/react-router/app/lib/auth.server.ts
+  - examples/react-router/app/routes/login.tsx
+  - examples/react-router/.env.example
+
 ### 2026-05-24-05
 
 - Agent: Claude
