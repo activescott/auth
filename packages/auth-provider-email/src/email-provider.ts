@@ -48,7 +48,6 @@ export class EmailProvider implements AuthProvider {
    */
   public async initiate(request: Request, context: AuthContext): Promise<AuthInitResult> {
     try {
-      // Get email from request body
       const body = await this.parseRequestBody(request);
       const rawEmail = body.email;
 
@@ -61,7 +60,6 @@ export class EmailProvider implements AuthProvider {
 
       const email = rawEmail.toLowerCase().trim();
 
-      // Validate email format
       if (!this.isValidEmail(email)) {
         return {
           success: false,
@@ -71,10 +69,8 @@ export class EmailProvider implements AuthProvider {
         };
       }
 
-      // Get optional redirectTo from request body
       const redirectTo = body.redirectTo as string | undefined;
 
-      // Generate magic link token with email and optional redirectTo
       const expiresInSeconds = this.parseMaxAge(this.config.magicLinkExpiry);
       const tokenPayload: { email: string; redirectTo?: string } = { email };
       if (redirectTo) {
@@ -86,13 +82,11 @@ export class EmailProvider implements AuthProvider {
         audience: 'auth'
       });
 
-      // Build magic link URL
       let magicLink = `${context.baseUrl}/auth/email/verify?token=${token}`;
       if (redirectTo) {
         magicLink += `&redirectTo=${encodeURIComponent(redirectTo)}`;
       }
 
-      // Send email
       const sent = await this.transport.sendMagicLink(email, magicLink, this.config);
 
       if (!sent) {
@@ -121,7 +115,6 @@ export class EmailProvider implements AuthProvider {
    */
   public async verify(request: Request, context: AuthContext): Promise<AuthResult> {
     try {
-      // Get token from query params
       const url = new URL(request.url);
       const token = url.searchParams.get('token');
 
@@ -146,13 +139,11 @@ export class EmailProvider implements AuthProvider {
 
       const email = payload.email.toLowerCase().trim();
 
-      // Look up existing identity
       let identity = await context.identityStore.findByProviderAndIdentifier(this.id, email);
 
       let user;
 
       if (identity) {
-        // Existing user - look them up
         user = await context.userStore.findById(identity.userId);
         if (!user) {
           return {
@@ -161,7 +152,6 @@ export class EmailProvider implements AuthProvider {
           };
         }
       } else {
-        // New user - create user and identity
         user = await context.userStore.create({
           provider: this.id,
           identifier: email
@@ -174,7 +164,6 @@ export class EmailProvider implements AuthProvider {
         });
       }
 
-      // Update verifiedAt if the store supports it
       if (context.identityStore.update) {
         await context.identityStore.update(identity.id, {
           verifiedAt: new Date()
@@ -220,7 +209,6 @@ export class EmailProvider implements AuthProvider {
    * Verify a magic link token
    */
   private verifyToken(token: string): MagicLinkPayload | null {
-    // Try primary secret first, then additional secrets
     const secrets = [this.config.magicLinkSecret, ...(this.config.additionalSecrets ?? [])];
 
     for (const secret of secrets) {

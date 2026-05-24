@@ -6,4 +6,4 @@ export {
   type AuthHandlers,
   type SendMagicLinkResult,
   type SendMagicLinkOptions
-} from '@activescott/auth-adapter-core';
+} from './handlers.js';

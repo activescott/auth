@@ -40,6 +40,7 @@ export abstract class OAuthProvider implements AuthProvider {
   protected readonly supportsPKCE: boolean = true;
 
   private discoveryCache: DiscoveryCacheEntry | null = null;
+  private readonly jwksSets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
   public constructor(protected readonly config: OAuthProviderConfig) {
     this.enabled = config.enabled ?? true;
@@ -199,12 +200,26 @@ export abstract class OAuthProvider implements AuthProvider {
     idToken: string,
     discovery: OIDCDiscoveryDocument
   ): Promise<Record<string, unknown>> {
-    const jwks = createRemoteJWKSet(new URL(discovery.jwks_uri));
+    const jwks = this.getJwks(discovery.jwks_uri);
     const { payload } = await jwtVerify(idToken, jwks, {
       issuer: discovery.issuer,
       audience: this.config.clientId
     });
     return payload as Record<string, unknown>;
+  }
+
+  /**
+   * Returns a cached JWKS set for the given URI, creating one on first call.
+   * Reusing the same RemoteJWKSet instance preserves jose's internal key cache
+   * across token verifications, avoiding a JWKS HTTP fetch on every login.
+   */
+  protected getJwks(jwksUri: string): ReturnType<typeof createRemoteJWKSet> {
+    let jwks = this.jwksSets.get(jwksUri);
+    if (!jwks) {
+      jwks = createRemoteJWKSet(new URL(jwksUri));
+      this.jwksSets.set(jwksUri, jwks);
+    }
+    return jwks;
   }
 
   /**

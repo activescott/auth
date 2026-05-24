@@ -1,7 +1,7 @@
 {
-  "name": "@activescott/auth-adapter-hono",
+  "name": "@activescott/auth-adapter-core",
   "version": "0.1.0",
-  "description": "Hono adapter for @activescott/auth",
+  "description": "Shared framework-agnostic handlers for @activescott/auth adapters",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,28 +24,21 @@
   "keywords": [
     "auth",
     "authentication",
-    "hono",
-    "cloudflare-workers",
-    "edge"
+    "adapter"
   ],
   "author": "Scott Willeke",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/activescott/auth.git",
-    "directory": "packages/auth-adapter-hono"
-  },
-  "dependencies": {
-    "@activescott/auth-adapter-core": "*"
+    "directory": "packages/auth-adapter-core"
   },
   "peerDependencies": {
-    "@activescott/auth": "^0.1.1",
-    "hono": "^4.0.0"
+    "@activescott/auth": "^0.1.1"
   },
   "devDependencies": {
     "@activescott/auth": "*",
     "@types/node": "^22",
-    "hono": "^4.12.22",
     "typescript": "^5.7.2",
     "vitest": "^4.0.16"
   }

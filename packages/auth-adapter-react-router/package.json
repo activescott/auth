@@ -18,7 +18,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -33,6 +33,9 @@
     "type": "git",
     "url": "https://github.com/activescott/auth.git",
     "directory": "packages/auth-adapter-react-router"
+  },
+  "dependencies": {
+    "@activescott/auth-adapter-core": "*"
   },
   "peerDependencies": {
     "@activescott/auth": "^0.1.1",

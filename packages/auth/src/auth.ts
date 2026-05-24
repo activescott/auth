@@ -81,6 +81,7 @@ export class Auth {
   private sessionManager: SessionManager;
   private sessionCache: SessionCache;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  private enabledProvidersCache: { id: string; name: string }[] | null = null;
 
   public constructor(private readonly config: AuthConfig) {
     this.sessionManager = new SessionManager(config.session);
@@ -91,11 +92,12 @@ export class Auth {
       this.providers.set(provider.id, provider);
     }
 
-    // Start cache cleanup interval
     this.cleanupInterval = setInterval(
       () => this.sessionCache.cleanup(),
       CACHE_CLEANUP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND
     );
+    // Don't hold the process open if the caller forgets to call destroy()
+    this.cleanupInterval.unref?.();
   }
 
   /**
@@ -127,9 +129,10 @@ export class Auth {
    * Providers with enabled === false are excluded.
    */
   public getEnabledProviders(): { id: string; name: string }[] {
-    return [...this.providers.values()]
+    this.enabledProvidersCache ??= [...this.providers.values()]
       .filter((p) => p.enabled !== false)
       .map(({ id, name }) => ({ id, name }));
+    return this.enabledProvidersCache;
   }
 
   /**
@@ -303,7 +306,8 @@ export class Auth {
     const cookies = cookieHeader.split(';').map((c) => c.trim());
     const target = cookies.find((c) => c.startsWith(`${cookieName}=`));
     if (!target) return null;
-    return decodeURIComponent(target.split('=')[1] ?? '');
+    const eqIdx = target.indexOf('=');
+    return eqIdx === -1 ? null : decodeURIComponent(target.slice(eqIdx + 1));
   }
 
   /**

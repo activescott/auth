@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { jwtVerify } from 'jose';
 import type { OAuthProviderConfig, OAuthProfile, TokenResponse } from '../types.js';
 import type { OIDCDiscoveryDocument } from '../base/oauth-provider.js';
 import { OAuthProvider } from '../base/oauth-provider.js';
@@ -71,7 +71,7 @@ export class MicrosoftProvider extends OAuthProvider {
     // Multi-tenant endpoints return a template issuer like
     // https://login.microsoftonline.com/{tenantid}/v2.0 which won't match any
     // real token's iss claim. Skip jose's issuer check and validate the pattern manually.
-    const jwks = createRemoteJWKSet(new URL(discovery.jwks_uri));
+    const jwks = this.getJwks(discovery.jwks_uri);
     const { payload } = await jwtVerify(idToken, jwks, {
       audience: this.config.clientId
     });
