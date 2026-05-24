@@ -1,4 +1,4 @@
-import type { Auth, AuthUser, Identity, AuthError } from "@activescott/auth"
+import type { Auth, AuthUser, Identity, AuthError } from '@activescott/auth';
 
 /**
  * Options for creating auth handlers
@@ -6,16 +6,16 @@ import type { Auth, AuthUser, Identity, AuthError } from "@activescott/auth"
  */
 export interface CreateAuthHandlersOptions<TUser = AuthUser> {
   /** URL to redirect to after successful authentication */
-  successRedirect?: string | ((user: AuthUser, identity: Identity) => string)
+  successRedirect?: string | ((user: AuthUser, identity: Identity) => string);
   /** URL to redirect to on authentication error */
-  errorRedirect?: string | ((error: AuthError) => string)
+  errorRedirect?: string | ((error: AuthError) => string);
   /** URL to redirect unauthenticated users to */
-  loginUrl?: string
+  loginUrl?: string;
   /**
    * Map AuthUser to your application's user type.
    * If provided, requireAuth and optionalAuth will return TUser instead of AuthUser.
    */
-  mapUser?: (user: AuthUser, identity: Identity) => TUser
+  mapUser?: (user: AuthUser, identity: Identity) => TUser;
 }
 
 /**
@@ -23,8 +23,8 @@ export interface CreateAuthHandlersOptions<TUser = AuthUser> {
  * @typeParam TUser - Your application's user type (defaults to AuthUser)
  */
 export interface AuthSession<TUser = AuthUser> {
-  user: TUser
-  identity: Identity
+  user: TUser;
+  identity: Identity;
 }
 
 /**
@@ -32,16 +32,13 @@ export interface AuthSession<TUser = AuthUser> {
  * @typeParam TUser - Your application's user type (defaults to AuthUser)
  */
 export interface AuthHandlers<TUser = AuthUser> {
-  handleAuth: (context: { request: Request }) => Promise<Response>
-  getSession: (request: Request) => Promise<AuthSession<TUser> | null>
-  requireAuth: (request: Request, redirectTo?: string) => Promise<TUser>
-  optionalAuth: (request: Request) => Promise<TUser | null>
-  refreshSessionCookie: (
-    request: Request,
-    updatedUser: AuthUser,
-  ) => Promise<string>
-  logout: (redirectTo?: string) => Response
-  getAuth: () => Auth
+  handleAuth: (context: { request: Request }) => Promise<Response>;
+  getSession: (request: Request) => Promise<AuthSession<TUser> | null>;
+  requireAuth: (request: Request, redirectTo?: string) => Promise<TUser>;
+  optionalAuth: (request: Request) => Promise<TUser | null>;
+  refreshSessionCookie: (request: Request, updatedUser: AuthUser) => Promise<string>;
+  logout: (redirectTo?: string) => Response;
+  getAuth: () => Auth;
 }
 
 /**
@@ -53,9 +50,9 @@ function redirect(url: string, init?: ResponseInit): Response {
     status: 302,
     headers: {
       ...Object.fromEntries(new Headers(init?.headers).entries()),
-      Location: url,
-    },
-  })
+      Location: url
+    }
+  });
 }
 
 /**
@@ -64,17 +61,12 @@ function redirect(url: string, init?: ResponseInit): Response {
  */
 export function createAuthHandlers<TUser = AuthUser>(
   auth: Auth,
-  options: CreateAuthHandlersOptions<TUser> = {},
+  options: CreateAuthHandlersOptions<TUser> = {}
 ): AuthHandlers<TUser> {
-  const {
-    successRedirect = "/",
-    errorRedirect = "/login",
-    loginUrl = "/login",
-    mapUser,
-  } = options
+  const { successRedirect = '/', errorRedirect = '/login', loginUrl = '/login', mapUser } = options;
 
   // Default mapper returns user as-is (safe when TUser = AuthUser)
-  const userMapper = mapUser ?? ((user: AuthUser) => user as unknown as TUser)
+  const userMapper = mapUser ?? ((user: AuthUser) => user as unknown as TUser);
 
   return {
     /**
@@ -82,72 +74,69 @@ export function createAuthHandlers<TUser = AuthUser>(
      * Use in a route like /auth/$provider/$action
      */
     async handleAuth({ request }: { request: Request }): Promise<Response> {
-      const url = new URL(request.url)
-      const path = url.pathname
+      const url = new URL(request.url);
+      const path = url.pathname;
 
       // Check if this is a verify/callback request
-      const isVerify = path.includes("/verify") || path.includes("/callback")
+      const isVerify = path.includes('/verify') || path.includes('/callback');
 
       if (!isVerify) {
         // For initiate requests, use the default handler
-        return auth.handleRequest(request)
+        return auth.handleRequest(request);
       }
 
       // For verify requests, we need to handle the response specially
       // to create a session and redirect
-      const match = path.match(/\/auth\/([^/]+)\//)
+      const match = path.match(/\/auth\/([^/]+)\//);
       if (!match) {
-        return new Response("Not Found", { status: 404 })
+        return new Response('Not Found', { status: 404 });
       }
 
-      const providerId = match[1]
+      const providerId = match[1];
       if (!providerId) {
-        return new Response("Not Found", { status: 404 })
+        return new Response('Not Found', { status: 404 });
       }
 
-      const provider = auth.getProvider(providerId)
+      const provider = auth.getProvider(providerId);
 
       if (!provider) {
-        return new Response(`Unknown provider: ${providerId}`, { status: 404 })
+        return new Response(`Unknown provider: ${providerId}`, { status: 404 });
       }
 
       // Create context and verify
-      const context = auth.createContext(request)
-      const result = await provider.verify(request, context)
+      const context = auth.createContext(request);
+      const result = await provider.verify(request, context);
 
       if (!result.success) {
         const errorUrl =
-          typeof errorRedirect === "function"
+          typeof errorRedirect === 'function'
             ? errorRedirect(result.error)
-            : `${errorRedirect}?error=${encodeURIComponent(result.error.code)}`
-        return redirect(errorUrl)
+            : `${errorRedirect}?error=${encodeURIComponent(result.error.code)}`;
+        return redirect(errorUrl);
       }
 
       // Create session cookie
-      const sessionCookie = await auth.createSessionCookie(
-        result.user,
-        result.identity,
-      )
+      const sessionCookie = await auth.createSessionCookie(result.user, result.identity);
 
       // Check for redirectTo query param (set during login flow)
-      const redirectToParameter = url.searchParams.get("redirectTo")
+      const redirectToParameter = url.searchParams.get('redirectTo');
 
       // Determine redirect URL: use redirectTo param if present, otherwise use configured default
-      let redirectUrl: string
+      let redirectUrl: string;
       if (redirectToParameter) {
         // Use the saved redirect destination from before login
-        redirectUrl = redirectToParameter
-      } else if (typeof successRedirect === "function") {
-        redirectUrl = successRedirect(result.user, result.identity)
+        redirectUrl = redirectToParameter;
+      } else if (typeof successRedirect === 'function') {
+        redirectUrl = successRedirect(result.user, result.identity);
       } else {
-        redirectUrl = successRedirect
+        redirectUrl = successRedirect;
       }
 
       return redirect(redirectUrl, {
         headers: {
-          "Set-Cookie": sessionCookie,
-        },
-      })
+          'Set-Cookie': sessionCookie
+        }
+      });
     },
 
     /**
@@ -155,12 +144,12 @@ export function createAuthHandlers<TUser = AuthUser>(
      * Returns both the mapped user and identity
      */
     async getSession(request: Request): Promise<AuthSession<TUser> | null> {
-      const session = await auth.verifySession(request)
-      if (!session) return null
+      const session = await auth.verifySession(request);
+      if (!session) return null;
       return {
         user: userMapper(session.user, session.identity),
-        identity: session.identity,
-      }
+        identity: session.identity
+      };
     },
 
     /**
@@ -168,16 +157,16 @@ export function createAuthHandlers<TUser = AuthUser>(
      * Returns the mapped user
      */
     async requireAuth(request: Request, redirectTo?: string): Promise<TUser> {
-      const session = await auth.verifySession(request)
+      const session = await auth.verifySession(request);
 
       if (!session) {
-        const url = new URL(request.url)
-        const returnTo = url.pathname + url.search
-        const loginRedirect = `${redirectTo ?? loginUrl}?redirectTo=${encodeURIComponent(returnTo)}`
-        throw redirect(loginRedirect)
+        const url = new URL(request.url);
+        const returnTo = url.pathname + url.search;
+        const loginRedirect = `${redirectTo ?? loginUrl}?redirectTo=${encodeURIComponent(returnTo)}`;
+        throw redirect(loginRedirect);
       }
 
-      return userMapper(session.user, session.identity)
+      return userMapper(session.user, session.identity);
     },
 
     /**
@@ -185,9 +174,9 @@ export function createAuthHandlers<TUser = AuthUser>(
      * Returns the mapped user or null
      */
     async optionalAuth(request: Request): Promise<TUser | null> {
-      const session = await auth.verifySession(request)
-      if (!session) return null
-      return userMapper(session.user, session.identity)
+      const session = await auth.verifySession(request);
+      if (!session) return null;
+      return userMapper(session.user, session.identity);
     },
 
     /**
@@ -211,45 +200,42 @@ export function createAuthHandlers<TUser = AuthUser>(
      * })
      * ```
      */
-    async refreshSessionCookie(
-      request: Request,
-      updatedUser: AuthUser,
-    ): Promise<string> {
-      const session = await auth.verifySession(request)
+    async refreshSessionCookie(request: Request, updatedUser: AuthUser): Promise<string> {
+      const session = await auth.verifySession(request);
       if (!session) {
-        throw new Error("Cannot refresh session: no active session found")
+        throw new Error('Cannot refresh session: no active session found');
       }
-      return auth.createSessionCookie(updatedUser, session.identity)
+      return auth.createSessionCookie(updatedUser, session.identity);
     },
 
     /**
      * Create a logout response that clears the session
      */
-    logout(redirectTo = "/"): Response {
-      const cookie = auth.destroySessionCookie()
+    logout(redirectTo = '/'): Response {
+      const cookie = auth.destroySessionCookie();
       return redirect(redirectTo, {
         headers: {
-          "Set-Cookie": cookie,
-        },
-      })
+          'Set-Cookie': cookie
+        }
+      });
     },
 
     /**
      * Get the auth instance for advanced use cases
      */
     getAuth(): Auth {
-      return auth
-    },
-  }
+      return auth;
+    }
+  };
 }
 
 /**
  * Result of sendMagicLink operation
  */
 export interface SendMagicLinkResult {
-  success: boolean
-  message?: string
-  error?: string
+  success: boolean;
+  message?: string;
+  error?: string;
 }
 
 /**
@@ -257,7 +243,7 @@ export interface SendMagicLinkResult {
  */
 export interface SendMagicLinkOptions {
   /** URL to redirect to after successful authentication */
-  redirectTo?: string
+  redirectTo?: string;
 }
 
 /**
@@ -288,63 +274,58 @@ export async function sendMagicLink(
   auth: Auth,
   email: string,
   baseUrl: string,
-  options?: SendMagicLinkOptions,
+  options?: SendMagicLinkOptions
 ): Promise<SendMagicLinkResult> {
-  const provider = auth.getProvider("email")
+  const provider = auth.getProvider('email');
 
   if (!provider) {
     return {
       success: false,
-      error: "Email authentication is not configured.",
-    }
+      error: 'Email authentication is not configured.'
+    };
   }
 
   // Build request body with email and optional redirectTo
-  const body: Record<string, string> = { email }
+  const body: Record<string, string> = { email };
   if (options?.redirectTo) {
-    body.redirectTo = options.redirectTo
+    body.redirectTo = options.redirectTo;
   }
 
   // Create a request that the provider can handle
   const request = new Request(`${baseUrl}/auth/email/initiate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body),
-  })
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(body)
+  });
 
-  const context = auth.createContext(request)
+  const context = auth.createContext(request);
 
   try {
-    const result = await provider.initiate(request, context)
+    const result = await provider.initiate(request, context);
 
     // If provider returns a Response, it handled everything (unlikely for email)
     if (result instanceof Response) {
       return {
         success: true,
-        message: "Check your email for a magic link to sign in.",
-      }
+        message: 'Check your email for a magic link to sign in.'
+      };
     }
 
     if (result.success) {
       return {
         success: true,
-        message:
-          result.message || "Check your email for a magic link to sign in.",
-      }
+        message: result.message || 'Check your email for a magic link to sign in.'
+      };
     }
 
     return {
       success: false,
-      error:
-        result.error.message || "Failed to send magic link. Please try again.",
-    }
+      error: result.error.message || 'Failed to send magic link. Please try again.'
+    };
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "An unexpected error occurred.",
-    }
+      error: error instanceof Error ? error.message : 'An unexpected error occurred.'
+    };
   }
 }

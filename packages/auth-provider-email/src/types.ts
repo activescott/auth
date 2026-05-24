@@ -3,29 +3,29 @@
  */
 export interface EmailProviderConfig {
   /** Secret for signing magic link tokens */
-  magicLinkSecret: string
+  magicLinkSecret: string;
   /** Additional secrets for verification (e.g., for E2E testing) */
-  additionalSecrets?: string[]
+  additionalSecrets?: string[];
   /** Magic link expiration (e.g., "5m", "15m") */
-  magicLinkExpiry: string
+  magicLinkExpiry: string;
   /** SMTP configuration */
-  smtp: SmtpConfig
+  smtp: SmtpConfig;
   /** Sender email address */
-  from: string
+  from: string;
   /** Email template customization */
-  template?: EmailTemplateConfig
+  template?: EmailTemplateConfig;
 }
 
 /**
  * SMTP server configuration
  */
 export interface SmtpConfig {
-  host: string
-  port: number
-  user: string
-  pass: string
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
   /** Whether to use TLS. Auto-detected from port if not specified */
-  secure?: boolean
+  secure?: boolean;
 }
 
 /**
@@ -33,22 +33,18 @@ export interface SmtpConfig {
  */
 export interface EmailTemplateConfig {
   /** Email subject line */
-  subject?: string
+  subject?: string;
   /** Application name shown in email */
-  appName?: string
+  appName?: string;
   /** Primary brand color (hex) */
-  primaryColor?: string
+  primaryColor?: string;
   /** Logo URL to include in email */
-  logoUrl?: string
+  logoUrl?: string;
 }
 
 /**
  * Email transport interface for sending emails
  */
 export interface EmailTransport {
-  sendMagicLink(
-    to: string,
-    magicLink: string,
-    config: EmailProviderConfig,
-  ): Promise<boolean>
+  sendMagicLink(to: string, magicLink: string, config: EmailProviderConfig): Promise<boolean>;
 }

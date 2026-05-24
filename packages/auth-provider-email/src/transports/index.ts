@@ -1,1 +1,1 @@
-export { NodemailerTransport } from "./nodemailer.js"
+export { NodemailerTransport } from './nodemailer.js';
