@@ -11,3 +11,5 @@ export { OAuthProvider } from './base/oauth-provider.js';
 export type { OIDCDiscoveryDocument } from './base/oauth-provider.js';
 export { GoogleProvider } from './providers/google.js';
 export { GitHubProvider } from './providers/github.js';
+export { MicrosoftProvider } from './providers/microsoft.js';
+export type { MicrosoftProviderConfig } from './providers/microsoft.js';
