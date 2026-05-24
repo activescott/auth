@@ -20,6 +20,30 @@ Format per entry:
 
 ## Log Entries
 
+### 2026-05-24-07
+
+- Agent: Claude
+- Subject: MicrosoftProvider (Azure AD / Entra ID OIDC) (issue #25)
+- Current Issue: #25
+- Work Done:
+  - New `MicrosoftProvider` class extending `OAuthProvider`; default tenant is `common`
+    (accepts personal MSA + work/school AAD accounts); custom tenant supported via config
+  - New `MicrosoftProviderConfig` interface extending `OAuthProviderConfig` with optional `tenant`
+  - Both exported from `@activescott/auth-provider-oauth`
+  - Overrides `validateIdToken` for multi-tenant (`common`/`organizations`/`consumers`): skips
+    jose's exact issuer check (the discovery doc returns `{tenantid}` template) and validates
+    `iss` against `^https://login\.microsoftonline\.com/[^/]+/v2\.0$` instead; specific-tenant
+    config delegates to base class (strict OIDC issuer check)
+  - Defaults `emailVerified=true` when Microsoft omits the `email_verified` claim so
+    `linkByVerifiedEmail` works correctly
+  - 16 new tests in `microsoft-provider.test.ts`
+  - Opened issue #25 and PR #26
+- Commits: 465389c
+- Files Modified:
+  - packages/auth-provider-oauth/src/providers/microsoft.ts (new)
+  - packages/auth-provider-oauth/src/__tests__/microsoft-provider.test.ts (new)
+  - packages/auth-provider-oauth/src/index.ts
+
 ### 2026-05-24-06
 
 - Agent: Claude
