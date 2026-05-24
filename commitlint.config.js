@@ -4,7 +4,7 @@ export default {
     "scope-enum": [
       2,
       "always",
-      ["auth", "auth-provider-email", "auth-adapter-react-router", "examples"],
+      ["auth", "auth-provider-email", "auth-provider-oauth", "auth-adapter-core", "auth-adapter-react-router", "auth-adapter-hono", "examples"],
     ],
   },
 }

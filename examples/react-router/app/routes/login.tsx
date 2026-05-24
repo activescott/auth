@@ -1,6 +1,6 @@
 import { Form, redirect } from "react-router"
 import { getAuthErrorMessage } from "@activescott/auth"
-import { getSession, sendMagicLink } from "~/lib/auth.server"
+import { auth, getSession, sendMagicLink } from "~/lib/auth.server"
 import type { Route } from "./+types/login"
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -8,7 +8,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   if (session) throw redirect("/dashboard")
 
   const errorCode = new URL(request.url).searchParams.get("error")
-  return { error: errorCode ? getAuthErrorMessage(errorCode) : null }
+  const enabledProviders = auth.getEnabledProviders()
+  return {
+    error: errorCode ? getAuthErrorMessage(errorCode) : null,
+    googleEnabled: enabledProviders.some((p) => p.id === "google"),
+    githubEnabled: enabledProviders.some((p) => p.id === "github"),
+  }
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -33,6 +38,33 @@ export default function Login({
   return (
     <main className="container mx-auto p-8 max-w-sm">
       <h1 className="text-2xl font-bold mb-4">Sign in</h1>
+
+      {(loaderData.googleEnabled || loaderData.githubEnabled) && (
+        <div className="flex flex-col gap-2 mb-6">
+          {loaderData.googleEnabled && (
+            <a
+              href="/auth/google/initiate"
+              className="flex items-center justify-center gap-2 border py-2 rounded hover:bg-gray-50"
+            >
+              Sign in with Google
+            </a>
+          )}
+          {loaderData.githubEnabled && (
+            <a
+              href="/auth/github/initiate"
+              className="flex items-center justify-center gap-2 border py-2 rounded hover:bg-gray-50"
+            >
+              Sign in with GitHub
+            </a>
+          )}
+          <div className="flex items-center gap-2 my-1">
+            <hr className="flex-1" />
+            <span className="text-sm text-gray-400">or</span>
+            <hr className="flex-1" />
+          </div>
+        </div>
+      )}
+
       <Form method="post" className="flex flex-col gap-3">
         <label htmlFor="email">Email</label>
         <input

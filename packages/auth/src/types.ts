@@ -8,9 +8,9 @@
  */
 export interface AuthUser {
   /** Unique identifier for the user */
-  id: string
+  id: string;
   /** Additional metadata from the identity/provider */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -19,19 +19,19 @@ export interface AuthUser {
  */
 export interface Identity {
   /** Unique identifier for this identity */
-  id: string
+  id: string;
   /** Foreign key to the user */
-  userId: string
+  userId: string;
   /** Provider that authenticated this identity (e.g., "email", "sms", "google") */
-  provider: string
+  provider: string;
   /** The identifier within that provider (email address, phone number, OAuth subject) */
-  identifier: string
+  identifier: string;
   /** Additional metadata from the provider */
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
   /** When this identity was created */
-  createdAt: Date
+  createdAt: Date;
   /** When this identity was last verified */
-  verifiedAt?: Date
+  verifiedAt?: Date;
 }
 
 /**
@@ -39,67 +39,67 @@ export interface Identity {
  */
 export interface Session {
   /** User ID from the database */
-  userId: string
+  userId: string;
   /** Primary identifier used for this session */
-  identifier: string
+  identifier: string;
   /** Provider used for this session */
-  provider: string
+  provider: string;
   /** Session creation timestamp (Unix seconds) */
-  issuedAt: number
+  issuedAt: number;
   /** Session expiration timestamp (Unix seconds) */
-  expiresAt: number
+  expiresAt: number;
 }
 
 /**
  * Result of a successful authentication
  */
 export interface AuthSuccess {
-  success: true
-  user: AuthUser
-  identity: Identity
+  success: true;
+  user: AuthUser;
+  identity: Identity;
 }
 
 /**
  * Result of a failed authentication
  */
 export interface AuthFailure {
-  success: false
-  error: AuthError
+  success: false;
+  error: AuthError;
 }
 
 /**
  * Result of an authentication attempt
  */
-export type AuthResult = AuthSuccess | AuthFailure
+export type AuthResult = AuthSuccess | AuthFailure;
 
 /**
  * Result of initiating authentication (e.g., sending magic link)
  */
 export type AuthInitResult =
   | { success: true; message: string }
-  | { success: false; error: AuthError }
+  | { success: false; error: AuthError };
 
 /**
  * Structured error for authentication failures
  */
 export interface AuthError {
-  code: AuthErrorCode
-  message: string
-  details?: Record<string, unknown>
+  code: AuthErrorCode;
+  message: string;
+  details?: Record<string, unknown>;
 }
 
 export type AuthErrorCode =
-  | "INVALID_CREDENTIALS"
-  | "EXPIRED_TOKEN"
-  | "INVALID_TOKEN"
-  | "MISSING_TOKEN"
-  | "USER_NOT_FOUND"
-  | "IDENTITY_NOT_FOUND"
-  | "PROVIDER_ERROR"
-  | "CONFIGURATION_ERROR"
-  | "RATE_LIMITED"
-  | "SESSION_EXPIRED"
-  | "SESSION_INVALID"
+  | 'INVALID_CREDENTIALS'
+  | 'EXPIRED_TOKEN'
+  | 'INVALID_TOKEN'
+  | 'MISSING_TOKEN'
+  | 'USER_NOT_FOUND'
+  | 'IDENTITY_NOT_FOUND'
+  | 'PROVIDER_ERROR'
+  | 'CONFIGURATION_ERROR'
+  | 'RATE_LIMITED'
+  | 'SESSION_EXPIRED'
+  | 'SESSION_INVALID';
 
 /**
  * Identity storage adapter interface.
@@ -109,38 +109,44 @@ export interface IdentityStore {
   /**
    * Find an identity by provider and identifier
    */
-  findByProviderAndIdentifier(
-    provider: string,
-    identifier: string,
-  ): Promise<Identity | null>
+  findByProviderAndIdentifier(provider: string, identifier: string): Promise<Identity | null>;
 
   /**
    * Find all identities for a user
    */
-  findByUserId(userId: string): Promise<Identity[]>
+  findByUserId(userId: string): Promise<Identity[]>;
 
   /**
    * Create a new identity
    */
   create(data: {
-    userId: string
-    provider: string
-    identifier: string
-    metadata?: Record<string, unknown>
-  }): Promise<Identity>
+    userId: string;
+    provider: string;
+    identifier: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<Identity>;
+
+  /**
+   * Find an identity by email address across all providers.
+   *
+   * Used to link a new OAuth identity to an existing user when
+   * `linkByVerifiedEmail` is enabled.  The implementation should search by
+   * the stored email — e.g. `identifier` for the email provider or a
+   * `metadata.email` field for OAuth providers.
+   *
+   * Optional — only required when `linkByVerifiedEmail: true` is used.
+   */
+  findByEmail?(email: string): Promise<Identity | null>;
 
   /**
    * Update an identity (e.g., update verifiedAt)
    */
-  update?(
-    id: string,
-    data: Partial<Pick<Identity, "metadata" | "verifiedAt">>,
-  ): Promise<Identity>
+  update?(id: string, data: Partial<Pick<Identity, 'metadata' | 'verifiedAt'>>): Promise<Identity>;
 
   /**
    * Delete an identity
    */
-  delete?(id: string): Promise<void>
+  delete?(id: string): Promise<void>;
 }
 
 /**
@@ -151,21 +157,21 @@ export interface UserStore {
   /**
    * Find a user by their internal ID
    */
-  findById(id: string): Promise<AuthUser | null>
+  findById(id: string): Promise<AuthUser | null>;
 
   /**
    * Create a new user from identity information
    */
   create(fromIdentity: {
-    provider: string
-    identifier: string
-    metadata?: Record<string, unknown>
-  }): Promise<AuthUser>
+    provider: string;
+    identifier: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<AuthUser>;
 
   /**
    * Optionally update user on login
    */
-  onLogin?(user: AuthUser): Promise<void>
+  onLogin?(user: AuthUser): Promise<void>;
 }
 
 /**
@@ -173,24 +179,24 @@ export interface UserStore {
  */
 export interface SessionConfig {
   /** JWT secret for signing sessions */
-  secret: string
+  secret: string;
   /** Additional secrets for verification (e.g., for E2E testing) */
-  additionalSecrets?: string[]
+  additionalSecrets?: string[];
   /** Session duration (e.g., "30d", "7d") */
-  maxAge: string
+  maxAge: string;
   /** Cookie name */
-  cookieName: string
+  cookieName: string;
   /** Cookie options */
   cookie: {
-    secure: boolean
-    sameSite: "strict" | "lax" | "none"
-    domain?: string
-    path?: string
-  }
+    secure: boolean;
+    sameSite: 'strict' | 'lax' | 'none';
+    domain?: string;
+    path?: string;
+  };
   /** JWT issuer claim */
-  issuer?: string
+  issuer?: string;
   /** JWT audience claim */
-  audience?: string
+  audience?: string;
 }
 
 /**
@@ -198,20 +204,20 @@ export interface SessionConfig {
  */
 export interface AuthConfig {
   /** Session configuration */
-  session: SessionConfig
+  session: SessionConfig;
   /** Identity storage adapter */
-  identityStore: IdentityStore
+  identityStore: IdentityStore;
   /** User storage adapter */
-  userStore: UserStore
+  userStore: UserStore;
   /** Registered authentication providers */
-  providers: AuthProvider[]
+  providers: AuthProvider[];
   /** Callback URLs configuration */
   callbacks?: {
     /** URL to redirect to after successful authentication */
-    onSuccess?: string | ((user: AuthUser, identity: Identity) => string)
+    onSuccess?: string | ((user: AuthUser, identity: Identity) => string);
     /** URL to redirect to after failed authentication */
-    onError?: string | ((error: AuthError) => string)
-  }
+    onError?: string | ((error: AuthError) => string);
+  };
 }
 
 /**
@@ -219,13 +225,13 @@ export interface AuthConfig {
  */
 export interface AuthContext {
   /** Identity store for database operations */
-  identityStore: IdentityStore
+  identityStore: IdentityStore;
   /** User store for database operations */
-  userStore: UserStore
+  userStore: UserStore;
   /** Base URL for generating callback URLs */
-  baseUrl: string
+  baseUrl: string;
   /** Create a session for a user */
-  createSession: (user: AuthUser, identity: Identity) => Promise<string>
+  createSession: (user: AuthUser, identity: Identity) => Promise<string>;
 }
 
 /**
@@ -233,11 +239,11 @@ export interface AuthContext {
  */
 export interface ProviderRoute {
   /** HTTP method */
-  method: "GET" | "POST"
+  method: 'GET' | 'POST';
   /** Path pattern (relative to auth base path) */
-  path: string
+  path: string;
   /** Handler type */
-  handler: "initiate" | "verify"
+  handler: 'initiate' | 'verify';
 }
 
 /**
@@ -246,10 +252,17 @@ export interface ProviderRoute {
  */
 export interface AuthProvider {
   /** Unique identifier for this provider (e.g., "email", "google", "sms") */
-  readonly id: string
+  readonly id: string;
 
   /** Human-readable name */
-  readonly name: string
+  readonly name: string;
+
+  /**
+   * Whether this provider is active. Defaults to true when absent.
+   * Disabled providers are skipped in routing (their paths 404) and excluded
+   * from Auth.getEnabledProviders(). Use isProviderEnabled() to read from env vars.
+   */
+  readonly enabled?: boolean;
 
   /**
    * Initialize authentication flow.
@@ -257,10 +270,7 @@ export interface AuthProvider {
    * For OAuth: returns redirect URL
    * For SMS: sends verification code
    */
-  initiate(
-    request: Request,
-    context: AuthContext,
-  ): Promise<AuthInitResult | Response>
+  initiate(request: Request, context: AuthContext): Promise<AuthInitResult | Response>;
 
   /**
    * Handle callback/verification.
@@ -268,16 +278,16 @@ export interface AuthProvider {
    * For OAuth: exchanges code for tokens
    * For SMS: verifies OTP code
    */
-  verify(request: Request, context: AuthContext): Promise<AuthResult>
+  verify(request: Request, context: AuthContext): Promise<AuthResult>;
 
   /**
    * Check if this provider can handle the given request.
    * Used for automatic provider routing.
    */
-  canHandle(request: Request): boolean
+  canHandle(request: Request): boolean;
 
   /**
    * Get the routes this provider needs registered.
    */
-  getRoutes(): ProviderRoute[]
+  getRoutes(): ProviderRoute[];
 }

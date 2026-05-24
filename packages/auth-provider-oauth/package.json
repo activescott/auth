@@ -1,0 +1,54 @@
+{
+  "name": "@activescott/auth-provider-oauth",
+  "version": "0.1.0",
+  "description": "OAuth/OIDC social login providers for @activescott/auth",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "authentication",
+    "oauth",
+    "oidc",
+    "google",
+    "github",
+    "social-login"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-provider-oauth"
+  },
+  "dependencies": {
+    "jose": "^5.9.6",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "peerDependencies": {
+    "@activescott/auth": "^0.1.1"
+  },
+  "devDependencies": {
+    "@activescott/auth": "*",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.16"
+  }
+}

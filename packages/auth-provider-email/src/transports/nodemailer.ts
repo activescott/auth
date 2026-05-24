@@ -1,42 +1,42 @@
-import nodemailer from "nodemailer"
-import type { EmailTransport, EmailProviderConfig } from "../types.js"
+import nodemailer from 'nodemailer';
+import type { EmailTransport, EmailProviderConfig } from '../types.js';
 
 // Standard port for SMTPS (implicit TLS)
-const SMTPS_PORT = 465
+const SMTPS_PORT = 465;
 
 /**
  * Nodemailer-based email transport
  */
 export class NodemailerTransport implements EmailTransport {
-  private transporter: nodemailer.Transporter | null = null
-  private isDevelopment: boolean
+  private transporter: nodemailer.Transporter | null = null;
+  private isDevelopment: boolean;
 
   public constructor(isDevelopment = false) {
-    this.isDevelopment = isDevelopment
+    this.isDevelopment = isDevelopment;
   }
 
   public async sendMagicLink(
     to: string,
     magicLink: string,
-    config: EmailProviderConfig,
+    config: EmailProviderConfig
   ): Promise<boolean> {
     try {
-      const transporter = this.getTransporter(config)
+      const transporter = this.getTransporter(config);
 
-      const { template, from } = config
-      const appName = template?.appName ?? "App"
-      const subject = template?.subject ?? "Sign in"
-      const primaryColor = template?.primaryColor ?? "#6366f1"
+      const { template, from } = config;
+      const appName = template?.appName ?? 'App';
+      const subject = template?.subject ?? 'Sign in';
+      const primaryColor = template?.primaryColor ?? '#6366f1';
 
       const mailOptions = {
         from,
         to,
         subject: `${subject} to ${appName}`,
         html: this.generateHtmlEmail(magicLink, appName, primaryColor),
-        text: this.generateTextEmail(magicLink, appName),
-      }
+        text: this.generateTextEmail(magicLink, appName)
+      };
 
-      await transporter.sendMail(mailOptions)
+      await transporter.sendMail(mailOptions);
 
       if (this.isDevelopment) {
         // eslint-disable-next-line no-console
@@ -45,32 +45,32 @@ export class NodemailerTransport implements EmailTransport {
 To: ${to}
 Magic Link: ${magicLink}
 ---
-`)
+`);
       }
 
-      return true
+      return true;
     } catch (error) {
       // eslint-disable-next-line no-console
-      console.error("Failed to send magic link email:", error)
-      return false
+      console.error('Failed to send magic link email:', error);
+      return false;
     }
   }
 
   private getTransporter(config: EmailProviderConfig): nodemailer.Transporter {
     if (this.transporter) {
-      return this.transporter
+      return this.transporter;
     }
 
     if (this.isDevelopment) {
       // Development mode: log to console instead of sending
       this.transporter = nodemailer.createTransport({
         streamTransport: true,
-        newline: "unix",
-        buffer: true,
-      })
+        newline: 'unix',
+        buffer: true
+      });
     } else {
       // Production mode: real SMTP
-      const { smtp } = config
+      const { smtp } = config;
       this.transporter = nodemailer.createTransport({
         host: smtp.host,
         port: smtp.port,
@@ -78,19 +78,15 @@ Magic Link: ${magicLink}
         secure: smtp.secure ?? smtp.port === SMTPS_PORT,
         auth: {
           user: smtp.user,
-          pass: smtp.pass,
-        },
-      })
+          pass: smtp.pass
+        }
+      });
     }
 
-    return this.transporter
+    return this.transporter;
   }
 
-  private generateHtmlEmail(
-    magicLink: string,
-    appName: string,
-    primaryColor: string,
-  ): string {
+  private generateHtmlEmail(magicLink: string, appName: string, primaryColor: string): string {
     return `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: ${primaryColor};">Sign in to ${appName}</h2>
@@ -113,7 +109,7 @@ Magic Link: ${magicLink}
           <a href="${magicLink}" style="color: ${primaryColor}; word-break: break-all;">${magicLink}</a>
         </p>
       </div>
-    `
+    `;
   }
 
   private generateTextEmail(magicLink: string, appName: string): string {
@@ -125,6 +121,6 @@ Click this link to sign in: ${magicLink}
 This link will expire in 5 minutes.
 
 If you didn't request this email, you can safely ignore it.
-    `.trim()
+    `.trim();
   }
 }

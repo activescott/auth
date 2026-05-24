@@ -10,8 +10,8 @@ Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbo
 ## Status
 
 - **Email magic link** — implemented and in production.
+- **OAuth providers** (Google, GitHub, Microsoft) — implemented. See `@activescott/auth-provider-oauth`.
 - **SMS magic link / OTP codes** — planned, not yet implemented.
-- **OAuth providers** (Google, GitHub, etc.) — planned, not yet implemented.
 
 The provider interface (`AuthProvider` in `@activescott/auth`) is the extension point. Implementing a new provider does not require changes to the core package.
 
@@ -19,11 +19,14 @@ The provider interface (`AuthProvider` in `@activescott/auth`) is the extension 
 
 | Package                                                                          | Description                                                                                                                               |
 | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@activescott/auth`](./packages/auth)                                           | Core: `Auth` class, `SessionManager`, types (`AuthProvider`, `IdentityStore`, `UserStore`), JWT-cookie sessions.                          |
+| [`@activescott/auth`](./packages/auth)                                           | Core: `Auth` class, `SessionManager`, types, JWT-cookie sessions, `isProviderEnabled()` helper.                                           |
 | [`@activescott/auth-provider-email`](./packages/auth-provider-email)             | Email magic link provider. Ships a Nodemailer SMTP transport; the `EmailTransport` interface lets you swap in others (Resend, SES, etc.). |
+| [`@activescott/auth-provider-oauth`](./packages/auth-provider-oauth)             | OAuth 2.0 / OIDC social login. Includes `GoogleProvider`, `GitHubProvider`, `MicrosoftProvider`. PKCE, CSRF, account linking built in.    |
+| [`@activescott/auth-adapter-core`](./packages/auth-adapter-core)                 | Shared handler logic used by all adapters. Use directly for plain fetch handlers or Cloudflare Workers.                                   |
 | [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v7 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`, `sendMagicLink`.           |
+| [`@activescott/auth-adapter-hono`](./packages/auth-adapter-hono)                 | Hono adapter. Provides `requireAuthMiddleware`, `optionalAuthMiddleware`, `createAuthHandler` for Hono/Cloudflare Workers apps.           |
 
-Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
+Adapters for other frameworks (Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
 
 ## Architecture
 
@@ -32,7 +35,7 @@ flowchart LR
     app["Your app<br/><br/>• IdentityStore impl<br/>• UserStore impl<br/>• login / logout routes"]
     adapter["Framework adapter<br/>(e.g. react-router)<br/><br/>createAuthHandlers()"]
     core["@activescott/auth<br/><br/>• Auth<br/>• SessionManager (JWT)<br/>• cookie session cache"]
-    providers["AuthProvider<br/><br/>• email (magic link)<br/>• sms (planned)<br/>• oauth (planned)"]
+    providers["AuthProvider<br/><br/>• email (magic link)<br/>• oauth (Google, GitHub)<br/>• sms (planned)"]
 
     app -- "calls" --> adapter
     adapter -- "delegates to" --> core
@@ -47,7 +50,14 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 ## Install
 
 ```bash
+# Email magic link + React Router adapter
 npm install @activescott/auth @activescott/auth-provider-email @activescott/auth-adapter-react-router
+
+# Email magic link + Hono adapter
+npm install @activescott/auth @activescott/auth-provider-email @activescott/auth-adapter-hono
+
+# Add OAuth social login (Google, GitHub, Microsoft)
+npm install @activescott/auth-provider-oauth
 ```
 
 ## React Router quick start
@@ -105,7 +115,7 @@ export const sendMagicLink = (email: string, baseUrl: string) =>
 
 ### Step 3 — Add the catch-all auth route
 
-A single file at `app/routes/auth.$provider.$action.tsx` handles every provider's HTTP endpoints (`/auth/email/verify`, `/auth/email/initiate`, future `/auth/google/callback`, etc.):
+A single file at `app/routes/auth.$provider.$action.tsx` handles every provider's HTTP endpoints (`/auth/email/verify`, `/auth/email/initiate`, `/auth/google/callback`, `/auth/github/callback`, etc.):
 
 ```tsx
 import { handleAuth } from "~/lib/auth.server"
@@ -138,6 +148,91 @@ Use `optionalAuth(request)` instead if the route should render for both signed-i
 
 For a richer pattern — extending `AuthUser` with your own user fields and getting a typed `requireAuth<TUser>` via `mapUser` — see the production usage in ramblefeed (referenced in [`examples/react-router/README.md`](./examples/react-router/README.md)).
 
+## Hono quick start
+
+```ts
+import { Hono } from 'hono'
+import { Auth } from '@activescott/auth'
+import { EmailProvider } from '@activescott/auth-provider-email'
+import { createAuthHandlers } from '@activescott/auth-adapter-core'
+import {
+  requireAuthMiddleware,
+  optionalAuthMiddleware,
+  createAuthHandler,
+} from '@activescott/auth-adapter-hono'
+
+const auth = new Auth({
+  session: {
+    secret: process.env.JWT_SECRET!,
+    maxAge: '30d',
+    cookieName: 'session',
+    cookie: { secure: true, sameSite: 'lax', path: '/' },
+  },
+  identityStore,
+  userStore,
+  providers: [new EmailProvider({ /* ... */ })],
+})
+
+const handlers = createAuthHandlers(auth, {
+  successRedirect: '/',
+  errorRedirect: '/login',
+  loginUrl: '/login',
+})
+
+const app = new Hono()
+
+// Mount all auth routes (/auth/email/send, /auth/email/verify, etc.)
+app.all('/auth/*', createAuthHandler(handlers))
+
+// Protect routes — redirects to /login if no session
+app.use('/dashboard/*', requireAuthMiddleware(handlers, '/login'))
+
+// Optional auth — sets c.get('user') if logged in, null otherwise
+app.use('/api/*', optionalAuthMiddleware(handlers))
+
+app.get('/dashboard', (c) => {
+  const user = c.get('user')
+  return c.json({ user })
+})
+```
+
+`requireAuthMiddleware` and `optionalAuthMiddleware` set `c.get('user')` so downstream handlers can read the authenticated user without calling `requireAuth` again.
+
+---
+
+## Adding OAuth social login
+
+Install the OAuth package and add providers to the `providers` array:
+
+```ts
+import { Auth, isProviderEnabled } from '@activescott/auth'
+import { GoogleProvider, GitHubProvider } from '@activescott/auth-provider-oauth'
+
+const auth = new Auth({
+  // ...session, identityStore, userStore...
+  providers: [
+    new GoogleProvider({
+      enabled: isProviderEnabled('google'),        // reads AUTH_GOOGLE_ENABLED env var
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      oauthStateSecret: process.env.OAUTH_STATE_SECRET!,
+    }),
+    new GitHubProvider({
+      enabled: isProviderEnabled('github'),
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      oauthStateSecret: process.env.OAUTH_STATE_SECRET!,
+    }),
+  ],
+})
+```
+
+The catch-all route from Step 3 above handles the OAuth callbacks automatically — no extra routes needed. Add sign-in links pointing at `/auth/google/initiate` and `/auth/github/initiate` on your login page.
+
+`isProviderEnabled(id)` reads `AUTH_<PROVIDER_ID_UPPER>_ENABLED` from env vars (defaults to `true`). Use `auth.getEnabledProviders()` to get a `{ id, name }[]` list for rendering buttons dynamically.
+
+See [`packages/auth-provider-oauth/README.md`](./packages/auth-provider-oauth/README.md) for full configuration options (custom scopes, `linkByVerifiedEmail`, etc.) and [`examples/react-router`](./examples/react-router) for a complete wired-up example.
+
 ## Testing apps that use this library
 
 The example also demonstrates the recommended e2e pattern (also used in production by ramblefeed and tinkerbellbot):
@@ -147,11 +242,16 @@ The example also demonstrates the recommended e2e pattern (also used in producti
 
 This exercises the real verify → cookie → `requireAuth` path with no SMTP server, no inbox polling, and no flaky waits. See [`examples/react-router/tests/helpers/auth.ts`](./examples/react-router/tests/helpers/auth.ts).
 
+For OAuth providers, real browser flows can't run in CI. The example ships a test-only `/auth/test-login` route that creates a real user + session without touching the provider — see [`examples/react-router/README.md`](./examples/react-router/README.md).
+
 ## Implementing a custom provider
 
 Implement the [`AuthProvider`](./packages/auth/src/types.ts) interface from `@activescott/auth` and pass an instance into `new Auth({ providers: [...] })`.
 
-The cleanest reference is the email provider itself: [`packages/auth-provider-email/src/email-provider.ts`](./packages/auth-provider-email/src/email-provider.ts) — a complete, production implementation showing how `initiate` / `verify` / `canHandle` / `getRoutes` fit together, how to use the `AuthContext` to look up or create the user via the stores, and how to surface errors with `AuthErrors`.
+Good references:
+
+- [`packages/auth-provider-email/src/email-provider.ts`](./packages/auth-provider-email/src/email-provider.ts) — minimal, no external dependencies; shows how `initiate` / `verify` / `canHandle` / `getRoutes` fit together.
+- [`packages/auth-provider-oauth/src/base/oauth-provider.ts`](./packages/auth-provider-oauth/src/base/oauth-provider.ts) — abstract base class for OAuth 2.0 / OIDC providers with PKCE, discovery caching, JWKS token validation, and account linking built in. Extend it to add a new OAuth provider in ~30 lines.
 
 ## Development
 
@@ -176,7 +276,10 @@ Enforced locally by a `husky` `commit-msg` hook running `commitlint` (see `commi
 - **Scope is required and restricted** to one of the package directory names:
   - `auth`
   - `auth-provider-email`
+  - `auth-provider-oauth`
+  - `auth-adapter-core`
   - `auth-adapter-react-router`
+  - `auth-adapter-hono`
   - `examples` — for changes under `examples/` (no release, since example workspaces are `private`)
 - **Breaking changes** use `!` after the scope or a `BREAKING CHANGE:` footer.
 

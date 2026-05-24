@@ -15,14 +15,14 @@ export type {
   AuthConfig,
   AuthContext,
   ProviderRoute,
-  AuthProvider,
-} from "./types.js"
+  AuthProvider
+} from './types.js';
 
 // Auth class
-export { Auth } from "./auth.js"
+export { Auth } from './auth.js';
 
 // Session management
-export { SessionManager } from "./session/index.js"
+export { SessionManager } from './session/index.js';
 
 // Errors
 export {
@@ -31,5 +31,8 @@ export {
   getAuthErrorMessage,
   AuthenticationError,
   AuthErrors,
-  createAuthError,
-} from "./errors.js"
+  createAuthError
+} from './errors.js';
+
+// Configuration helpers
+export { isProviderEnabled } from './config.js';
