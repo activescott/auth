@@ -6,6 +6,7 @@ import {
   type UserStore
 } from '@activescott/auth';
 import { EmailProvider, NodemailerTransport } from '@activescott/auth-provider-email';
+import { GoogleProvider, GitHubProvider } from '@activescott/auth-provider-oauth';
 import {
   createAuthHandlers,
   sendMagicLink as sendMagicLinkBase
@@ -25,10 +26,10 @@ const userStore: UserStore = {
   async findById(id) {
     return users.get(id) ?? null;
   },
-  async create({ identifier }) {
+  async create({ identifier, metadata }) {
     const user: AuthUser = {
       id: crypto.randomUUID(),
-      metadata: { email: identifier }
+      metadata: metadata ?? { email: identifier }
     };
     users.set(user.id, user);
     return user;
@@ -85,6 +86,35 @@ const MAGIC_LINK_SECRET =
  */
 const E2E_MAGIC_LINK_SECRET = process.env.E2E_MAGIC_LINK_SECRET ?? 'e2e_test_magic_link_secret';
 
+// OAuth provider credentials — set these in .env to enable social login.
+// Omitting them disables the providers at startup.
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
+const OAUTH_STATE_SECRET =
+  process.env.OAUTH_STATE_SECRET ?? 'dev-only-oauth-state-secret-at-least-32-chars!!';
+
+const oauthProviders = [];
+if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
+  oauthProviders.push(
+    new GoogleProvider({
+      clientId: GOOGLE_CLIENT_ID,
+      clientSecret: GOOGLE_CLIENT_SECRET,
+      oauthStateSecret: OAUTH_STATE_SECRET
+    })
+  );
+}
+if (GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET) {
+  oauthProviders.push(
+    new GitHubProvider({
+      clientId: GITHUB_CLIENT_ID,
+      clientSecret: GITHUB_CLIENT_SECRET,
+      oauthStateSecret: OAUTH_STATE_SECRET
+    })
+  );
+}
+
 export const auth = new Auth({
   session: {
     secret: SESSION_SECRET,
@@ -114,7 +144,8 @@ export const auth = new Auth({
       // instead of sent via SMTP. Drop the `true` (or omit the transport
       // entirely) and configure real `smtp` to send actual email.
       new NodemailerTransport(true)
-    )
+    ),
+    ...oauthProviders
   ]
 });
 
@@ -128,4 +159,39 @@ export const { handleAuth, getSession, requireAuth, optionalAuth, logout } = han
 
 export function sendMagicLink(email: string, baseUrl: string) {
   return sendMagicLinkBase(auth, email, baseUrl);
+}
+
+/**
+ * Test-only helper: create a real user + identity in the in-memory stores and
+ * return the Set-Cookie header value for a session that represents them.
+ *
+ * Only available when NODE_ENV !== 'production'.  Used by the Playwright
+ * e2e suite to simulate a completed OAuth login without going through a real
+ * provider.  See `tests/helpers/auth.ts`.
+ */
+export async function createTestSession({
+  provider,
+  identifier,
+  email
+}: {
+  provider: string;
+  identifier: string;
+  email?: string;
+}): Promise<string> {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('createTestSession is not available in production');
+  }
+  const existing = await identityStore.findByProviderAndIdentifier(provider, identifier);
+  let user: AuthUser;
+  let identity: Identity;
+  if (existing) {
+    const found = await userStore.findById(existing.userId);
+    if (!found) throw new Error(`User ${existing.userId} not found`);
+    user = found;
+    identity = existing;
+  } else {
+    user = await userStore.create({ provider, identifier, metadata: email ? { email } : {} });
+    identity = await identityStore.create({ userId: user.id, provider, identifier });
+  }
+  return auth.createSessionCookie(user, identity);
 }
