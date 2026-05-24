@@ -20,6 +20,34 @@ Format per entry:
 
 ## Log Entries
 
+### 2026-05-24-08
+
+- Agent: Claude
+- Subject: @activescott/auth-adapter-hono — Hono framework adapter (issue #27)
+- Current Issue: #27
+- Work Done:
+  - New `packages/auth-adapter-hono/` workspace; added to root `package.json` workspaces
+  - `src/handlers.ts` — same core API as React Router adapter (no RR dep)
+  - `src/middleware.ts` — three Hono-specific exports:
+    - `requireAuthMiddleware(handlers, redirectTo?)` — sets `c.set('user', user)` or returns 302
+    - `optionalAuthMiddleware(handlers)` — sets `c.set('user', user | null)`, never redirects
+    - `createAuthHandler(handlers)` — route handler for `/auth/:provider/:action` catch-all
+  - `hono ^4.0.0` peer dep only; works on Node, CF Workers, Bun, Deno
+  - 30 tests (21 handler + 9 Hono middleware integration tests via `app.request()`)
+  - Added `auth-adapter-hono` scope to `commitlint.config.js`
+  - Opened issue #27 and PR #28
+- Commits: 617bdbd
+- Files Modified:
+  - packages/auth-adapter-hono/package.json (new)
+  - packages/auth-adapter-hono/tsconfig.json (new)
+  - packages/auth-adapter-hono/src/handlers.ts (new)
+  - packages/auth-adapter-hono/src/middleware.ts (new)
+  - packages/auth-adapter-hono/src/index.ts (new)
+  - packages/auth-adapter-hono/src/__tests__/handlers.test.ts (new)
+  - packages/auth-adapter-hono/src/__tests__/middleware.test.ts (new)
+  - package.json
+  - commitlint.config.js
+
 ### 2026-05-24-07
 
 - Agent: Claude
