@@ -20,6 +20,38 @@ Format per entry:
 
 ## Log Entries
 
+### 2026-05-24-04
+
+- Agent: Claude
+- Subject: Wire OAuth providers into the React Router example app (issue #15)
+- Current Issue: #15
+- Work Done:
+  - Added `@activescott/auth-provider-oauth` dependency to `examples/react-router/package.json`
+  - Updated `auth.server.ts`: imports `GoogleProvider` + `GitHubProvider`; registers them
+    conditionally on env vars (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`,
+    `GITHUB_CLIENT_SECRET`, `OAUTH_STATE_SECRET`); updated `userStore.create` to accept and use
+    passed `metadata` (fallback to `{ email: identifier }` for email provider backward compat)
+  - Added `createTestSession` helper to `auth.server.ts` (disabled in production) for e2e use
+  - Updated `login.tsx` to show Google/GitHub sign-in buttons when providers are registered
+  - Updated `dashboard.tsx` to use `getSession` (returns user + identity) and display provider name
+  - Added test-only route `app/routes/auth.test-login.ts` at `GET /auth/test-login`
+  - Added `loginAsOAuth` helper to `tests/helpers/auth.ts`
+  - Added 3 new Playwright e2e tests in `oauth` describe block
+  - Created `examples/react-router/.env.example`
+  - Updated `examples/react-router/README.md` with OAuth setup instructions and test pattern docs
+  - Opened PR #22
+- Commits: 8f6036b
+- Files Modified:
+  - examples/react-router/package.json
+  - examples/react-router/app/lib/auth.server.ts
+  - examples/react-router/app/routes/dashboard.tsx
+  - examples/react-router/app/routes/login.tsx
+  - examples/react-router/app/routes/auth.test-login.ts (new)
+  - examples/react-router/.env.example (new)
+  - examples/react-router/tests/auth.spec.ts
+  - examples/react-router/tests/helpers/auth.ts
+  - examples/react-router/README.md
+
 ### 2026-05-24-03
 
 - Agent: Claude
