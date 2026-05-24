@@ -20,6 +20,32 @@ Format per entry:
 
 ## Log Entries
 
+### 2026-05-24-03
+
+- Agent: Claude
+- Subject: Implement abstract OAuthProvider base class with OIDC discovery (issue #11)
+- Current Issue: #11
+- Work Done:
+  - Created `packages/auth-provider-oauth/src/base/oauth-provider.ts` — abstract `OAuthProvider`
+    class with full OAuth 2.0/OIDC flow (initiate redirect, verify callback, PKCE, discovery cache)
+  - Added `jose` ^5.9.6 dependency for JWKS-based id_token validation
+  - `validateIdToken()` helper uses `createRemoteJWKSet` + `jwtVerify` from jose
+  - `normalizeOIDCClaims()` maps standard OIDC claims to `OAuthProfile`
+  - `findOrCreateUser()` with optional `linkByVerifiedEmail` account linking
+  - Fixed `readStateCookie` validation: `!payload.codeVerifier` rejected empty strings, breaking
+    non-PKCE providers that store `codeVerifier: ''`; changed to `payload.codeVerifier == null`
+  - Updated `src/index.ts` to export `OAuthProvider` and `OIDCDiscoveryDocument`
+  - Created `src/__tests__/oauth-provider.test.ts` with 30 tests covering all paths
+  - Opened PR #18: `feat(auth-provider-oauth): abstract OAuthProvider base class with OIDC discovery`
+- Commits: b7175dd
+- Files Modified:
+  - packages/auth-provider-oauth/src/base/oauth-provider.ts (new)
+  - packages/auth-provider-oauth/src/__tests__/oauth-provider.test.ts (new)
+  - packages/auth-provider-oauth/src/base/state-cookie.ts (fix: allow empty codeVerifier)
+  - packages/auth-provider-oauth/src/index.ts (export OAuthProvider + OIDCDiscoveryDocument)
+  - packages/auth-provider-oauth/package.json (add jose dependency)
+  - package-lock.json
+
 ### 2026-05-24-01
 
 - Agent: Claude
