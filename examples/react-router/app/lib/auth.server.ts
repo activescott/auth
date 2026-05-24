@@ -1,5 +1,6 @@
 import {
   Auth,
+  isProviderEnabled,
   type AuthUser,
   type Identity,
   type IdentityStore,
@@ -107,6 +108,7 @@ const oauthProviders = [];
 if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
   oauthProviders.push(
     new GoogleProvider({
+      enabled: isProviderEnabled('google'),
       clientId: GOOGLE_CLIENT_ID,
       clientSecret: GOOGLE_CLIENT_SECRET,
       oauthStateSecret: OAUTH_STATE_SECRET
@@ -116,6 +118,7 @@ if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
 if (GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET) {
   oauthProviders.push(
     new GitHubProvider({
+      enabled: isProviderEnabled('github'),
       clientId: GITHUB_CLIENT_ID,
       clientSecret: GITHUB_CLIENT_SECRET,
       oauthStateSecret: OAUTH_STATE_SECRET

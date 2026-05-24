@@ -33,3 +33,6 @@ export {
   AuthErrors,
   createAuthError
 } from './errors.js';
+
+// Configuration helpers
+export { isProviderEnabled } from './config.js';

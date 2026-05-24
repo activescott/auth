@@ -2,6 +2,12 @@
  * Email provider configuration
  */
 export interface EmailProviderConfig {
+  /**
+   * Whether this provider is active. Defaults to true.
+   * Disabled providers are skipped by Auth.handleRequest and excluded from
+   * Auth.getEnabledProviders(). Use isProviderEnabled() from @activescott/auth.
+   */
+  enabled?: boolean;
   /** Secret for signing magic link tokens */
   magicLinkSecret: string;
   /** Additional secrets for verification (e.g., for E2E testing) */

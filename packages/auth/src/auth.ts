@@ -116,18 +116,28 @@ export class Auth {
   }
 
   /**
-   * Get all registered providers
+   * Get all registered providers (including disabled ones)
    */
   public getProviders(): AuthProvider[] {
     return [...this.providers.values()];
   }
 
   /**
-   * Find provider that can handle the request
+   * Get enabled providers as a minimal list for rendering login UI.
+   * Providers with enabled === false are excluded.
+   */
+  public getEnabledProviders(): { id: string; name: string }[] {
+    return [...this.providers.values()]
+      .filter((p) => p.enabled !== false)
+      .map(({ id, name }) => ({ id, name }));
+  }
+
+  /**
+   * Find provider that can handle the request (skips disabled providers)
    */
   public findProvider(request: Request): AuthProvider | undefined {
     for (const provider of this.providers.values()) {
-      if (provider.canHandle(request)) {
+      if (provider.enabled !== false && provider.canHandle(request)) {
         return provider;
       }
     }
@@ -159,8 +169,8 @@ export class Auth {
 
     const provider = this.providers.get(providerId);
 
-    if (!provider) {
-      return new Response(`Unknown provider: ${providerId}`, { status: 404 });
+    if (!provider || provider.enabled === false) {
+      return new Response('Not Found', { status: 404 });
     }
 
     const context = this.createContext(request);

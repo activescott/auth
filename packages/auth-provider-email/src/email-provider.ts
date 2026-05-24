@@ -31,6 +31,7 @@ interface MagicLinkPayload {
 export class EmailProvider implements AuthProvider {
   public readonly id = 'email';
   public readonly name = 'Email';
+  public readonly enabled: boolean;
 
   private transport: EmailTransport;
 
@@ -38,6 +39,7 @@ export class EmailProvider implements AuthProvider {
     private readonly config: EmailProviderConfig,
     transport?: EmailTransport
   ) {
+    this.enabled = config.enabled ?? true;
     this.transport = transport ?? new NodemailerTransport(process.env.NODE_ENV === 'development');
   }
 

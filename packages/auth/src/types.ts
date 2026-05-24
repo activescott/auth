@@ -258,6 +258,13 @@ export interface AuthProvider {
   readonly name: string;
 
   /**
+   * Whether this provider is active. Defaults to true when absent.
+   * Disabled providers are skipped in routing (their paths 404) and excluded
+   * from Auth.getEnabledProviders(). Use isProviderEnabled() to read from env vars.
+   */
+  readonly enabled?: boolean;
+
+  /**
    * Initialize authentication flow.
    * For email: sends magic link
    * For OAuth: returns redirect URL

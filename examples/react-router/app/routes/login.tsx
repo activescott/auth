@@ -8,10 +8,11 @@ export async function loader({ request }: Route.LoaderArgs) {
   if (session) throw redirect("/dashboard")
 
   const errorCode = new URL(request.url).searchParams.get("error")
+  const enabledProviders = auth.getEnabledProviders()
   return {
     error: errorCode ? getAuthErrorMessage(errorCode) : null,
-    googleEnabled: !!auth.getProvider("google"),
-    githubEnabled: !!auth.getProvider("github"),
+    googleEnabled: enabledProviders.some((p) => p.id === "google"),
+    githubEnabled: enabledProviders.some((p) => p.id === "github"),
   }
 }
 

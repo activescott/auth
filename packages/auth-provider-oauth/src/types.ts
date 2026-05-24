@@ -11,6 +11,12 @@ export interface OAuthProviderConfig {
   /** OAuth application client secret */
   clientSecret: string;
   /**
+   * Whether this provider is active. Defaults to true.
+   * Disabled providers are skipped by Auth.handleRequest and excluded from
+   * Auth.getEnabledProviders(). Use isProviderEnabled() from @activescott/auth.
+   */
+  enabled?: boolean;
+  /**
    * Secret used to sign the short-lived state cookie (PKCE + CSRF).
    * Must be different from the session secret.
    */

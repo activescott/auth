@@ -34,13 +34,16 @@ export abstract class OAuthProvider implements AuthProvider {
   public abstract readonly id: string;
   public abstract readonly name: string;
   public abstract readonly discoveryUrl: string;
+  public readonly enabled: boolean;
 
   /** Set to false for providers that don't support PKCE (e.g., GitHub). */
   protected readonly supportsPKCE: boolean = true;
 
   private discoveryCache: DiscoveryCacheEntry | null = null;
 
-  public constructor(protected readonly config: OAuthProviderConfig) {}
+  public constructor(protected readonly config: OAuthProviderConfig) {
+    this.enabled = config.enabled ?? true;
+  }
 
   /**
    * Build a normalized OAuthProfile from the tokens returned by the provider.
