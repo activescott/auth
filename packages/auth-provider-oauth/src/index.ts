@@ -7,3 +7,5 @@ export {
   readStateCookie,
   clearStateCookie
 } from './base/state-cookie.js';
+export { OAuthProvider } from './base/oauth-provider.js';
+export type { OIDCDiscoveryDocument } from './base/oauth-provider.js';

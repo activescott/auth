@@ -91,7 +91,7 @@ export function readStateCookie(request: Request, secret: string): OAuthStateCoo
       audience: 'auth'
     }) as OAuthStateCookiePayload;
 
-    if (!payload.state || !payload.codeVerifier || !payload.provider) {
+    if (!payload.state || !payload.provider || payload.codeVerifier == null) {
       return null;
     }
 
