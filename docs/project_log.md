@@ -20,6 +20,30 @@ Format per entry:
 
 ## Log Entries
 
+### 2026-05-24-05
+
+- Agent: Claude
+- Subject: Email-based OAuth account linking via IdentityStore.findByEmail (issue #14)
+- Current Issue: #14
+- Work Done:
+  - Added optional `findByEmail?(email: string): Promise<Identity | null>` to `IdentityStore`
+    in `packages/auth/src/types.ts`
+  - Updated `OAuthProvider.findOrCreateUser` to call `findByEmail` instead of
+    `findByProviderAndIdentifier('email', ...)` when `linkByVerifiedEmail: true`
+  - `AuthenticationError('CONFIGURATION_ERROR', ...)` thrown when `findByEmail` missing
+    and `linkByVerifiedEmail: true`; `verify` catch block updated to preserve
+    `AuthenticationError` error codes (not override with `PROVIDER_ERROR`)
+  - Added `findByEmail` implementation to example app's in-memory `identityStore`
+  - Updated existing linking test; added 3 new tests (linking match, no match, unverified
+    email, missing findByEmail → CONFIGURATION_ERROR); 88 tests total
+  - Opened PR #23
+- Commits: 06dad33
+- Files Modified:
+  - packages/auth/src/types.ts
+  - packages/auth-provider-oauth/src/base/oauth-provider.ts
+  - packages/auth-provider-oauth/src/__tests__/oauth-provider.test.ts
+  - examples/react-router/app/lib/auth.server.ts
+
 ### 2026-05-24-04
 
 - Agent: Claude
