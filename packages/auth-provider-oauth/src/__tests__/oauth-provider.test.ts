@@ -119,6 +119,7 @@ function makeContext(overrides: Partial<AuthContext> = {}): AuthContext {
   const identityStore: IdentityStore = {
     findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
     findByUserId: vi.fn().mockResolvedValue([]),
+    findByEmail: vi.fn().mockResolvedValue(null),
     create: vi
       .fn()
       .mockImplementation(async (data) =>
@@ -313,21 +314,70 @@ describe('OAuthProvider — verify', () => {
     expect(context.userStore.create).not.toHaveBeenCalled();
   });
 
-  it('links to an existing email identity when linkByVerifiedEmail is set', async () => {
+  it('links to an existing identity via findByEmail when linkByVerifiedEmail is set', async () => {
     const config = { ...BASE_CONFIG, linkByVerifiedEmail: true };
     const provider = new TestProvider(config);
     vi.stubGlobal('fetch', makeMockFetch(makeDiscoveryFetch(), makeTokenFetch()));
     const emailUser = makeUser('email-user');
     const emailIdentity = makeIdentity('ident-email', 'email-user', 'email', 'alice@example.com');
     const context = makeContext();
-    vi.mocked(context.identityStore.findByProviderAndIdentifier)
-      .mockResolvedValueOnce(null) // no existing test identity
-      .mockResolvedValueOnce(emailIdentity); // email identity found
+    // findByProviderAndIdentifier returns null (no existing OAuth identity)
+    vi.mocked(context.identityStore.findByProviderAndIdentifier).mockResolvedValue(null);
+    // findByEmail finds the existing email identity
+    vi.mocked(context.identityStore.findByEmail!).mockResolvedValue(emailIdentity);
     vi.mocked(context.userStore.findById).mockResolvedValue(emailUser);
     const result = await provider.verify(buildCallbackRequest('s', 'v'), context);
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.user.id).toBe('email-user');
+      // a new OAuth identity is created and linked to the existing user
+      expect(context.identityStore.create).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'email-user', provider: 'test' })
+      );
+    }
+    expect(context.userStore.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a new user when linkByVerifiedEmail is set but no email match', async () => {
+    const config = { ...BASE_CONFIG, linkByVerifiedEmail: true };
+    const provider = new TestProvider(config);
+    vi.stubGlobal('fetch', makeMockFetch(makeDiscoveryFetch(), makeTokenFetch()));
+    const context = makeContext();
+    // findByEmail returns null — no existing identity with that email
+    vi.mocked(context.identityStore.findByEmail!).mockResolvedValue(null);
+    const result = await provider.verify(buildCallbackRequest('s', 'v'), context);
+    expect(result.success).toBe(true);
+    expect(context.userStore.create).toHaveBeenCalled();
+  });
+
+  it('does not link when email is unverified even if linkByVerifiedEmail is set', async () => {
+    const config = { ...BASE_CONFIG, linkByVerifiedEmail: true };
+    const provider = new TestProvider(config);
+    // Override profile to return unverified email
+    mockJwtVerify.mockResolvedValue({
+      payload: { ...CLAIMS, email_verified: false }
+    });
+    vi.stubGlobal('fetch', makeMockFetch(makeDiscoveryFetch(), makeTokenFetch()));
+    const context = makeContext();
+    const result = await provider.verify(buildCallbackRequest('s', 'v'), context);
+    expect(result.success).toBe(true);
+    // findByEmail must never be called for unverified email
+    expect(context.identityStore.findByEmail).not.toHaveBeenCalled();
+    // a fresh user is created instead
+    expect(context.userStore.create).toHaveBeenCalled();
+  });
+
+  it('returns CONFIGURATION_ERROR when linkByVerifiedEmail is set but findByEmail is missing', async () => {
+    const config = { ...BASE_CONFIG, linkByVerifiedEmail: true };
+    const provider = new TestProvider(config);
+    vi.stubGlobal('fetch', makeMockFetch(makeDiscoveryFetch(), makeTokenFetch()));
+    const context = makeContext();
+    // Remove findByEmail from the store to simulate a misconfigured app
+    delete (context.identityStore as Partial<typeof context.identityStore>).findByEmail;
+    const result = await provider.verify(buildCallbackRequest('s', 'v'), context);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('CONFIGURATION_ERROR');
     }
   });
 

@@ -49,6 +49,14 @@ const identityStore: IdentityStore = {
   async findByUserId(userId) {
     return [...identities.values()].filter((index) => index.userId === userId);
   },
+  async findByEmail(email) {
+    for (const identity of identities.values()) {
+      // email provider stores email as identifier; OAuth providers store it in metadata
+      if (identity.identifier === email) return identity;
+      if ((identity.metadata?.email as string | undefined) === email) return identity;
+    }
+    return null;
+  },
   async create(data) {
     const identity: Identity = {
       id: crypto.randomUUID(),

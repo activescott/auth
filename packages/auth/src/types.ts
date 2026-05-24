@@ -127,6 +127,18 @@ export interface IdentityStore {
   }): Promise<Identity>;
 
   /**
+   * Find an identity by email address across all providers.
+   *
+   * Used to link a new OAuth identity to an existing user when
+   * `linkByVerifiedEmail` is enabled.  The implementation should search by
+   * the stored email — e.g. `identifier` for the email provider or a
+   * `metadata.email` field for OAuth providers.
+   *
+   * Optional — only required when `linkByVerifiedEmail: true` is used.
+   */
+  findByEmail?(email: string): Promise<Identity | null>;
+
+  /**
    * Update an identity (e.g., update verifiedAt)
    */
   update?(id: string, data: Partial<Pick<Identity, 'metadata' | 'verifiedAt'>>): Promise<Identity>;

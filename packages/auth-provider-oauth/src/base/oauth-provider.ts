@@ -7,7 +7,7 @@ import type {
   Identity,
   ProviderRoute
 } from '@activescott/auth';
-import { AuthErrors } from '@activescott/auth';
+import { AuthErrors, AuthenticationError } from '@activescott/auth';
 import type { OAuthProviderConfig, OAuthProfile, TokenResponse } from '../types.js';
 import { createStateCookie, generatePKCE, generateState, readStateCookie } from './state-cookie.js';
 
@@ -167,6 +167,9 @@ export abstract class OAuthProvider implements AuthProvider {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(`Error in ${this.id} provider verify:`, error);
+      if (error instanceof AuthenticationError) {
+        return { success: false, error: error.toAuthError() };
+      }
       return {
         success: false,
         error: AuthErrors.providerError(error instanceof Error ? error.message : 'Unknown error')
@@ -291,10 +294,13 @@ export abstract class OAuthProvider implements AuthProvider {
     }
 
     if (this.config.linkByVerifiedEmail && profile.email && profile.emailVerified) {
-      const emailIdentity = await context.identityStore.findByProviderAndIdentifier(
-        'email',
-        profile.email
-      );
+      if (!context.identityStore.findByEmail) {
+        throw new AuthenticationError(
+          'CONFIGURATION_ERROR',
+          'linkByVerifiedEmail requires IdentityStore to implement findByEmail()'
+        );
+      }
+      const emailIdentity = await context.identityStore.findByEmail(profile.email);
       if (emailIdentity) {
         const user = await context.userStore.findById(emailIdentity.userId);
         if (user) {
