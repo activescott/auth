@@ -1,55 +1,36 @@
-import { Form, data, redirect } from "react-router"
+import { Form, redirect } from "react-router"
 import { getAuthErrorMessage } from "@activescott/auth"
-import { getSession, sendMagicLink } from "~/lib/auth.server"
+import { getSession } from "~/lib/auth.server"
 import type { Route } from "./+types/login"
 
 export async function loader({ request }: Route.LoaderArgs) {
   const session = await getSession(request)
   if (session) throw redirect("/dashboard")
 
-  const errorCode = new URL(request.url).searchParams.get("error")
-  return { error: errorCode ? getAuthErrorMessage(errorCode) : null }
+  const url = new URL(request.url)
+  const errorCode = url.searchParams.get("error")
+  return {
+    sent: url.searchParams.get("sent") === "1",
+    error: errorCode ? getAuthErrorMessage(errorCode) : null,
+  }
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const formData = await request.formData()
-  const email = formData.get("email")
-  if (typeof email !== "string") {
-    return { error: "Email is required", message: null }
-  }
-
-  const baseUrl = new URL(request.url).origin
-  const result = await sendMagicLink(email, baseUrl)
-
-  if (!result.success) {
-    return {
-      error: result.error ?? "Failed to send magic link.",
-      message: null,
-    }
-  }
-
-  // The OTP challenge cookie (from result.setCookies) must reach the
-  // browser so the code the user types can be matched to this send
-  const headers = new Headers()
-  for (const cookie of result.setCookies ?? []) {
-    headers.append("Set-Cookie", cookie)
-  }
-  return data(
-    { message: result.message ?? "Check your email.", error: null },
-    { headers },
-  )
-}
-
-export default function Login({
-  actionData,
-  loaderData,
-}: Route.ComponentProps) {
-  const sent = Boolean(actionData?.message)
+export default function Login({ loaderData }: Route.ComponentProps) {
+  const { sent, error } = loaderData
 
   return (
     <main className="container mx-auto p-8 max-w-sm">
       <h1 className="text-2xl font-bold mb-4">Sign in</h1>
-      <Form method="post" className="flex flex-col gap-3">
+
+      {/* Posts directly to the auth catch-all route. The provider sends
+          the email, sets the challenge cookie, and redirects back here
+          with ?sent=1 — no action needed in this route. */}
+      <Form
+        method="post"
+        action="/auth/email/initiate"
+        reloadDocument
+        className="flex flex-col gap-3"
+      >
         <label htmlFor="email">Email</label>
         <input
           id="email"
@@ -66,14 +47,16 @@ export default function Login({
           {sent ? "Resend" : "Send magic link"}
         </button>
       </Form>
+
       {sent && (
         <>
-          <p className="text-green-700 mt-3">{actionData?.message}</p>
+          <p className="text-green-700 mt-3">
+            Check your email for a sign-in link and code.
+          </p>
 
           {/* Posts to the auth catch-all route; the provider verifies the
               code against the challenge cookie and redirects to the
-              dashboard. reloadDocument keeps it a plain browser POST so the
-              redirect + Set-Cookie behave like the magic-link click. */}
+              dashboard. */}
           <Form
             method="post"
             action="/auth/email/verify"
@@ -114,11 +97,7 @@ export default function Login({
           </aside>
         </>
       )}
-      {(actionData?.error || loaderData?.error) && (
-        <p className="text-red-700 mt-3">
-          Error: {actionData?.error || loaderData?.error}
-        </p>
-      )}
+      {error && <p className="text-red-700 mt-3">Error: {error}</p>}
     </main>
   )
 }

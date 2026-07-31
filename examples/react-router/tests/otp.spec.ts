@@ -66,7 +66,7 @@ test.describe("email OTP code", () => {
     await expect(page).toHaveURL(/\/login/)
   })
 
-  test("the emailed magic link still works with OTP enabled", async ({
+  test("the magic link shows a confirm page, then signs in on confirm", async ({
     page,
     request,
   }) => {
@@ -79,8 +79,23 @@ test.describe("email OTP code", () => {
     )
     const { magicLink } = (await response.json()) as { magicLink: string }
 
+    // A security scanner prefetching the link (GET) must not consume it
+    const scannerFetch = await request.get(magicLink)
+    expect(scannerFetch.ok()).toBe(true)
+
     await page.goto(magicLink)
-    await expect(page).toHaveURL(/\/dashboard/)
+    await expect(
+      page.getByRole("button", { name: /confirm sign-in/i }),
+    ).toBeVisible()
+    await Promise.all([
+      page.waitForURL("**/dashboard"),
+      page.getByRole("button", { name: /confirm sign-in/i }).click(),
+    ])
+
+    // Single use: revisiting the consumed link shows an error, not a session
+    await page.context().clearCookies()
+    await page.goto(magicLink)
+    await expect(page).toHaveURL(/\/login\?error=/)
   })
 
   test("the code endpoint is hidden without the shared secret", async ({
