@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.0.0](https://github.com/activescott/auth/compare/auth@1.0.0...auth@2.0.0) (2026-07-31)
+
+### ⚠ BREAKING CHANGES
+
+* SessionManager.verifyToken is now async and returns
+Promise<Session | null>. All other public APIs (Auth.verifySession,
+SessionManager.getSession, adapter helpers) were already async and are
+unchanged.
+
+### Features
+
+* replace jsonwebtoken with jose for wintertc-compatible sessions ([3c4f66d](https://github.com/activescott/auth/commit/3c4f66d7d9045f1dc289c8234fbb6fe92e448133)), closes [#33](https://github.com/activescott/auth/issues/33)
+
 ## [1.0.0](https://github.com/activescott/auth/compare/auth@0.1.3...auth@1.0.0) (2026-07-31)
 
 ### ⚠ BREAKING CHANGES
