@@ -59,6 +59,23 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 npm install @activescott/auth @activescott/auth-provider-email @activescott/auth-adapter-react-router
 ```
 
+## Try the example
+
+```bash
+npm ci && npm run build
+npm run dev --workspace=examples/react-router
+```
+
+Open http://localhost:5173/login. Sign-in emails are printed to the server console (magic link + code) — no SMTP needed.
+
+To see the actual emails, install and run [Mailpit](https://mailpit.axllent.org) (`brew install mailpit && mailpit`), then:
+
+```bash
+cp examples/react-router/.env.example.mailpit examples/react-router/.env
+```
+
+Restart the dev server; emails land in the Mailpit inbox at http://localhost:8025.
+
 ## React Router quick start
 
 A complete, runnable example lives in [`examples/react-router`](./examples/react-router) — a real React Router v7 framework-mode app with login, logout, a protected dashboard, and a Playwright e2e suite. CI runs the example end-to-end on every PR.
