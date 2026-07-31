@@ -7,15 +7,22 @@ Framework-agnostic authentication for TypeScript with a provider pattern. Design
 
 Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbot.com](https://tinkerbellbot.com).
 
+## Focus: direct authentication, deliberately small
+
+This is not a comprehensive works-with-every-OAuth-provider auth library (that niche is well served by projects like BetterAuth). It focuses on the ways an individual can authenticate **directly** — email, phone number, and (planned) passkeys — with no third-party identity provider in the loop. Constraining the scope is what keeps the library easy to drop into a new app and keeps sign-in friction low for end users: everyone has an email address or phone number, and modern platforms AutoFill the codes we send to them. OAuth is intentionally out of scope for now.
+
 ## Status
 
-- **Email magic link** — implemented and in production.
-- **Email one-time codes** — implemented; optional numeric code alongside the magic link with iOS/macOS AutoFill support.
+- **Email magic link** — implemented and in production. Single-use, server-backed links with a confirm step that email security scanners can't consume (see below).
+- **Email one-time codes** — implemented; every sign-in email includes a numeric code with iOS/macOS AutoFill support, so users can type the code instead of switching to the inbox tab.
 - **SMS OTP codes** — planned, not yet implemented.
 - **Passkeys (WebAuthn)** — planned, not yet implemented.
-- **OAuth providers** (Google, GitHub, etc.) — planned, not yet implemented.
 
 The provider interface (`AuthProvider` in `@activescott/auth`) is the extension point. Implementing a new provider does not require changes to the core package.
+
+### Scanner-proof single-use magic links
+
+Sign-in links are redeemable exactly once. To make that safe alongside email security tools (Outlook SafeLinks, Mimecast, link previews) that prefetch every URL in an email with a GET, clicking the link first shows a minimal **"Confirm sign-in"** page; the actual redemption happens when the user clicks the confirm button (a POST). Scanners GET but never submit forms, so they can't consume the link. This costs the user one extra click and buys strict single-use semantics with correct HTTP behavior (GETs never mutate state).
 
 ## Packages
 
@@ -23,7 +30,7 @@ The provider interface (`AuthProvider` in `@activescott/auth`) is the extension 
 | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | [`@activescott/auth`](./packages/auth)                                           | Core: `Auth` class, `SessionManager`, types (`AuthProvider`, `IdentityStore`, `UserStore`), JWT-cookie sessions.                          |
 | [`@activescott/auth-provider-email`](./packages/auth-provider-email)             | Email magic link provider. Ships a Nodemailer SMTP transport; the `EmailTransport` interface lets you swap in others (Resend, SES, etc.). |
-| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v7 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`, `sendMagicLink`.           |
+| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v7 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.                            |
 
 Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
 
@@ -34,7 +41,7 @@ flowchart LR
     app["Your app<br/><br/>• IdentityStore impl<br/>• UserStore impl<br/>• login / logout routes"]
     adapter["Framework adapter<br/>(e.g. react-router)<br/><br/>createAuthHandlers()"]
     core["@activescott/auth<br/><br/>• Auth<br/>• SessionManager (JWT)<br/>• cookie session cache"]
-    providers["AuthProvider<br/><br/>• email (magic link)<br/>• sms (planned)<br/>• oauth (planned)"]
+    providers["AuthProvider<br/><br/>• email (magic link + code)<br/>• sms (planned)<br/>• passkey (planned)"]
 
     app -- "calls" --> adapter
     adapter -- "delegates to" --> core
@@ -42,9 +49,9 @@ flowchart LR
     providers -- "reads/writes via" --> app
 ```
 
-You bring two adapters — `IdentityStore` and `UserStore` — that read/write your database. The library handles tokens, cookies, provider routing, and session verification.
+You bring three adapters — `IdentityStore`, `UserStore`, and `ChallengeStore` — that read/write your database. The library handles challenges, cookies, provider routing, and session verification (and cleans up after itself: challenges are single-use and expire).
 
-An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example.com")`) linked to one of your `User` records. One user can have multiple identities — the data model is ready for a future where a user signs in via email _and_ Google.
+An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example.com")`) linked to one of your `User` records. One user can have multiple identities — the data model is ready for a future where a user signs in via email _and_ their phone number.
 
 ## Install
 
@@ -66,12 +73,9 @@ Two interfaces from `@activescott/auth` that read/write your database. Identitie
 
 ```ts
 // app/lib/auth.server.ts
-import { Auth } from "@activescott/auth"
+import { Auth, InMemoryChallengeStore } from "@activescott/auth"
 import { EmailProvider } from "@activescott/auth-provider-email"
-import {
-  createAuthHandlers,
-  sendMagicLink as sendMagicLinkBase,
-} from "@activescott/auth-adapter-react-router"
+import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
 
 export const auth = new Auth({
   session: {
@@ -82,10 +86,11 @@ export const auth = new Auth({
   },
   identityStore, // from step 1
   userStore, // from step 1
+  // single-instance default; implement ChallengeStore against your DB
+  // when running multiple instances
+  challengeStore: new InMemoryChallengeStore(),
   providers: [
     new EmailProvider({
-      magicLinkSecret: process.env.JWT_MAGIC_LINK_SECRET!,
-      magicLinkExpiry: "5m",
       smtp: {
         /* host, port, user, pass */
       },
@@ -100,14 +105,13 @@ export const { handleAuth, getSession, requireAuth, optionalAuth, logout } =
     errorRedirect: "/login",
     loginUrl: "/login",
   })
-
-export const sendMagicLink = (email: string, baseUrl: string) =>
-  sendMagicLinkBase(auth, email, baseUrl)
 ```
+
+No token secrets to manage for sign-in emails — links and codes are backed by server-side challenges in the `challengeStore` (the session cookie still uses `JWT_SECRET`).
 
 ### Step 3 — Add the catch-all auth route
 
-A single file at `app/routes/auth.$provider.$action.tsx` handles every provider's HTTP endpoints (`/auth/email/verify`, `/auth/email/initiate`, future `/auth/google/callback`, etc.):
+A single file at `app/routes/auth.$provider.$action.tsx` handles every provider's HTTP endpoints (`/auth/email/initiate`, `/auth/email/verify`, future `/auth/sms/...`, etc.):
 
 ```tsx
 import { handleAuth } from "~/lib/auth.server"
@@ -121,7 +125,7 @@ export const action = ({ request }: Route.ActionArgs) => handleAuth({ request })
 
 ### Step 4 — Add `login` and `logout` routes
 
-`login.tsx` action calls `sendMagicLink(email, baseUrl)`. `logout.tsx` action/loader calls `logout()`. See the example for the full files (~30 lines each).
+The login page needs no action — its forms post directly to the auth routes: the email form to `/auth/email/initiate` (redirects back with `?sent=1` and sets the challenge cookie) and the code form to `/auth/email/verify`. `logout.tsx` action/loader calls `logout()`. See the example for the full files.
 
 ### Step 5 — Protect routes with `requireAuth`
 
@@ -142,12 +146,13 @@ For a richer pattern — extending `AuthUser` with your own user fields and gett
 
 ## Testing apps that use this library
 
-The example also demonstrates the recommended e2e pattern (also used in production by ramblefeed and tinkerbellbot):
+The example demonstrates the recommended e2e pattern:
 
-1. Set `additionalSecrets: [process.env.E2E_MAGIC_LINK_SECRET]` on the `EmailProvider` config — these secrets are accepted by the verifier in addition to the primary secret.
-2. In your test helper, mint a magic-link JWT signed with that e2e secret and visit `/auth/email/verify?token=...` directly.
+1. Wrap your `EmailTransport` in a capture transport that records the last magic link + code per recipient (see [`examples/react-router/app/lib/capture-transport.server.ts`](./examples/react-router/app/lib/capture-transport.server.ts)).
+2. Expose a test-only readback route gated on a test-mode env var plus a shared-secret header (see [`examples/react-router/app/routes/e2e.otp-code.tsx`](./examples/react-router/app/routes/e2e.otp-code.tsx)).
+3. In your test helper, submit the login form, fetch the captured link/code from the readback route, and drive the real confirm-page or code-entry flow.
 
-This exercises the real verify → cookie → `requireAuth` path with no SMTP server, no inbox polling, and no flaky waits. See [`examples/react-router/tests/helpers/auth.ts`](./examples/react-router/tests/helpers/auth.ts).
+This exercises the real challenge → confirm/code → cookie → `requireAuth` path with no SMTP server, no inbox polling, and no flaky waits. See [`examples/react-router/tests/helpers/auth.ts`](./examples/react-router/tests/helpers/auth.ts).
 
 ## Implementing a custom provider
 
