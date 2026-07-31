@@ -23,7 +23,7 @@ Passkeys (planned) push the same idea further: phishing-resistant, no shared sec
 - ✅ **Email magic links** — single-use, server-backed sign-in links with a confirm step that email security scanners can't consume (see [FAQ](#faq)). In production.
 - ✅ **Email one-time codes** — every sign-in email also includes a numeric code with iOS/macOS AutoFill support, so users can type the code instead of switching to the inbox tab.
 - ✅ **Bring your own database** — three small store interfaces (`IdentityStore`, `UserStore`, `ChallengeStore`); implement them with Prisma, Drizzle, raw SQL, Redis, whatever you use.
-- ✅ **Edge-ready core** — standard Fetch `Request`/`Response` and WebCrypto; no Node-only APIs in the core path.
+- ✅ **Edge-ready, [WinterTC-compatible](https://wintertc.org/faq) core** — standard Fetch `Request`/`Response`, WebCrypto, and [`jose`](https://github.com/panva/jose) for session JWTs; no Node-only APIs, so it runs on Cloudflare Workers, Deno, Bun, and any WinterTC-aligned runtime.
 - ✅ **React Router v7 adapter** — `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.
 - 🔜 **SMS one-time codes** — planned.
 - 🔜 **Passkeys (WebAuthn)** — planned.

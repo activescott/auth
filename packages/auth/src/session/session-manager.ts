@@ -1,16 +1,5 @@
-import jwt from "jsonwebtoken"
+import { SignJWT, jwtVerify } from "jose"
 import type { Session, SessionConfig, AuthUser, Identity } from "../types.js"
-
-/**
- * JWT payload structure for sessions
- */
-interface SessionJwtPayload {
-  userId: string
-  identifier: string
-  provider: string
-  iat: number
-  exp: number
-}
 
 // Time unit multipliers in seconds
 const SECONDS_PER_MINUTE = 60
@@ -30,24 +19,19 @@ export class SessionManager {
     user: AuthUser,
     identity: Identity,
   ): Promise<string> {
-    // Convert maxAge string to seconds for jwt.sign
     const expiresInSeconds = this.parseMaxAge(this.config.maxAge)
 
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        identifier: identity.identifier,
-        provider: identity.provider,
-      },
-      this.config.secret,
-      {
-        expiresIn: expiresInSeconds,
-        issuer: this.config.issuer ?? "auth",
-        audience: this.config.audience ?? "users",
-      },
-    )
-
-    return token
+    return new SignJWT({
+      userId: user.id,
+      identifier: identity.identifier,
+      provider: identity.provider,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime(`${expiresInSeconds}s`)
+      .setIssuer(this.config.issuer ?? "auth")
+      .setAudience(this.config.audience ?? "users")
+      .sign(new TextEncoder().encode(this.config.secret))
   }
 
   /**
@@ -77,7 +61,7 @@ export class SessionManager {
   /**
    * Verify a session token and return the session data
    */
-  public verifyToken(token: string): Session | null {
+  public async verifyToken(token: string): Promise<Session | null> {
     // Try primary secret first, then additional secrets (e.g., for E2E testing)
     const secrets = [
       this.config.secret,
@@ -86,17 +70,32 @@ export class SessionManager {
 
     for (const secret of secrets) {
       try {
-        const payload = jwt.verify(token, secret, {
-          issuer: this.config.issuer ?? "auth",
-          audience: this.config.audience ?? "users",
-        }) as SessionJwtPayload
+        const { payload } = await jwtVerify(
+          token,
+          new TextEncoder().encode(secret),
+          {
+            issuer: this.config.issuer ?? "auth",
+            audience: this.config.audience ?? "users",
+          },
+        )
+
+        const { userId, identifier, provider, iat, exp } = payload
+        if (
+          typeof userId !== "string" ||
+          typeof identifier !== "string" ||
+          typeof provider !== "string" ||
+          typeof iat !== "number" ||
+          typeof exp !== "number"
+        ) {
+          continue
+        }
 
         return {
-          userId: payload.userId,
-          identifier: payload.identifier,
-          provider: payload.provider,
-          issuedAt: payload.iat,
-          expiresAt: payload.exp,
+          userId,
+          identifier,
+          provider,
+          issuedAt: iat,
+          expiresAt: exp,
         }
       } catch {
         // Try next secret
