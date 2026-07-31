@@ -1,9 +1,17 @@
-import type { EmailProviderConfig } from "./types.js"
+import type { EmailOtpConfig, EmailProviderConfig } from "./types.js"
 
 /** Minimum length for magic link secrets (32 characters = 256 bits) */
 const MIN_SECRET_LENGTH = 32
 /** Default SMTP port for email submission */
 const DEFAULT_SMTP_PORT = 587
+/** Default number of digits in an OTP code */
+const DEFAULT_OTP_LENGTH = 6
+/** Default OTP code expiration */
+const DEFAULT_OTP_EXPIRY = "10m"
+/** Default maximum OTP verification attempts */
+const DEFAULT_OTP_MAX_ATTEMPTS = 5
+/** Default challenge cookie name */
+const DEFAULT_OTP_COOKIE_NAME = "auth_challenge"
 
 /**
  * Validates email provider configuration and returns validated config
@@ -73,6 +81,17 @@ export function validateEmailConfig(
       primaryColor: config.template?.primaryColor ?? "#6366f1",
       logoUrl: config.template?.logoUrl,
     },
+    otp: config.otp ? applyOtpDefaults(config.otp) : undefined,
+  }
+}
+
+function applyOtpDefaults(otp: EmailOtpConfig): EmailOtpConfig {
+  return {
+    enabled: otp.enabled,
+    length: otp.length ?? DEFAULT_OTP_LENGTH,
+    expiry: otp.expiry ?? DEFAULT_OTP_EXPIRY,
+    maxAttempts: otp.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
+    cookieName: otp.cookieName ?? DEFAULT_OTP_COOKIE_NAME,
   }
 }
 
@@ -121,6 +140,19 @@ export function emailConfigFromEnvironment(
       primaryColor: environment.AUTH_PRIMARY_COLOR,
       logoUrl: environment.AUTH_LOGO_URL,
     },
+    otp:
+      environment.EMAIL_OTP_ENABLED === "true"
+        ? {
+            enabled: true,
+            length: environment.EMAIL_OTP_LENGTH
+              ? Number.parseInt(environment.EMAIL_OTP_LENGTH, 10)
+              : undefined,
+            expiry: environment.EMAIL_OTP_EXPIRY,
+            maxAttempts: environment.EMAIL_OTP_MAX_ATTEMPTS
+              ? Number.parseInt(environment.EMAIL_OTP_MAX_ATTEMPTS, 10)
+              : undefined,
+          }
+        : undefined,
   }
 
   try {
@@ -142,7 +174,11 @@ Optional environment variables:
   SMTP_PORT             - SMTP port (default: 587)
   APP_NAME              - Application name in emails
   AUTH_PRIMARY_COLOR    - Brand color in emails
-  AUTH_LOGO_URL         - Logo URL in emails`
+  AUTH_LOGO_URL         - Logo URL in emails
+  EMAIL_OTP_ENABLED     - "true" to include a one-time code in emails
+  EMAIL_OTP_LENGTH      - Code digits (default: 6)
+  EMAIL_OTP_EXPIRY      - Code expiry (default: "10m")
+  EMAIL_OTP_MAX_ATTEMPTS - Max verification attempts (default: 5)`
 
       throw new Error(`${error.message}\n${hints}`)
     }

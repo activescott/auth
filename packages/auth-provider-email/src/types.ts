@@ -14,6 +14,27 @@ export interface EmailProviderConfig {
   from: string
   /** Email template customization */
   template?: EmailTemplateConfig
+  /** One-time code configuration. When enabled, emails include a numeric
+   * code the user can type instead of clicking the magic link. Requires a
+   * challengeStore on the Auth config. */
+  otp?: EmailOtpConfig
+}
+
+/**
+ * One-time code (OTP) configuration for the email provider
+ */
+export interface EmailOtpConfig {
+  /** Send a numeric code alongside the magic link */
+  enabled: boolean
+  /** Number of digits in the code (default: 6) */
+  length?: number
+  /** Code expiration (e.g., "10m"); default: "10m" */
+  expiry?: string
+  /** Maximum verification attempts before the code is rejected (default: 5) */
+  maxAttempts?: number
+  /** Name of the HttpOnly cookie that binds code entry to the initiating
+   * browser (default: "auth_challenge") */
+  cookieName?: string
 }
 
 /**
@@ -50,5 +71,14 @@ export interface EmailTransport {
     to: string,
     magicLink: string,
     config: EmailProviderConfig,
+    options?: SendMagicLinkOptions,
   ): Promise<boolean>
+}
+
+/**
+ * Additional content for a magic link email
+ */
+export interface SendMagicLinkOptions {
+  /** One-time code to include in the email alongside the link */
+  code?: string
 }
