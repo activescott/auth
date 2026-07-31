@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.0](https://github.com/activescott/auth/compare/auth-provider-email@0.1.5...auth-provider-email@1.0.0) (2026-07-31)
+
+### ⚠ BREAKING CHANGES
+
+* magicLinkSecret, additionalSecrets, and
+magicLinkExpiry are removed from EmailProviderConfig; sign-in emails
+need no signing secrets. Link and code share one top-level expiry
+(default 15m). The jsonwebtoken dependency is gone. JWT ?token= links
+no longer verify. otp.enabled is removed — codes are always included.
+For e2e testing, replace additionalSecrets token minting with a
+capture transport + gated readback route (see the example app).
+
+### Features
+
+* challenge-backed single-use links with confirm page ([c83eaa5](https://github.com/activescott/auth/commit/c83eaa53bae323551cbc39aa98ec7dd3cf360132))
+* default otp codes on when challengeStore configured ([c678637](https://github.com/activescott/auth/commit/c678637bcd147a12668ae0c544c6859881b2cc23))
+* optional one-time code alongside magic link ([03c2182](https://github.com/activescott/auth/commit/03c2182110ebddc41541b16277dd3ca16ce3a34d))
+
 ## [0.1.5](https://github.com/activescott/auth/compare/auth-provider-email@0.1.4...auth-provider-email@0.1.5) (2026-05-20)
 
 ### Bug Fixes

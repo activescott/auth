@@ -1,6 +1,6 @@
 {
   "name": "@activescott/auth-provider-email",
-  "version": "0.1.5",
+  "version": "1.0.0",
   "description": "Email magic link provider for @activescott/auth",
   "type": "module",
   "main": "./dist/index.js",

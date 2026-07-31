@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@0.1.3...auth-adapter-react-router@1.0.0) (2026-07-31)
+
+### ⚠ BREAKING CHANGES
+
+* sendMagicLink, SendMagicLinkResult, and
+SendMagicLinkOptions are removed. Login forms post directly to
+/auth/email/initiate; the provider redirects back with ?sent=1/?error=
+and sets the challenge cookie itself, so login pages need no action.
+
+### Features
+
+* pass through provider pages, drop sendMagicLink ([d4bad63](https://github.com/activescott/auth/commit/d4bad639aba09a8e238261e1efdd55de6edb4047))
+* propagate provider Set-Cookie values ([c92f851](https://github.com/activescott/auth/commit/c92f851d8cc3320a27614af0402f4c5ef2ea14e6))
+
 ## [0.1.3](https://github.com/activescott/auth/compare/auth-adapter-react-router@0.1.2...auth-adapter-react-router@0.1.3) (2026-05-09)
 
 ### Bug Fixes

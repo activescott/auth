@@ -1,6 +1,6 @@
 {
   "name": "@activescott/auth",
-  "version": "0.1.3",
+  "version": "1.0.0",
   "description": "Framework-agnostic authentication with provider pattern for magic links, OAuth, and more",
   "type": "module",
   "main": "./dist/index.js",

@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.0](https://github.com/activescott/auth/compare/auth@0.1.3...auth@1.0.0) (2026-07-31)
+
+### ⚠ BREAKING CHANGES
+
+* AuthConfig.challengeStore and AuthContext.challengeStore
+are now required. Short-lived verification state (magic links, OTP codes,
+future WebAuthn challenges) is stored server-side; apps provide a
+ChallengeStore (InMemoryChallengeStore for single-instance deployments).
+* AuthProvider.verify may now return a Response in
+addition to AuthResult. This lets providers answer non-final steps
+directly — e.g., rendering a confirm page on magic-link GET so email
+security scanners that prefetch URLs cannot consume single-use links;
+redemption happens on the subsequent POST.
+
+### Features
+
+* add ChallengeStore, OTP utilities, and provider Set-Cookie support ([ce8c5e2](https://github.com/activescott/auth/commit/ce8c5e2a0b50887a6497a542b9745b36920b6da0))
+* require challengeStore and allow verify to return a Response ([1eeffff](https://github.com/activescott/auth/commit/1eeffff12e0dcbf55e2cf9f35fab978b810a2769))
+
 ## [0.1.3](https://github.com/activescott/auth/compare/auth@0.1.2...auth@0.1.3) (2026-05-09)
 
 ### Bug Fixes
