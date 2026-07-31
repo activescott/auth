@@ -10,7 +10,9 @@ Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbo
 ## Status
 
 - **Email magic link** — implemented and in production.
-- **SMS magic link / OTP codes** — planned, not yet implemented.
+- **Email one-time codes** — implemented; optional numeric code alongside the magic link with iOS/macOS AutoFill support.
+- **SMS OTP codes** — planned, not yet implemented.
+- **Passkeys (WebAuthn)** — planned, not yet implemented.
 - **OAuth providers** (Google, GitHub, etc.) — planned, not yet implemented.
 
 The provider interface (`AuthProvider` in `@activescott/auth`) is the extension point. Implementing a new provider does not require changes to the core package.
