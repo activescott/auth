@@ -176,6 +176,62 @@ describe("EmailProvider OTP", () => {
       const lastCall = vi.mocked(mockTransport.sendMagicLink).mock.calls.at(-1)
       expect(lastCall?.[3]).toBeUndefined()
     })
+
+    it("should default to sending codes when a challengeStore is configured", async () => {
+      const noOtpConfig = new EmailProvider(
+        {
+          magicLinkSecret: TEST_SECRET,
+          magicLinkExpiry: "5m",
+          smtp: {
+            host: "smtp.test.com",
+            port: 587,
+            user: "user",
+            pass: "pass",
+          },
+          from: "test@example.com",
+        },
+        mockTransport,
+      )
+
+      const result = await noOtpConfig.initiate(
+        createInitiateRequest(),
+        context,
+      )
+      if (!result.success || result instanceof Response) {
+        throw new Error("initiate failed")
+      }
+
+      expect(result.setCookies?.[0]).toContain("auth_challenge=")
+      const lastCall = vi.mocked(mockTransport.sendMagicLink).mock.calls.at(-1)
+      expect(lastCall?.[3]?.code).toMatch(/^[0-9]{6}$/)
+    })
+
+    it("should default to magic-link-only when no challengeStore is configured", async () => {
+      const noOtpConfig = new EmailProvider(
+        {
+          magicLinkSecret: TEST_SECRET,
+          magicLinkExpiry: "5m",
+          smtp: {
+            host: "smtp.test.com",
+            port: 587,
+            user: "user",
+            pass: "pass",
+          },
+          from: "test@example.com",
+        },
+        mockTransport,
+      )
+
+      const bare = createMockContext()
+      const result = await noOtpConfig.initiate(createInitiateRequest(), bare)
+      if (!result.success || result instanceof Response) {
+        throw new Error("initiate failed")
+      }
+
+      expect(result.setCookies).toBeUndefined()
+      const lastCall = vi.mocked(mockTransport.sendMagicLink).mock.calls.at(-1)
+      expect(lastCall?.[3]).toBeUndefined()
+    })
   })
 
   describe("verify with OTP code", () => {

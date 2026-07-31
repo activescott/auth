@@ -112,7 +112,7 @@ export class EmailProvider implements AuthProvider {
       let code: string | undefined
       let challengeCookie: string | undefined
 
-      if (this.config.otp?.enabled) {
+      if (this.isOtpEnabled(context)) {
         const challengeStore = context.challengeStore
         if (!challengeStore) {
           return {
@@ -123,10 +123,10 @@ export class EmailProvider implements AuthProvider {
           }
         }
 
-        code = generateOtpCode(this.config.otp.length ?? DEFAULT_OTP_LENGTH)
+        code = generateOtpCode(this.config.otp?.length ?? DEFAULT_OTP_LENGTH)
         const challengeId = crypto.randomUUID()
         const expirySeconds = this.parseMaxAge(
-          this.config.otp.expiry ?? DEFAULT_OTP_EXPIRY,
+          this.config.otp?.expiry ?? DEFAULT_OTP_EXPIRY,
         )
 
         await challengeStore.create({
@@ -134,7 +134,8 @@ export class EmailProvider implements AuthProvider {
           type: OTP_CHALLENGE_TYPE,
           identifier: email,
           hashedCode: await hashOtpCode(challengeId, code),
-          maxAttempts: this.config.otp.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
+          maxAttempts:
+            this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
           expiresAt: new Date(Date.now() + expirySeconds * MS_PER_SECOND),
         })
 
@@ -236,11 +237,11 @@ export class EmailProvider implements AuthProvider {
     context: AuthContext,
   ): Promise<AuthResult> {
     const challengeStore = context.challengeStore
-    if (!this.config.otp?.enabled || !challengeStore) {
+    if (!this.isOtpEnabled(context) || !challengeStore) {
       return {
         success: false,
         error: AuthErrors.configurationError(
-          "Email OTP verification requires otp.enabled and a challengeStore",
+          "Email OTP verification requires a challengeStore on the Auth config",
         ),
       }
     }
@@ -385,6 +386,15 @@ export class EmailProvider implements AuthProvider {
       { method: "POST", path: "/email/verify", handler: "verify" },
       { method: "GET", path: "/email/callback", handler: "verify" },
     ]
+  }
+
+  /**
+   * OTP codes default to on whenever a challengeStore is configured;
+   * otp.enabled overrides in either direction (true forces a
+   * CONFIGURATION_ERROR if the store is missing, false opts out)
+   */
+  private isOtpEnabled(context: AuthContext): boolean {
+    return this.config.otp?.enabled ?? Boolean(context.challengeStore)
   }
 
   /**

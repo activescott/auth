@@ -14,9 +14,8 @@ export interface EmailProviderConfig {
   from: string
   /** Email template customization */
   template?: EmailTemplateConfig
-  /** One-time code configuration. When enabled, emails include a numeric
-   * code the user can type instead of clicking the magic link. Requires a
-   * challengeStore on the Auth config. */
+  /** One-time code tuning. Codes are included automatically whenever the
+   * Auth config has a challengeStore; use enabled to override. */
   otp?: EmailOtpConfig
 }
 
@@ -24,8 +23,9 @@ export interface EmailProviderConfig {
  * One-time code (OTP) configuration for the email provider
  */
 export interface EmailOtpConfig {
-  /** Send a numeric code alongside the magic link */
-  enabled: boolean
+  /** Override the default (codes on when a challengeStore is configured):
+   * false opts out; true requires a challengeStore and errors without one */
+  enabled?: boolean
   /** Number of digits in the code (default: 6) */
   length?: number
   /** Code expiration (e.g., "10m"); default: "10m" */
