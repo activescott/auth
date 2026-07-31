@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
-import jwt from "jsonwebtoken"
+import { SignJWT } from "jose"
 import { Auth } from "../auth.js"
 import { SessionManager } from "../session/session-manager.js"
 import type {
@@ -13,6 +13,20 @@ import type {
 
 const TEST_SECRET = "test-session-secret"
 const TEST_BASE_URL = "https://example.com"
+
+/** Sign a session-shaped JWT with an arbitrary secret (for negative tests) */
+function signTestToken(
+  payload: Record<string, string>,
+  secret: string,
+): Promise<string> {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .setIssuer("auth")
+    .setAudience("users")
+    .sign(new TextEncoder().encode(secret))
+}
 
 function createMockIdentity(overrides: Partial<Identity> = {}): Identity {
   return {
@@ -398,7 +412,7 @@ describe("SessionManager", () => {
     const identity = createMockIdentity()
 
     const token = await manager.createSession(user, identity)
-    const session = manager.verifyToken(token)
+    const session = await manager.verifyToken(token)
 
     expect(session).not.toBeNull()
     expect(session?.userId).toBe("user-1")
@@ -406,14 +420,11 @@ describe("SessionManager", () => {
     expect(session?.identifier).toBe("user@example.com")
   })
 
-  it("should reject token signed with wrong secret", () => {
+  it("should reject token signed with wrong secret", async () => {
     const manager = new SessionManager(sessionConfig)
-    const badToken = jwt.sign({ userId: "user-1" }, "wrong-secret", {
-      issuer: "auth",
-      audience: "users",
-    })
+    const badToken = await signTestToken({ userId: "user-1" }, "wrong-secret")
 
-    expect(manager.verifyToken(badToken)).toBeNull()
+    expect(await manager.verifyToken(badToken)).toBeNull()
   })
 
   it("should accept token signed with additional secret", async () => {
@@ -422,13 +433,12 @@ describe("SessionManager", () => {
       additionalSecrets: ["e2e-secret"],
     })
 
-    const token = jwt.sign(
+    const token = await signTestToken(
       { userId: "user-1", identifier: "user@example.com", provider: "email" },
       "e2e-secret",
-      { issuer: "auth", audience: "users", expiresIn: "1h" },
     )
 
-    const session = manager.verifyToken(token)
+    const session = await manager.verifyToken(token)
     expect(session).not.toBeNull()
     expect(session?.userId).toBe("user-1")
   })
