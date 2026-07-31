@@ -5,6 +5,7 @@ import { SessionManager } from "../session/session-manager.js"
 import type {
   AuthConfig,
   AuthProvider,
+  ChallengeStore,
   IdentityStore,
   UserStore,
   Identity,
@@ -61,6 +62,15 @@ function createMockStores(): {
   }
 }
 
+function createMockChallengeStore(): ChallengeStore {
+  return {
+    create: vi.fn(),
+    findById: vi.fn().mockResolvedValue(null),
+    incrementAttempts: vi.fn().mockResolvedValue(1),
+    delete: vi.fn(),
+  }
+}
+
 function createAuthConfig(overrides: Partial<AuthConfig> = {}): AuthConfig {
   const stores = createMockStores()
   return {
@@ -72,6 +82,7 @@ function createAuthConfig(overrides: Partial<AuthConfig> = {}): AuthConfig {
     },
     identityStore: stores.identityStore,
     userStore: stores.userStore,
+    challengeStore: createMockChallengeStore(),
     providers: [createMockProvider()],
     ...overrides,
   }
@@ -226,23 +237,28 @@ describe("Auth", () => {
 
   describe("createContext", () => {
     it("should pass challengeStore through to the context", () => {
-      const challengeStore = {
-        create: vi.fn(),
-        findById: vi.fn(),
-        incrementAttempts: vi.fn(),
-        delete: vi.fn(),
-      }
+      const challengeStore = createMockChallengeStore()
       auth = new Auth(createAuthConfig({ challengeStore }))
 
       const context = auth.createContext(new Request(TEST_BASE_URL))
       expect(context.challengeStore).toBe(challengeStore)
     })
+  })
 
-    it("should leave challengeStore undefined when not configured", () => {
-      auth = new Auth(createAuthConfig())
+  describe("verify returning a Response", () => {
+    it("should pass a provider Response through unchanged", async () => {
+      const confirmPage = new Response("<html>Confirm</html>", {
+        headers: { "Content-Type": "text/html" },
+      })
+      const provider = createMockProvider({
+        verify: vi.fn().mockResolvedValue(confirmPage),
+      })
+      auth = new Auth(createAuthConfig({ providers: [provider] }))
 
-      const context = auth.createContext(new Request(TEST_BASE_URL))
-      expect(context.challengeStore).toBeUndefined()
+      const request = new Request(`${TEST_BASE_URL}/auth/email/verify?x=1`)
+      const response = await auth.handleRequest(request)
+
+      expect(response).toBe(confirmPage)
     })
   })
 

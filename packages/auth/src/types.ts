@@ -264,8 +264,11 @@ export interface AuthConfig {
   userStore: UserStore
   /** Registered authentication providers */
   providers: AuthProvider[]
-  /** Challenge storage adapter; required by providers that issue OTP codes */
-  challengeStore?: ChallengeStore
+  /** Challenge storage adapter for short-lived verification state (magic
+   * links, OTP codes, WebAuthn challenges). Use InMemoryChallengeStore for
+   * single-instance deployments; back it with shared storage when running
+   * multiple instances. */
+  challengeStore: ChallengeStore
   /** Callback URLs configuration */
   callbacks?: {
     /** URL to redirect to after successful authentication */
@@ -287,8 +290,9 @@ export interface AuthContext {
   baseUrl: string
   /** Create a session for a user */
   createSession: (user: AuthUser, identity: Identity) => Promise<string>
-  /** Challenge store for OTP codes and similar short-lived verification state */
-  challengeStore?: ChallengeStore
+  /** Challenge store for magic links, OTP codes, and similar short-lived
+   * verification state */
+  challengeStore: ChallengeStore
 }
 
 /**
@@ -327,11 +331,20 @@ export interface AuthProvider {
 
   /**
    * Handle callback/verification.
-   * For email: verifies magic link token
+   * For email: verifies magic link or OTP code
    * For OAuth: exchanges code for tokens
    * For SMS: verifies OTP code
+   *
+   * May return a Response instead of an AuthResult when the step is not a
+   * final authentication outcome — e.g., the email provider answers a
+   * magic-link GET with a confirm page (the state-changing redemption
+   * happens on the subsequent POST so email security scanners that
+   * prefetch URLs cannot consume the link).
    */
-  verify(request: Request, context: AuthContext): Promise<AuthResult>
+  verify(
+    request: Request,
+    context: AuthContext,
+  ): Promise<AuthResult | Response>
 
   /**
    * Check if this provider can handle the given request.

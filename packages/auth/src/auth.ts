@@ -181,6 +181,7 @@ export class Auth {
 
       if (action === "verify" || action === "callback") {
         const result = await provider.verify(request, context)
+        if (result instanceof Response) return result
         return this.authResultToResponse(result)
       }
 
