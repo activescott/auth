@@ -82,6 +82,13 @@ const identityStore: IdentityStore = {
 const SESSION_SECRET =
   process.env.JWT_SECRET ?? "dev-only-session-secret-do-not-use-in-production"
 
+/**
+ * SMTP is considered configured when SMTP_HOST is set (see .env.example).
+ * Configured → real emails are sent. Not configured → dev mode: emails are
+ * logged to the server console instead.
+ */
+const smtpConfigured = Boolean(process.env.SMTP_HOST)
+
 export const auth = new Auth({
   session: {
     secret: SESSION_SECRET,
@@ -104,14 +111,19 @@ export const auth = new Auth({
       {
         // SMTP fields are unused in dev mode (the transport buffers instead
         // of sending) but the config still requires them.
-        smtp: { host: "localhost", port: 25, user: "", pass: "" },
-        from: "login@example.com",
+        smtp: {
+          host: process.env.SMTP_HOST ?? "localhost",
+          port: Number(process.env.SMTP_PORT ?? 587),
+          user: process.env.SMTP_USER ?? "",
+          pass: process.env.SMTP_PASS ?? "",
+        },
+        from: process.env.EMAIL_FROM ?? "login@example.com",
         template: { appName: "RR Auth Example" },
       },
-      // Force dev mode → magic links are logged to the server console
-      // instead of sent via SMTP. Drop the `true` (or omit the transport
-      // entirely) and configure real `smtp` to send actual email.
-      new CaptureTransport(new NodemailerTransport(true)),
+      // Dev mode (no SMTP configured) → emails are logged to the server
+      // console instead of sent. Set SMTP_HOST (see .env.example) to send
+      // real email.
+      new CaptureTransport(new NodemailerTransport(!smtpConfigured)),
     ),
   ],
 })
