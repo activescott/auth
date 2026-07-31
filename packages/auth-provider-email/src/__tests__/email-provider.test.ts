@@ -1,457 +1,336 @@
 /**
- * EmailProvider Unit Tests
- *
- * Tests for the email magic link authentication provider.
+ * EmailProvider tests: challenge-backed magic links with the confirm-page
+ * redemption flow.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import jwt from "jsonwebtoken"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { InMemoryChallengeStore } from "@activescott/auth"
+import type { AuthContext, Identity } from "@activescott/auth"
 import { EmailProvider } from "../email-provider.js"
-import type { AuthContext } from "@activescott/auth"
 import type { EmailTransport } from "../types.js"
 
-// Test configuration
-const TEST_SECRET = "test-secret-key-for-jwt-signing"
 const TEST_BASE_URL = "https://example.com"
+const TEST_EMAIL = "user@example.com"
 
-// Mock email transport
 const mockTransport: EmailTransport = {
   sendMagicLink: vi.fn().mockResolvedValue(true),
 }
 
-// Mock auth context
-function createMockContext(overrides: Partial<AuthContext> = {}): AuthContext {
+function createMockIdentity(overrides: Partial<Identity> = {}): Identity {
   return {
-    baseUrl: TEST_BASE_URL,
-    userStore: {
-      findById: vi.fn(),
-      create: vi.fn(),
-    },
-    identityStore: {
-      findByProviderAndIdentifier: vi.fn(),
-      findByUserId: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
-    createSession: vi.fn().mockResolvedValue("session-token"),
+    id: "identity-1",
+    userId: "user-1",
+    provider: "email",
+    identifier: TEST_EMAIL,
+    createdAt: new Date(),
     ...overrides,
   }
 }
 
-// Helper to create form request
-function createFormRequest(
-  data: Record<string, string>,
-  baseUrl = TEST_BASE_URL,
+function createMockContext(
+  challengeStore: InMemoryChallengeStore,
+  overrides: Partial<AuthContext> = {},
+): AuthContext {
+  return {
+    baseUrl: TEST_BASE_URL,
+    userStore: {
+      findById: vi.fn().mockResolvedValue({ id: "user-1" }),
+      create: vi.fn().mockResolvedValue({ id: "user-1" }),
+    },
+    identityStore: {
+      findByProviderAndIdentifier: vi
+        .fn()
+        .mockResolvedValue(createMockIdentity()),
+      findByUserId: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue(createMockIdentity()),
+      update: vi.fn().mockResolvedValue(createMockIdentity()),
+    },
+    createSession: vi.fn().mockResolvedValue("session-token"),
+    challengeStore,
+    ...overrides,
+  }
+}
+
+function createProvider(): EmailProvider {
+  return new EmailProvider(
+    {
+      smtp: { host: "smtp.test.com", port: 587, user: "user", pass: "pass" },
+      from: "test@example.com",
+      template: { appName: "Test App" },
+    },
+    mockTransport,
+  )
+}
+
+function createInitiateRequest(
+  email = TEST_EMAIL,
+  headers: Record<string, string> = {},
 ): Request {
-  return new Request(`${baseUrl}/auth/email/initiate`, {
+  return new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(data).toString(),
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...headers,
+    },
+    body: new URLSearchParams({ email }).toString(),
   })
 }
 
-// Helper to create verify request
-function createVerifyRequest(token: string, redirectTo?: string): Request {
-  let url = `${TEST_BASE_URL}/auth/email/verify?token=${token}`
-  if (redirectTo) {
-    url += `&redirectTo=${encodeURIComponent(redirectTo)}`
-  }
-  return new Request(url, { method: "GET" })
+function lastMagicLink(): string {
+  const calls = vi.mocked(mockTransport.sendMagicLink).mock.calls
+  const link = calls.at(-1)?.[1]
+  if (!link) throw new Error("no magic link sent")
+  return link
+}
+
+function createRedeemRequest(magicLink: string): Request {
+  const url = new URL(magicLink)
+  const body = new URLSearchParams({
+    challenge: url.searchParams.get("challenge") ?? "",
+    key: url.searchParams.get("key") ?? "",
+  })
+  return new Request(magicLink, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  })
 }
 
 describe("EmailProvider", () => {
   let provider: EmailProvider
+  let challengeStore: InMemoryChallengeStore
+  let context: AuthContext
 
   beforeEach(() => {
     vi.clearAllMocks()
-    provider = new EmailProvider(
-      {
-        magicLinkSecret: TEST_SECRET,
-        magicLinkExpiry: "5m",
-        smtp: { host: "smtp.test.com", port: 587, user: "user", pass: "pass" },
-        from: "test@example.com",
-        template: {
-          appName: "Test App",
-          subject: "Sign In",
-          primaryColor: "#000",
-        },
-      },
-      mockTransport,
-    )
+    provider = createProvider()
+    challengeStore = new InMemoryChallengeStore()
+    context = createMockContext(challengeStore)
+  })
+
+  afterEach(() => {
+    challengeStore.destroy()
   })
 
   describe("initiate", () => {
-    it("should send magic link with email only", async () => {
-      const request = createFormRequest({ email: "user@example.com" })
-      const context = createMockContext()
+    it("should email a challenge-backed magic link", async () => {
+      const result = await provider.initiate(createInitiateRequest(), context)
 
-      const result = await provider.initiate(request, context)
+      expect(result instanceof Response).toBe(false)
+      if (result instanceof Response || !result.success) {
+        throw new Error("initiate failed")
+      }
 
-      expect(result.success).toBe(true)
-      expect(mockTransport.sendMagicLink).toHaveBeenCalledTimes(1)
+      const link = new URL(lastMagicLink())
+      expect(link.pathname).toBe("/auth/email/verify")
+      const challengeId = link.searchParams.get("challenge")
+      expect(challengeId).toBeTruthy()
+      expect(link.searchParams.get("key")).toBeTruthy()
 
-      // Verify the magic link URL format
-      const [email, magicLink] = vi.mocked(mockTransport.sendMagicLink).mock
-        .calls[0]
-      expect(email).toBe("user@example.com")
-      expect(magicLink).toContain(`${TEST_BASE_URL}/auth/email/verify?token=`)
-      expect(magicLink).not.toContain("redirectTo=")
+      const challenge = await challengeStore.findById(challengeId ?? "")
+      expect(challenge?.identifier).toBe(TEST_EMAIL)
+      expect(challenge?.type).toBe("email")
+      expect(typeof challenge?.data?.hashedKey).toBe("string")
     })
 
-    it("should include redirectTo in magic link URL when provided", async () => {
-      const redirectTo = "/oauth/authorize?client_id=test&response_type=code"
-      const request = createFormRequest({
-        email: "user@example.com",
-        redirectTo,
+    it("should reject a missing email", async () => {
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
       })
-      const context = createMockContext()
-
       const result = await provider.initiate(request, context)
 
-      expect(result.success).toBe(true)
+      if (result instanceof Response) throw new Error("expected result")
+      expect(result.success).toBe(false)
+      if (result.success) return
+      expect(result.error.code).toBe("INVALID_CREDENTIALS")
+    })
 
-      // Verify redirectTo is in the magic link URL
-      const [, magicLink] = vi.mocked(mockTransport.sendMagicLink).mock.calls[0]
-      expect(magicLink).toContain(
-        `&redirectTo=${encodeURIComponent(redirectTo)}`,
+    it("should reject an invalid email format", async () => {
+      const result = await provider.initiate(
+        createInitiateRequest("not-an-email"),
+        context,
+      )
+
+      if (result instanceof Response) throw new Error("expected result")
+      expect(result.success).toBe(false)
+    })
+
+    it("should redirect browser form posts back to the submitting page", async () => {
+      const request = createInitiateRequest(TEST_EMAIL, {
+        Accept: "text/html",
+        Referer: `${TEST_BASE_URL}/login`,
+      })
+      const result = await provider.initiate(request, context)
+
+      if (!(result instanceof Response)) throw new Error("expected redirect")
+      expect(result.status).toBe(302)
+      const location = result.headers.get("Location") ?? ""
+      expect(location).toContain("/login")
+      expect(location).toContain("sent=1")
+      expect(result.headers.get("Set-Cookie")).toContain("auth_challenge=")
+    })
+
+    it("should redirect browser form posts with an error code on failure", async () => {
+      const request = createInitiateRequest("not-an-email", {
+        Accept: "text/html",
+        Referer: `${TEST_BASE_URL}/login`,
+      })
+      const result = await provider.initiate(request, context)
+
+      if (!(result instanceof Response)) throw new Error("expected redirect")
+      expect(result.status).toBe(302)
+      expect(result.headers.get("Location")).toContain(
+        "error=INVALID_CREDENTIALS",
       )
     })
 
-    it("should include redirectTo in JWT token payload", async () => {
-      const redirectTo = "/oauth/authorize?client_id=test"
-      const request = createFormRequest({
-        email: "user@example.com",
-        redirectTo,
-      })
-      const context = createMockContext()
+    it("should return JSON-style results with setCookies for non-browser callers", async () => {
+      const result = await provider.initiate(createInitiateRequest(), context)
 
-      await provider.initiate(request, context)
-
-      // Extract token from magic link and decode it
-      const [, magicLink] = vi.mocked(mockTransport.sendMagicLink).mock.calls[0]
-      const url = new URL(magicLink)
-      const token = url.searchParams.get("token")
-
-      expect(token).toBeTruthy()
-      expect(token).not.toBeNull()
-      const decoded = jwt.verify(token as string, TEST_SECRET) as {
-        email: string
-        redirectTo?: string
+      if (result instanceof Response || !result.success) {
+        throw new Error("initiate failed")
       }
-      expect(decoded.email).toBe("user@example.com")
-      expect(decoded.redirectTo).toBe(redirectTo)
-    })
-
-    it("should not include redirectTo in JWT when not provided", async () => {
-      const request = createFormRequest({ email: "user@example.com" })
-      const context = createMockContext()
-
-      await provider.initiate(request, context)
-
-      // Extract token and verify no redirectTo
-      const [, magicLink] = vi.mocked(mockTransport.sendMagicLink).mock.calls[0]
-      const url = new URL(magicLink)
-      const token = url.searchParams.get("token")
-
-      expect(token).not.toBeNull()
-      const decoded = jwt.verify(token as string, TEST_SECRET) as {
-        email: string
-        redirectTo?: string
-      }
-      expect(decoded.email).toBe("user@example.com")
-      expect(decoded.redirectTo).toBeUndefined()
-    })
-
-    it("should reject invalid email format", async () => {
-      const request = createFormRequest({ email: "not-an-email" })
-      const context = createMockContext()
-
-      const result = await provider.initiate(request, context)
-
-      expect(result.success).toBe(false)
-      expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
-    })
-
-    it("should reject missing email", async () => {
-      const request = createFormRequest({})
-      const context = createMockContext()
-
-      const result = await provider.initiate(request, context)
-
-      expect(result.success).toBe(false)
-      expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
-    })
-
-    it("should return error when transport fails", async () => {
-      vi.mocked(mockTransport.sendMagicLink).mockResolvedValueOnce(false)
-      const request = createFormRequest({ email: "user@example.com" })
-      const context = createMockContext()
-
-      const result = await provider.initiate(request, context)
-
-      expect(result.success).toBe(false)
-    })
-
-    it("should normalize email to lowercase before sending", async () => {
-      const request = createFormRequest({ email: "User@Example.COM" })
-      const context = createMockContext()
-
-      const result = await provider.initiate(request, context)
-
-      expect(result.success).toBe(true)
-
-      // Transport should receive lowercase email
-      const [email, magicLink] = vi.mocked(mockTransport.sendMagicLink).mock
-        .calls[0]
-      expect(email).toBe("user@example.com")
-
-      // JWT should also contain lowercase email
-      const url = new URL(magicLink)
-      const token = url.searchParams.get("token")
-      expect(token).not.toBeNull()
-      const decoded = jwt.verify(token as string, TEST_SECRET) as {
-        email: string
-      }
-      expect(decoded.email).toBe("user@example.com")
-    })
-
-    it("should trim whitespace from email", async () => {
-      const request = createFormRequest({ email: "  user@example.com  " })
-      const context = createMockContext()
-
-      const result = await provider.initiate(request, context)
-
-      expect(result.success).toBe(true)
-
-      const [email] = vi.mocked(mockTransport.sendMagicLink).mock.calls[0]
-      expect(email).toBe("user@example.com")
+      expect(result.setCookies?.[0]).toContain("auth_challenge=")
+      expect(result.setCookies?.[0]).toContain("HttpOnly")
     })
   })
 
-  describe("verify", () => {
-    it("should verify valid token and return user", async () => {
-      const token = jwt.sign({ email: "user@example.com" }, TEST_SECRET, {
-        expiresIn: "5m",
-        issuer: "auth-magic-link",
-        audience: "auth",
-      })
+  describe("magic link confirm flow", () => {
+    it("should render a confirm page on GET without consuming the link", async () => {
+      await provider.initiate(createInitiateRequest(), context)
+      const magicLink = lastMagicLink()
 
-      const mockUser = { id: "user-1", email: "user@example.com" }
-      const mockIdentity = {
-        id: "identity-1",
-        userId: "user-1",
-        provider: "email",
-        identifier: "user@example.com",
-        createdAt: new Date(),
-      }
+      const first = await provider.verify(new Request(magicLink), context)
+      if (!(first instanceof Response)) throw new Error("expected page")
+      expect(first.status).toBe(200)
+      const html = await first.text()
+      expect(html).toContain("Confirm sign-in")
+      expect(html).toContain(TEST_EMAIL)
 
-      const context = createMockContext({
-        identityStore: {
-          findByProviderAndIdentifier: vi.fn().mockResolvedValue(mockIdentity),
-          findByUserId: vi.fn(),
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-        userStore: {
-          findById: vi.fn().mockResolvedValue(mockUser),
-          create: vi.fn(),
-        },
-      })
+      // A scanner can GET repeatedly; the link must survive
+      const second = await provider.verify(new Request(magicLink), context)
+      expect(second instanceof Response).toBe(true)
+    })
 
-      const request = createVerifyRequest(token)
-      const result = await provider.verify(request, context)
+    it("should redeem on POST and consume the challenge", async () => {
+      await provider.initiate(createInitiateRequest(), context)
+      const magicLink = lastMagicLink()
 
+      const result = await provider.verify(
+        createRedeemRequest(magicLink),
+        context,
+      )
+      if (result instanceof Response) throw new Error("expected result")
       expect(result.success).toBe(true)
-      if (result.success) {
-        expect(result.user.id).toBe("user-1")
-        expect(result.identity.identifier).toBe("user@example.com")
-      }
+      if (!result.success) return
+      expect(result.user.id).toBe("user-1")
+
+      // Single use: the link is dead after redemption
+      const replay = await provider.verify(
+        createRedeemRequest(magicLink),
+        context,
+      )
+      if (replay instanceof Response) throw new Error("expected result")
+      expect(replay.success).toBe(false)
     })
 
-    it("should reject expired token", async () => {
-      const token = jwt.sign({ email: "user@example.com" }, TEST_SECRET, {
-        expiresIn: "-1s", // Already expired
-        issuer: "auth-magic-link",
-        audience: "auth",
-      })
+    it("should reject a tampered key", async () => {
+      await provider.initiate(createInitiateRequest(), context)
+      const url = new URL(lastMagicLink())
+      url.searchParams.set("key", "wrong-key-entirely")
 
-      const context = createMockContext()
-      const request = createVerifyRequest(token)
-      const result = await provider.verify(request, context)
+      const result = await provider.verify(
+        createRedeemRequest(url.toString()),
+        context,
+      )
+      if (result instanceof Response) throw new Error("expected result")
+      expect(result.success).toBe(false)
+      if (result.success) return
+      expect(result.error.code).toBe("INVALID_TOKEN")
+    })
 
+    it("should reject an expired link", async () => {
+      await provider.initiate(createInitiateRequest(), context)
+      const magicLink = lastMagicLink()
+      const challengeId = new URL(magicLink).searchParams.get("challenge") ?? ""
+      const challenge = await challengeStore.findById(challengeId)
+      if (challenge) challenge.expiresAt = new Date(Date.now() - 1000)
+
+      const result = await provider.verify(
+        createRedeemRequest(magicLink),
+        context,
+      )
+      if (result instanceof Response) throw new Error("expected result")
+      expect(result.success).toBe(false)
+      if (result.success) return
+      expect(result.error.code).toBe("EXPIRED_TOKEN")
+    })
+
+    it("should fail a GET without challenge params", async () => {
+      const result = await provider.verify(
+        new Request(`${TEST_BASE_URL}/auth/email/verify?token=old-style`),
+        context,
+      )
+      if (result instanceof Response) throw new Error("expected result")
       expect(result.success).toBe(false)
     })
+  })
 
-    it("should reject token with invalid signature", async () => {
-      const token = jwt.sign({ email: "user@example.com" }, "wrong-secret", {
-        expiresIn: "5m",
-        issuer: "auth-magic-link",
-        audience: "auth",
-      })
-
-      const context = createMockContext()
-      const request = createVerifyRequest(token)
-      const result = await provider.verify(request, context)
-
-      expect(result.success).toBe(false)
-    })
-
-    it("should reject missing token", async () => {
-      const request = new Request(`${TEST_BASE_URL}/auth/email/verify`, {
-        method: "GET",
-      })
-      const context = createMockContext()
-
-      const result = await provider.verify(request, context)
-
-      expect(result.success).toBe(false)
-    })
-
-    it("should normalize email from token during verify", async () => {
-      const token = jwt.sign({ email: "User@Example.COM" }, TEST_SECRET, {
-        expiresIn: "5m",
-        issuer: "auth-magic-link",
-        audience: "auth",
-      })
-
-      const mockUser = { id: "user-1", email: "user@example.com" }
-      const mockIdentity = {
-        id: "identity-1",
-        userId: "user-1",
-        provider: "email",
-        identifier: "user@example.com",
-        createdAt: new Date(),
-      }
-
-      const context = createMockContext({
-        identityStore: {
-          findByProviderAndIdentifier: vi.fn().mockResolvedValue(mockIdentity),
-          findByUserId: vi.fn(),
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-        userStore: {
-          findById: vi.fn().mockResolvedValue(mockUser),
-          create: vi.fn(),
-        },
-      })
-
-      const request = createVerifyRequest(token)
-      const result = await provider.verify(request, context)
-
-      expect(result.success).toBe(true)
-      expect(
-        context.identityStore.findByProviderAndIdentifier,
-      ).toHaveBeenCalledWith("email", "user@example.com")
-    })
-
-    it("should normalize email when creating new identity", async () => {
-      const token = jwt.sign({ email: "New@Example.COM" }, TEST_SECRET, {
-        expiresIn: "5m",
-        issuer: "auth-magic-link",
-        audience: "auth",
-      })
-
-      const mockNewUser = { id: "user-new", email: "new@example.com" }
-      const mockNewIdentity = {
-        id: "identity-new",
-        userId: "user-new",
-        provider: "email",
-        identifier: "new@example.com",
-        createdAt: new Date(),
-      }
-
-      const context = createMockContext({
+  describe("user and identity handling", () => {
+    it("should create user and identity for a new email", async () => {
+      const emptyIdentityContext = createMockContext(challengeStore, {
         identityStore: {
           findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
-          findByUserId: vi.fn(),
-          create: vi.fn().mockResolvedValue(mockNewIdentity),
-          update: vi.fn(),
-        },
-        userStore: {
-          findById: vi.fn(),
-          create: vi.fn().mockResolvedValue(mockNewUser),
+          findByUserId: vi.fn().mockResolvedValue([]),
+          create: vi.fn().mockResolvedValue(createMockIdentity()),
+          update: vi.fn().mockResolvedValue(createMockIdentity()),
         },
       })
 
-      const request = createVerifyRequest(token)
-      const result = await provider.verify(request, context)
+      await provider.initiate(createInitiateRequest(), emptyIdentityContext)
+      const result = await provider.verify(
+        createRedeemRequest(lastMagicLink()),
+        emptyIdentityContext,
+      )
 
+      if (result instanceof Response) throw new Error("expected result")
       expect(result.success).toBe(true)
-      expect(context.userStore.create).toHaveBeenCalledWith({
+      expect(emptyIdentityContext.userStore.create).toHaveBeenCalledWith({
         provider: "email",
-        identifier: "new@example.com",
+        identifier: TEST_EMAIL,
       })
-      expect(context.identityStore.create).toHaveBeenCalledWith({
-        userId: "user-new",
-        provider: "email",
-        identifier: "new@example.com",
-      })
+      expect(emptyIdentityContext.identityStore.create).toHaveBeenCalledTimes(1)
     })
 
-    it("should create new user if identity does not exist", async () => {
-      const token = jwt.sign({ email: "new@example.com" }, TEST_SECRET, {
-        expiresIn: "5m",
-        issuer: "auth-magic-link",
-        audience: "auth",
-      })
+    it("should update verifiedAt for an existing identity", async () => {
+      await provider.initiate(createInitiateRequest(), context)
+      await provider.verify(createRedeemRequest(lastMagicLink()), context)
 
-      const mockNewUser = { id: "user-new", email: "new@example.com" }
-      const mockNewIdentity = {
-        id: "identity-new",
-        userId: "user-new",
-        provider: "email",
-        identifier: "new@example.com",
-        createdAt: new Date(),
-      }
+      expect(context.identityStore.update).toHaveBeenCalledWith(
+        "identity-1",
+        expect.objectContaining({ verifiedAt: expect.any(Date) }),
+      )
+    })
 
-      const context = createMockContext({
-        identityStore: {
-          findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
-          findByUserId: vi.fn(),
-          create: vi.fn().mockResolvedValue(mockNewIdentity),
-          update: vi.fn(),
-        },
+    it("should fail when the identity's user no longer exists", async () => {
+      const orphanContext = createMockContext(challengeStore, {
         userStore: {
-          findById: vi.fn(),
-          create: vi.fn().mockResolvedValue(mockNewUser),
+          findById: vi.fn().mockResolvedValue(null),
+          create: vi.fn(),
         },
       })
 
-      const request = createVerifyRequest(token)
-      const result = await provider.verify(request, context)
+      await provider.initiate(createInitiateRequest(), orphanContext)
+      const result = await provider.verify(
+        createRedeemRequest(lastMagicLink()),
+        orphanContext,
+      )
 
-      expect(result.success).toBe(true)
-      expect(context.userStore.create).toHaveBeenCalled()
-      expect(context.identityStore.create).toHaveBeenCalled()
-    })
-  })
-
-  describe("canHandle", () => {
-    it("should handle /auth/email paths", () => {
-      const request = new Request(`${TEST_BASE_URL}/auth/email/verify`)
-      expect(provider.canHandle(request)).toBe(true)
-    })
-
-    it("should not handle other paths", () => {
-      const request = new Request(`${TEST_BASE_URL}/auth/google/callback`)
-      expect(provider.canHandle(request)).toBe(false)
-    })
-  })
-
-  describe("getRoutes", () => {
-    it("should return expected routes", () => {
-      const routes = provider.getRoutes()
-
-      expect(routes).toContainEqual({
-        method: "POST",
-        path: "/email/initiate",
-        handler: "initiate",
-      })
-      expect(routes).toContainEqual({
-        method: "GET",
-        path: "/email/verify",
-        handler: "verify",
-      })
+      if (result instanceof Response) throw new Error("expected result")
+      expect(result.success).toBe(false)
+      if (result.success) return
+      expect(result.error.code).toBe("USER_NOT_FOUND")
     })
   })
 })
