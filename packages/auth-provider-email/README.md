@@ -49,7 +49,29 @@ The provider handles four URL patterns under `/auth/email/*` (mounted by your fr
 | POST   | `/auth/email/initiate` | Send a magic link to the supplied email.         |
 | POST   | `/auth/email/send`     | Alias of `initiate`.                             |
 | GET    | `/auth/email/verify`   | Verify the token from the link, log the user in. |
+| POST   | `/auth/email/verify`   | Verify a one-time code (when `otp` is enabled).  |
 | GET    | `/auth/email/callback` | Alias of `verify`.                               |
+
+## One-time codes (OTP)
+
+With `otp.enabled`, each email also contains a numeric code the user can type on the sign-in page instead of clicking the link. iOS and macOS detect the code in Mail and offer it via AutoFill when your input uses `autoComplete="one-time-code"`:
+
+```ts
+new EmailProvider({
+  // ...existing config...
+  otp: { enabled: true }, // defaults: 6 digits, 10m expiry, 5 attempts
+})
+```
+
+Requires `challengeStore` on the `Auth` config (see `@activescott/auth` README). Flow:
+
+1. `initiate` stores a salted hash of the code and sets an HttpOnly `auth_challenge` cookie binding this browser to the send.
+2. Your page shows a code input (`<input name="code" autoComplete="one-time-code" inputMode="numeric">`) that POSTs to `/auth/email/verify`.
+3. Codes are single-use and attempt-capped: wrong code → `INVALID_CREDENTIALS`, too many tries → `RATE_LIMITED`, expired → `EXPIRED_TOKEN`.
+
+The magic link continues to work unchanged — the code is additive, and covers the case where the user reads email on the same device but AutoFill makes typing the code faster than switching to the inbox.
+
+Config fields: `otp: { enabled, length?, expiry?, maxAttempts?, cookieName? }`, or env vars `EMAIL_OTP_ENABLED`, `EMAIL_OTP_LENGTH`, `EMAIL_OTP_EXPIRY`, `EMAIL_OTP_MAX_ATTEMPTS` with `emailConfigFromEnvironment`.
 
 ## Dev mode (no SMTP needed)
 
