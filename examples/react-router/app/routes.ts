@@ -6,4 +6,5 @@ export default [
   route("logout", "routes/logout.tsx"),
   route("dashboard", "routes/dashboard.tsx"),
   route("auth/:provider/:action", "routes/auth.$provider.$action.tsx"),
+  route("e2e/otp-code", "routes/e2e.otp-code.tsx"),
 ] satisfies RouteConfig
