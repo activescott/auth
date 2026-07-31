@@ -261,6 +261,41 @@ describe("createAuthHandlers", () => {
       expect(response.headers.get("Location")).toContain("/login?error=")
     })
 
+    it("should append provider setCookies alongside the session cookie", async () => {
+      const provider = {
+        id: "email",
+        name: "Email",
+        verify: vi.fn().mockResolvedValue({
+          success: true,
+          user: { id: "user-1" },
+          identity: createMockIdentity(),
+          setCookies: ["auth_challenge=; Path=/auth; Max-Age=0"],
+        }),
+        initiate: vi.fn(),
+        canHandle: vi.fn(),
+        getRoutes: vi.fn(),
+      }
+
+      const mockAuth = createMockAuth({
+        getProvider: vi.fn().mockReturnValue(provider),
+      })
+
+      const handlers = createAuthHandlers(mockAuth, {
+        successRedirect: "/dashboard",
+      })
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/verify`, {
+        method: "POST",
+      })
+      const response = await handlers.handleAuth({ request })
+
+      expect(response.status).toBe(302)
+      expect(response.headers.getSetCookie()).toEqual([
+        "auth_session=token; Path=/; HttpOnly",
+        "auth_challenge=; Path=/auth; Max-Age=0",
+      ])
+    })
+
     it("should use redirectTo query param after successful verify", async () => {
       const provider = {
         id: "email",
@@ -420,6 +455,60 @@ describe("sendMagicLink", () => {
     const calledRequest = mockProvider.initiate.mock.calls[0][0] as Request
     const body = await calledRequest.text()
     expect(body).toContain("redirectTo=%2Fdashboard")
+  })
+
+  it("should surface setCookies from the provider result", async () => {
+    const mockProvider = {
+      id: "email",
+      name: "Email",
+      initiate: vi.fn().mockResolvedValue({
+        success: true,
+        message: "Sent",
+        setCookies: ["auth_challenge=abc; Path=/auth; HttpOnly"],
+      }),
+      verify: vi.fn(),
+      canHandle: vi.fn(),
+      getRoutes: vi.fn(),
+    }
+
+    const mockAuth = createMockAuth({
+      getProvider: vi.fn().mockReturnValue(mockProvider),
+    })
+
+    const result = await sendMagicLink(
+      mockAuth,
+      "user@example.com",
+      TEST_BASE_URL,
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.setCookies).toEqual([
+      "auth_challenge=abc; Path=/auth; HttpOnly",
+    ])
+  })
+
+  it("should omit setCookies when the provider sets none", async () => {
+    const mockProvider = {
+      id: "email",
+      name: "Email",
+      initiate: vi.fn().mockResolvedValue({ success: true, message: "Sent" }),
+      verify: vi.fn(),
+      canHandle: vi.fn(),
+      getRoutes: vi.fn(),
+    }
+
+    const mockAuth = createMockAuth({
+      getProvider: vi.fn().mockReturnValue(mockProvider),
+    })
+
+    const result = await sendMagicLink(
+      mockAuth,
+      "user@example.com",
+      TEST_BASE_URL,
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.setCookies).toBeUndefined()
   })
 
   it("should handle provider throwing error", async () => {

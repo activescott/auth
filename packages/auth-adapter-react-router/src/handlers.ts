@@ -48,13 +48,14 @@ export interface AuthHandlers<TUser = AuthUser> {
  * Create a redirect Response
  */
 function redirect(url: string, init?: ResponseInit): Response {
+  // Copy via Headers (not Object.fromEntries) so multiple Set-Cookie
+  // headers survive
+  const headers = new Headers(init?.headers)
+  headers.set("Location", url)
   return new Response(null, {
     ...init,
     status: 302,
-    headers: {
-      ...Object.fromEntries(new Headers(init?.headers).entries()),
-      Location: url,
-    },
+    headers,
   })
 }
 
@@ -129,6 +130,10 @@ export function createAuthHandlers<TUser = AuthUser>(
         result.identity,
       )
 
+      // Providers may return additional cookies to set (e.g., clearing an
+      // OTP challenge cookie after successful code verification)
+      const extraCookies = result.setCookies ?? []
+
       // Check for redirectTo query param (set during login flow)
       const redirectToParameter = url.searchParams.get("redirectTo")
 
@@ -143,11 +148,12 @@ export function createAuthHandlers<TUser = AuthUser>(
         redirectUrl = successRedirect
       }
 
-      return redirect(redirectUrl, {
-        headers: {
-          "Set-Cookie": sessionCookie,
-        },
-      })
+      const headers = new Headers()
+      headers.append("Set-Cookie", sessionCookie)
+      for (const cookie of extraCookies) {
+        headers.append("Set-Cookie", cookie)
+      }
+      return redirect(redirectUrl, { headers })
     },
 
     /**
@@ -250,6 +256,12 @@ export interface SendMagicLinkResult {
   success: boolean
   message?: string
   error?: string
+  /**
+   * Set-Cookie header values the caller must include in its HTTP response
+   * (e.g., the OTP challenge cookie when email OTP is enabled). In React
+   * Router actions, return them via data(result, { headers }).
+   */
+  setCookies?: string[]
 }
 
 /**
@@ -330,6 +342,7 @@ export async function sendMagicLink(
         success: true,
         message:
           result.message || "Check your email for a magic link to sign in.",
+        ...(result.setCookies ? { setCookies: result.setCookies } : {}),
       }
     }
 
