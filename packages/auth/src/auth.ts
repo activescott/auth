@@ -2,6 +2,7 @@ import type {
   AuthConfig,
   AuthContext,
   AuthError,
+  AuthInitResult,
   AuthProvider,
   AuthResult,
   AuthUser,
@@ -180,6 +181,7 @@ export class Auth {
 
       if (action === "verify" || action === "callback") {
         const result = await provider.verify(request, context)
+        if (result instanceof Response) return result
         return this.authResultToResponse(result)
       }
 
@@ -287,6 +289,7 @@ export class Auth {
       baseUrl: this.getBaseUrl(request),
       createSession: (user, identity) =>
         this.sessionManager.createSessionCookie(user, identity),
+      challengeStore: this.config.challengeStore,
     }
   }
 
@@ -314,17 +317,17 @@ export class Auth {
   /**
    * Convert init result to Response
    */
-  private initResultToResponse(
-    result:
-      | { success: true; message: string }
-      | { success: false; error: AuthError },
-  ): Response {
+  private initResultToResponse(result: AuthInitResult): Response {
     if (result.success) {
+      const headers = new Headers({ "Content-Type": "application/json" })
+      for (const cookie of result.setCookies ?? []) {
+        headers.append("Set-Cookie", cookie)
+      }
       return new Response(
         JSON.stringify({ success: true, message: result.message }),
         {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers,
         },
       )
     }
@@ -338,6 +341,10 @@ export class Auth {
     if (result.success) {
       // For successful auth, the provider should have already handled
       // creating the session and redirect. This is a fallback.
+      const headers = new Headers({ "Content-Type": "application/json" })
+      for (const cookie of result.setCookies ?? []) {
+        headers.append("Set-Cookie", cookie)
+      }
       return new Response(
         JSON.stringify({
           success: true,
@@ -345,7 +352,7 @@ export class Auth {
         }),
         {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers,
         },
       )
     }

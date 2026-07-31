@@ -1,5 +1,9 @@
 import nodemailer from "nodemailer"
-import type { EmailTransport, EmailProviderConfig } from "../types.js"
+import type {
+  EmailTransport,
+  EmailProviderConfig,
+  SendMagicLinkOptions,
+} from "../types.js"
 
 // Standard port for SMTPS (implicit TLS)
 const SMTPS_PORT = 465
@@ -19,6 +23,7 @@ export class NodemailerTransport implements EmailTransport {
     to: string,
     magicLink: string,
     config: EmailProviderConfig,
+    options?: SendMagicLinkOptions,
   ): Promise<boolean> {
     try {
       const transporter = this.getTransporter(config)
@@ -27,13 +32,14 @@ export class NodemailerTransport implements EmailTransport {
       const appName = template?.appName ?? "App"
       const subject = template?.subject ?? "Sign in"
       const primaryColor = template?.primaryColor ?? "#6366f1"
+      const code = options?.code
 
       const mailOptions = {
         from,
         to,
         subject: `${subject} to ${appName}`,
-        html: this.generateHtmlEmail(magicLink, appName, primaryColor),
-        text: this.generateTextEmail(magicLink, appName),
+        html: this.generateHtmlEmail(magicLink, appName, primaryColor, code),
+        text: this.generateTextEmail(magicLink, appName, code),
       }
 
       await transporter.sendMail(mailOptions)
@@ -43,7 +49,7 @@ export class NodemailerTransport implements EmailTransport {
         console.info(`
 📧 Magic link email (development mode):
 To: ${to}
-Magic Link: ${magicLink}
+Magic Link: ${magicLink}${code ? `\nCode: ${code}` : ""}
 ---
 `)
       }
@@ -90,11 +96,22 @@ Magic Link: ${magicLink}
     magicLink: string,
     appName: string,
     primaryColor: string,
+    code?: string,
   ): string {
+    // The code sentence stays literal ("Your sign-in code is: NNNNNN") so
+    // Apple Mail and similar clients detect it and offer AutoFill
+    const codeSection = code
+      ? `
+        <p>Your sign-in code is:</p>
+        <p style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 32px; font-weight: 700; letter-spacing: 6px; margin: 16px 0;">${code}</p>
+        <p style="color: #6b7280; font-size: 14px;">Enter this code on the sign-in page, or click the button below.</p>
+      `
+      : ""
+
     return `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: ${primaryColor};">Sign in to ${appName}</h2>
-
+        ${codeSection}
         <p>Click the link below to sign in to your ${appName} account:</p>
 
         <div style="margin: 30px 0;">
@@ -116,11 +133,16 @@ Magic Link: ${magicLink}
     `
   }
 
-  private generateTextEmail(magicLink: string, appName: string): string {
+  private generateTextEmail(
+    magicLink: string,
+    appName: string,
+    code?: string,
+  ): string {
+    const codeSection = code ? `Your sign-in code is: ${code}\n\n` : ""
     return `
 Sign in to ${appName}
 
-Click this link to sign in: ${magicLink}
+${codeSection}Click this link to sign in: ${magicLink}
 
 This link will expire in 5 minutes.
 

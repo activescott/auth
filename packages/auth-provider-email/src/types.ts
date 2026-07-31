@@ -2,18 +2,31 @@
  * Email provider configuration
  */
 export interface EmailProviderConfig {
-  /** Secret for signing magic link tokens */
-  magicLinkSecret: string
-  /** Additional secrets for verification (e.g., for E2E testing) */
-  additionalSecrets?: string[]
-  /** Magic link expiration (e.g., "5m", "15m") */
-  magicLinkExpiry: string
+  /** How long a sign-in email is valid — covers both the magic link and
+   * the code, since they redeem the same challenge (e.g., "15m"; default
+   * "15m") */
+  expiry?: string
   /** SMTP configuration */
   smtp: SmtpConfig
   /** Sender email address */
   from: string
   /** Email template customization */
   template?: EmailTemplateConfig
+  /** One-time code tuning */
+  otp?: EmailOtpConfig
+}
+
+/**
+ * One-time code (OTP) tuning for the email provider
+ */
+export interface EmailOtpConfig {
+  /** Number of digits in the code (default: 6) */
+  length?: number
+  /** Maximum verification attempts before the code is rejected (default: 5) */
+  maxAttempts?: number
+  /** Name of the HttpOnly cookie that binds code entry to the initiating
+   * browser (default: "auth_challenge") */
+  cookieName?: string
 }
 
 /**
@@ -50,5 +63,14 @@ export interface EmailTransport {
     to: string,
     magicLink: string,
     config: EmailProviderConfig,
+    options?: SendMagicLinkOptions,
   ): Promise<boolean>
+}
+
+/**
+ * Additional content for a magic link email
+ */
+export interface SendMagicLinkOptions {
+  /** One-time code to include in the email alongside the link */
+  code?: string
 }

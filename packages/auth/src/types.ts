@@ -15,16 +15,16 @@ export interface AuthUser {
 
 /**
  * Identity record linking a provider+identifier to a user.
- * One user can have multiple identities (email, phone, OAuth).
+ * One user can have multiple identities (email, phone, passkey).
  */
 export interface Identity {
   /** Unique identifier for this identity */
   id: string
   /** Foreign key to the user */
   userId: string
-  /** Provider that authenticated this identity (e.g., "email", "sms", "google") */
+  /** Provider that authenticated this identity (e.g., "email", "sms", "passkey") */
   provider: string
-  /** The identifier within that provider (email address, phone number, OAuth subject) */
+  /** The identifier within that provider (email address, phone number, passkey credential ID) */
   identifier: string
   /** Additional metadata from the provider */
   metadata?: Record<string, unknown>
@@ -57,6 +57,11 @@ export interface AuthSuccess {
   success: true
   user: AuthUser
   identity: Identity
+  /**
+   * Set-Cookie header values the caller must include in the HTTP response
+   * (e.g., clearing a challenge cookie after OTP verification).
+   */
+  setCookies?: string[]
 }
 
 /**
@@ -76,7 +81,7 @@ export type AuthResult = AuthSuccess | AuthFailure
  * Result of initiating authentication (e.g., sending magic link)
  */
 export type AuthInitResult =
-  | { success: true; message: string }
+  | { success: true; message: string; setCookies?: string[] }
   | { success: false; error: AuthError }
 
 /**
@@ -169,6 +174,60 @@ export interface UserStore {
 }
 
 /**
+ * A short-lived verification challenge (e.g., an OTP code sent by email or
+ * SMS, or a WebAuthn challenge). Stores only a hash of any secret code.
+ */
+export interface Challenge {
+  /** Unguessable identifier (e.g., crypto.randomUUID()); referenced by the client via cookie */
+  id: string
+  /** Challenge kind (e.g., "email-otp", "sms-otp", "webauthn") */
+  type: string
+  /** Identifier being verified (email address, E.164 phone number, user ID) */
+  identifier: string
+  /** SHA-256 hex hash of the code (see hashOtpCode); never the plaintext code */
+  hashedCode?: string
+  /** Provider-specific data (e.g., WebAuthn challenge bytes) */
+  data?: Record<string, unknown>
+  /** Number of verification attempts made so far */
+  attempts: number
+  /** Maximum verification attempts before the challenge is rejected */
+  maxAttempts: number
+  /** When this challenge was created */
+  createdAt: Date
+  /** When this challenge expires */
+  expiresAt: Date
+}
+
+/**
+ * Storage adapter for verification challenges.
+ * Applications implement this to connect to their database, or use the
+ * shipped InMemoryChallengeStore for single-instance deployments.
+ */
+export interface ChallengeStore {
+  /**
+   * Persist a new challenge with attempts=0 and createdAt=now
+   */
+  create(data: Omit<Challenge, "attempts" | "createdAt">): Promise<Challenge>
+
+  /**
+   * Find a challenge by ID. Returns expired challenges too; callers check
+   * expiresAt so they can distinguish expired from unknown.
+   */
+  findById(id: string): Promise<Challenge | null>
+
+  /**
+   * Atomically increment the attempt counter and return the new count
+   * (SQL: UPDATE ... RETURNING; Redis: INCR)
+   */
+  incrementAttempts(id: string): Promise<number>
+
+  /**
+   * Delete a challenge (after successful verification or invalidation)
+   */
+  delete(id: string): Promise<void>
+}
+
+/**
  * Session configuration
  */
 export interface SessionConfig {
@@ -205,6 +264,11 @@ export interface AuthConfig {
   userStore: UserStore
   /** Registered authentication providers */
   providers: AuthProvider[]
+  /** Challenge storage adapter for short-lived verification state (magic
+   * links, OTP codes, WebAuthn challenges). Use InMemoryChallengeStore for
+   * single-instance deployments; back it with shared storage when running
+   * multiple instances. */
+  challengeStore: ChallengeStore
   /** Callback URLs configuration */
   callbacks?: {
     /** URL to redirect to after successful authentication */
@@ -226,6 +290,9 @@ export interface AuthContext {
   baseUrl: string
   /** Create a session for a user */
   createSession: (user: AuthUser, identity: Identity) => Promise<string>
+  /** Challenge store for magic links, OTP codes, and similar short-lived
+   * verification state */
+  challengeStore: ChallengeStore
 }
 
 /**
@@ -242,10 +309,10 @@ export interface ProviderRoute {
 
 /**
  * Authentication provider interface.
- * Each auth method (email, OAuth, SMS) implements this.
+ * Each auth method (email, SMS, passkey) implements this.
  */
 export interface AuthProvider {
-  /** Unique identifier for this provider (e.g., "email", "google", "sms") */
+  /** Unique identifier for this provider (e.g., "email", "sms", "passkey") */
   readonly id: string
 
   /** Human-readable name */
@@ -254,7 +321,7 @@ export interface AuthProvider {
   /**
    * Initialize authentication flow.
    * For email: sends magic link
-   * For OAuth: returns redirect URL
+   * For passkey: returns registration/authentication options
    * For SMS: sends verification code
    */
   initiate(
@@ -264,11 +331,17 @@ export interface AuthProvider {
 
   /**
    * Handle callback/verification.
-   * For email: verifies magic link token
-   * For OAuth: exchanges code for tokens
+   * For email: verifies magic link or OTP code
+   * For passkey: verifies the WebAuthn assertion
    * For SMS: verifies OTP code
+   *
+   * May return a Response instead of an AuthResult when the step is not a
+   * final authentication outcome — e.g., the email provider answers a
+   * magic-link GET with a confirm page (the state-changing redemption
+   * happens on the subsequent POST so email security scanners that
+   * prefetch URLs cannot consume the link).
    */
-  verify(request: Request, context: AuthContext): Promise<AuthResult>
+  verify(request: Request, context: AuthContext): Promise<AuthResult | Response>
 
   /**
    * Check if this provider can handle the given request.

@@ -1,5 +1,6 @@
 import {
   Auth,
+  InMemoryChallengeStore,
   type AuthUser,
   type Identity,
   type IdentityStore,
@@ -9,10 +10,8 @@ import {
   EmailProvider,
   NodemailerTransport,
 } from "@activescott/auth-provider-email"
-import {
-  createAuthHandlers,
-  sendMagicLink as sendMagicLinkBase,
-} from "@activescott/auth-adapter-react-router"
+import { CaptureTransport } from "./capture-transport.server"
+import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
 
 /**
  * In-memory stores — fine for an example, but data evaporates on restart.
@@ -76,23 +75,19 @@ const identityStore: IdentityStore = {
 }
 
 /**
- * Hardcoded dev defaults so the example runs with zero setup. In a real app
- * load these from env (`process.env.JWT_SECRET`, etc.) and never commit
- * production secrets. The names below make it obvious if they ever leak.
+ * Hardcoded dev default so the example runs with zero setup. In a real app
+ * load this from env (`process.env.JWT_SECRET`) and never commit
+ * production secrets. The name below makes it obvious if it ever leaks.
  */
 const SESSION_SECRET =
   process.env.JWT_SECRET ?? "dev-only-session-secret-do-not-use-in-production"
-const MAGIC_LINK_SECRET =
-  process.env.JWT_MAGIC_LINK_SECRET ??
-  "dev-only-magic-link-secret-do-not-use-in-production"
 
 /**
- * `additionalSecrets` lets your e2e tests sign their own magic-link tokens
- * without an SMTP server. The verifier accepts tokens signed by either the
- * primary secret or any additional secret. See `tests/helpers/auth.ts`.
+ * SMTP is considered configured when SMTP_HOST is set (see .env.example).
+ * Configured → real emails are sent. Not configured → dev mode: emails are
+ * logged to the server console instead.
  */
-const E2E_MAGIC_LINK_SECRET =
-  process.env.E2E_MAGIC_LINK_SECRET ?? "e2e_test_magic_link_secret"
+const smtpConfigured = Boolean(process.env.SMTP_HOST)
 
 export const auth = new Auth({
   session: {
@@ -107,22 +102,28 @@ export const auth = new Auth({
   },
   identityStore,
   userStore,
+  // Holds sign-in challenges (the magic link key and one-time code, both
+  // hashed) between "send" and "verify". In-memory works for one server
+  // process; use a DB/Redis-backed implementation for multiple instances.
+  challengeStore: new InMemoryChallengeStore(),
   providers: [
     new EmailProvider(
       {
-        magicLinkSecret: MAGIC_LINK_SECRET,
-        additionalSecrets: [E2E_MAGIC_LINK_SECRET],
-        magicLinkExpiry: "5m",
         // SMTP fields are unused in dev mode (the transport buffers instead
         // of sending) but the config still requires them.
-        smtp: { host: "localhost", port: 25, user: "", pass: "" },
-        from: "login@example.com",
+        smtp: {
+          host: process.env.SMTP_HOST ?? "localhost",
+          port: Number(process.env.SMTP_PORT ?? 587),
+          user: process.env.SMTP_USER ?? "",
+          pass: process.env.SMTP_PASS ?? "",
+        },
+        from: process.env.EMAIL_FROM ?? "login@example.com",
         template: { appName: "RR Auth Example" },
       },
-      // Force dev mode → magic links are logged to the server console
-      // instead of sent via SMTP. Drop the `true` (or omit the transport
-      // entirely) and configure real `smtp` to send actual email.
-      new NodemailerTransport(true),
+      // Dev mode (no SMTP configured) → emails are logged to the server
+      // console instead of sent. Set SMTP_HOST (see .env.example) to send
+      // real email.
+      new CaptureTransport(new NodemailerTransport(!smtpConfigured)),
     ),
   ],
 })
@@ -135,7 +136,3 @@ const handlers = createAuthHandlers(auth, {
 
 export const { handleAuth, getSession, requireAuth, optionalAuth, logout } =
   handlers
-
-export function sendMagicLink(email: string, baseUrl: string) {
-  return sendMagicLinkBase(auth, email, baseUrl)
-}

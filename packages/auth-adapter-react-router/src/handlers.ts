@@ -48,13 +48,14 @@ export interface AuthHandlers<TUser = AuthUser> {
  * Create a redirect Response
  */
 function redirect(url: string, init?: ResponseInit): Response {
+  // Copy via Headers (not Object.fromEntries) so multiple Set-Cookie
+  // headers survive
+  const headers = new Headers(init?.headers)
+  headers.set("Location", url)
   return new Response(null, {
     ...init,
     status: 302,
-    headers: {
-      ...Object.fromEntries(new Headers(init?.headers).entries()),
-      Location: url,
-    },
+    headers,
   })
 }
 
@@ -115,6 +116,12 @@ export function createAuthHandlers<TUser = AuthUser>(
       const context = auth.createContext(request)
       const result = await provider.verify(request, context)
 
+      // Providers may answer with a page instead of an auth outcome —
+      // e.g., the email provider's confirm page on magic-link GET
+      if (result instanceof Response) {
+        return result
+      }
+
       if (!result.success) {
         const errorUrl =
           typeof errorRedirect === "function"
@@ -128,6 +135,10 @@ export function createAuthHandlers<TUser = AuthUser>(
         result.user,
         result.identity,
       )
+
+      // Providers may return additional cookies to set (e.g., clearing an
+      // OTP challenge cookie after successful code verification)
+      const extraCookies = result.setCookies ?? []
 
       // Check for redirectTo query param (set during login flow)
       const redirectToParameter = url.searchParams.get("redirectTo")
@@ -143,11 +154,12 @@ export function createAuthHandlers<TUser = AuthUser>(
         redirectUrl = successRedirect
       }
 
-      return redirect(redirectUrl, {
-        headers: {
-          "Set-Cookie": sessionCookie,
-        },
-      })
+      const headers = new Headers()
+      headers.append("Set-Cookie", sessionCookie)
+      for (const cookie of extraCookies) {
+        headers.append("Set-Cookie", cookie)
+      }
+      return redirect(redirectUrl, { headers })
     },
 
     /**
@@ -240,111 +252,5 @@ export function createAuthHandlers<TUser = AuthUser>(
     getAuth(): Auth {
       return auth
     },
-  }
-}
-
-/**
- * Result of sendMagicLink operation
- */
-export interface SendMagicLinkResult {
-  success: boolean
-  message?: string
-  error?: string
-}
-
-/**
- * Options for sending a magic link
- */
-export interface SendMagicLinkOptions {
-  /** URL to redirect to after successful authentication */
-  redirectTo?: string
-}
-
-/**
- * Send a magic link email to the user.
- * This is a convenience function for login pages that want to stay on the page
- * and show success/error messages rather than redirecting.
- *
- * @param auth - The Auth instance
- * @param email - The email address to send the magic link to
- * @param baseUrl - The base URL of the application (e.g., "https://example.com")
- * @param options - Optional settings including redirectTo URL
- * @returns Result indicating success or failure with appropriate message
- *
- * @example
- * ```typescript
- * export async function action({ request }: ActionArgs) {
- *   const formData = await request.formData()
- *   const email = formData.get("email") as string
- *   const redirectTo = formData.get("redirectTo") as string | null
- *   const result = await sendMagicLink(auth, email, getBaseUrl(request), { redirectTo })
- *   return result.success
- *     ? { success: "Check your email!", error: null }
- *     : { error: result.error, success: null }
- * }
- * ```
- */
-export async function sendMagicLink(
-  auth: Auth,
-  email: string,
-  baseUrl: string,
-  options?: SendMagicLinkOptions,
-): Promise<SendMagicLinkResult> {
-  const provider = auth.getProvider("email")
-
-  if (!provider) {
-    return {
-      success: false,
-      error: "Email authentication is not configured.",
-    }
-  }
-
-  // Build request body with email and optional redirectTo
-  const body: Record<string, string> = { email }
-  if (options?.redirectTo) {
-    body.redirectTo = options.redirectTo
-  }
-
-  // Create a request that the provider can handle
-  const request = new Request(`${baseUrl}/auth/email/initiate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body),
-  })
-
-  const context = auth.createContext(request)
-
-  try {
-    const result = await provider.initiate(request, context)
-
-    // If provider returns a Response, it handled everything (unlikely for email)
-    if (result instanceof Response) {
-      return {
-        success: true,
-        message: "Check your email for a magic link to sign in.",
-      }
-    }
-
-    if (result.success) {
-      return {
-        success: true,
-        message:
-          result.message || "Check your email for a magic link to sign in.",
-      }
-    }
-
-    return {
-      success: false,
-      error:
-        result.error.message || "Failed to send magic link. Please try again.",
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "An unexpected error occurred.",
-    }
   }
 }

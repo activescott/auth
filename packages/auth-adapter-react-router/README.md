@@ -19,10 +19,7 @@ npm install @activescott/auth @activescott/auth-provider-email @activescott/auth
 // app/lib/auth.server.ts
 import { Auth } from "@activescott/auth"
 import { EmailProvider } from "@activescott/auth-provider-email"
-import {
-  createAuthHandlers,
-  sendMagicLink as sendMagicLinkBase,
-} from "@activescott/auth-adapter-react-router"
+import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
 
 export const auth = new Auth({
   /* ...session, stores, providers... */
@@ -34,9 +31,6 @@ export const { handleAuth, getSession, requireAuth, optionalAuth, logout } =
     errorRedirect: "/login",
     loginUrl: "/login",
   })
-
-export const sendMagicLink = (email: string, baseUrl: string) =>
-  sendMagicLinkBase(auth, email, baseUrl)
 ```
 
 Then add a single catch-all route at `app/routes/auth.$provider.$action.tsx` that handles every provider's HTTP endpoints:
@@ -49,7 +43,7 @@ export const loader = ({ request }: Route.LoaderArgs) => handleAuth({ request })
 export const action = ({ request }: Route.ActionArgs) => handleAuth({ request })
 ```
 
-This one file covers `/auth/<provider>/<action>` for every registered provider — e.g. `GET /auth/email/verify?token=...` (user clicked the magic link), `POST /auth/email/initiate` (server-side send), and future `/auth/google/callback`, `/auth/sms/verify`, etc. `handleAuth` dispatches to the right provider, runs `verify` or `initiate`, sets/clears the session cookie, and returns a redirect.
+This one file covers `/auth/<provider>/<action>` for every registered provider — e.g. `POST /auth/email/initiate` (your login form posts here), `GET /auth/email/verify?...` (magic-link confirm page), `POST /auth/email/verify` (link redemption or code entry), and future `/auth/sms/...`, etc. `handleAuth` dispatches to the right provider, runs `verify` or `initiate`, sets/clears the session cookie, and returns a redirect — or passes through a page the provider renders (like the magic-link confirm page).
 
 Protect any loader with `requireAuth(request)`:
 
@@ -65,7 +59,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 | Export               | Purpose                                                                                        |
 | -------------------- | ---------------------------------------------------------------------------------------------- |
 | `createAuthHandlers` | Returns `{ handleAuth, getSession, requireAuth, optionalAuth, refreshSessionCookie, logout }`. |
-| `sendMagicLink`      | Convenience for login-page actions that want to stay on the page and show success/error.       |
+
+Login pages need no action of their own: post the email form directly to `/auth/email/initiate` (the provider redirects back with `?sent=1`) and the code form to `/auth/email/verify`.
 
 `createAuthHandlers<TUser>` is generic over your application's user type. Pass a `mapUser` to get a typed `requireAuth<TUser>` / `optionalAuth<TUser>` instead of the bare `AuthUser`.
 

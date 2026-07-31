@@ -7,9 +7,11 @@ export { validateEmailConfig, emailConfigFromEnvironment } from "./config.js"
 // Types
 export type {
   EmailProviderConfig,
+  EmailOtpConfig,
   SmtpConfig,
   EmailTemplateConfig,
   EmailTransport,
+  SendMagicLinkOptions,
 } from "./types.js"
 
 // Transports

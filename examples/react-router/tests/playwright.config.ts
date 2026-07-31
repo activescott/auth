@@ -30,6 +30,9 @@ export default defineConfig({
       // the test run (port, prod mode for `react-router-serve`).
       NODE_ENV: "production",
       PORT: String(PORT),
+      // Enables the /e2e/otp-code readback route so specs can fetch the
+      // OTP code without an inbox
+      E2E_TEST_MODE: "true",
     },
   },
 })

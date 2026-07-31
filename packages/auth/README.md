@@ -7,9 +7,11 @@ Framework-agnostic authentication core for TypeScript. Designed to run on Node a
 
 This package provides the `Auth` class, JWT-cookie session management, and the provider/store interfaces. It does not handle any specific authentication method by itself — pair it with a provider package:
 
-- [`@activescott/auth-provider-email`](https://www.npmjs.com/package/@activescott/auth-provider-email) — email magic links
-- _SMS magic links / OTP_ — planned
-- _OAuth (Google, GitHub, etc.)_ — planned
+- [`@activescott/auth-provider-email`](https://www.npmjs.com/package/@activescott/auth-provider-email) — email magic links + one-time codes
+- _SMS OTP_ — planned
+- _Passkeys (WebAuthn)_ — planned
+
+The library deliberately focuses on **direct** authentication — email, phone, passkeys — rather than OAuth federation; see the monorepo README for the reasoning.
 
 …and a framework adapter:
 
@@ -31,6 +33,8 @@ npm install @activescott/auth
 | `SessionManager`                                                  | Standalone JWT session signer/verifier (rarely needed directly).          |
 | `AuthProvider`                                                    | Interface every provider implements (`initiate`, `verify`, `canHandle`).  |
 | `IdentityStore`, `UserStore`                                      | Interfaces you implement to plug in your database.                        |
+| `ChallengeStore`, `InMemoryChallengeStore`                        | Storage for short-lived OTP challenges (see below).                       |
+| `generateOtpCode`, `hashOtpCode`, `verifyOtpCode`                 | One-time-code utilities used by OTP-capable providers.                    |
 | `AuthUser`, `Identity`, `Session`, `AuthResult`, `AuthInitResult` | Core data types.                                                          |
 | `AuthErrors`, `getAuthErrorMessage`, `AUTH_ERROR_CODES`           | Structured error helpers.                                                 |
 
@@ -60,6 +64,37 @@ const auth = new Auth({
 ```
 
 Then call `auth.handleRequest(request)` from your framework's routing layer (or use a framework adapter), and `auth.verifySession(request)` to check the session cookie on protected routes.
+
+## ChallengeStore (required for OTP codes)
+
+Magic links are stateless JWTs, but one-time codes need server-side state: the hashed code, an attempt counter, and an expiry. Configuring a `challengeStore` on the `Auth` config is what turns codes on — OTP-capable providers (e.g. `EmailProvider`) include codes automatically when it is present and skip them when it is not:
+
+```ts
+import { InMemoryChallengeStore } from "@activescott/auth"
+
+const auth = new Auth({
+  // ...
+  challengeStore: new InMemoryChallengeStore(),
+})
+```
+
+`InMemoryChallengeStore` is right for a single server process (and dev/examples). Challenges are lost on restart and not shared across instances — for multi-instance deployments implement the four-method `ChallengeStore` interface against shared storage. A SQL implementation is roughly:
+
+```sql
+CREATE TABLE challenges (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  identifier TEXT NOT NULL,
+  hashed_code TEXT,
+  data JSONB,
+  attempts INT NOT NULL DEFAULT 0,
+  max_attempts INT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+```
+
+with `incrementAttempts` as `UPDATE challenges SET attempts = attempts + 1 WHERE id = $1 RETURNING attempts` (the increment must be atomic — it enforces the guess limit), and a periodic `DELETE ... WHERE expires_at < now()`.
 
 ## Documentation & example
 
