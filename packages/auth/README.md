@@ -65,7 +65,7 @@ Then call `auth.handleRequest(request)` from your framework's routing layer (or 
 
 ## ChallengeStore (required for OTP codes)
 
-Magic links are stateless JWTs, but one-time codes need server-side state: the hashed code, an attempt counter, and an expiry. Providers that issue codes (e.g. `EmailProvider` with `otp.enabled`) require a `challengeStore` on the `Auth` config:
+Magic links are stateless JWTs, but one-time codes need server-side state: the hashed code, an attempt counter, and an expiry. Configuring a `challengeStore` on the `Auth` config is what turns codes on — OTP-capable providers (e.g. `EmailProvider`) include codes automatically when it is present and skip them when it is not:
 
 ```ts
 import { InMemoryChallengeStore } from "@activescott/auth"
