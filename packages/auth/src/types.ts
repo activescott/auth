@@ -15,16 +15,16 @@ export interface AuthUser {
 
 /**
  * Identity record linking a provider+identifier to a user.
- * One user can have multiple identities (email, phone, OAuth).
+ * One user can have multiple identities (email, phone, passkey).
  */
 export interface Identity {
   /** Unique identifier for this identity */
   id: string
   /** Foreign key to the user */
   userId: string
-  /** Provider that authenticated this identity (e.g., "email", "sms", "google") */
+  /** Provider that authenticated this identity (e.g., "email", "sms", "passkey") */
   provider: string
-  /** The identifier within that provider (email address, phone number, OAuth subject) */
+  /** The identifier within that provider (email address, phone number, passkey credential ID) */
   identifier: string
   /** Additional metadata from the provider */
   metadata?: Record<string, unknown>
@@ -309,10 +309,10 @@ export interface ProviderRoute {
 
 /**
  * Authentication provider interface.
- * Each auth method (email, OAuth, SMS) implements this.
+ * Each auth method (email, SMS, passkey) implements this.
  */
 export interface AuthProvider {
-  /** Unique identifier for this provider (e.g., "email", "google", "sms") */
+  /** Unique identifier for this provider (e.g., "email", "sms", "passkey") */
   readonly id: string
 
   /** Human-readable name */
@@ -321,7 +321,7 @@ export interface AuthProvider {
   /**
    * Initialize authentication flow.
    * For email: sends magic link
-   * For OAuth: returns redirect URL
+   * For passkey: returns registration/authentication options
    * For SMS: sends verification code
    */
   initiate(
@@ -332,7 +332,7 @@ export interface AuthProvider {
   /**
    * Handle callback/verification.
    * For email: verifies magic link or OTP code
-   * For OAuth: exchanges code for tokens
+   * For passkey: verifies the WebAuthn assertion
    * For SMS: verifies OTP code
    *
    * May return a Response instead of an AuthResult when the step is not a
@@ -341,10 +341,7 @@ export interface AuthProvider {
    * happens on the subsequent POST so email security scanners that
    * prefetch URLs cannot consume the link).
    */
-  verify(
-    request: Request,
-    context: AuthContext,
-  ): Promise<AuthResult | Response>
+  verify(request: Request, context: AuthContext): Promise<AuthResult | Response>
 
   /**
    * Check if this provider can handle the given request.

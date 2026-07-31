@@ -7,9 +7,11 @@ Framework-agnostic authentication core for TypeScript. Designed to run on Node a
 
 This package provides the `Auth` class, JWT-cookie session management, and the provider/store interfaces. It does not handle any specific authentication method by itself — pair it with a provider package:
 
-- [`@activescott/auth-provider-email`](https://www.npmjs.com/package/@activescott/auth-provider-email) — email magic links
-- _SMS magic links / OTP_ — planned
-- _OAuth (Google, GitHub, etc.)_ — planned
+- [`@activescott/auth-provider-email`](https://www.npmjs.com/package/@activescott/auth-provider-email) — email magic links + one-time codes
+- _SMS OTP_ — planned
+- _Passkeys (WebAuthn)_ — planned
+
+The library deliberately focuses on **direct** authentication — email, phone, passkeys — rather than OAuth federation; see the monorepo README for the reasoning.
 
 …and a framework adapter:
 
