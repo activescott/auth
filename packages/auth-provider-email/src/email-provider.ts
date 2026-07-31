@@ -134,8 +134,7 @@ export class EmailProvider implements AuthProvider {
           type: OTP_CHALLENGE_TYPE,
           identifier: email,
           hashedCode: await hashOtpCode(challengeId, code),
-          maxAttempts:
-            this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
+          maxAttempts: this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
           expiresAt: new Date(Date.now() + expirySeconds * MS_PER_SECOND),
         })
 
