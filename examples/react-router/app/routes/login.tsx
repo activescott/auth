@@ -101,7 +101,9 @@ export default function Login({
             </button>
           </Form>
 
-          <aside className="mt-4 p-3 border border-amber-300 bg-amber-50 text-sm rounded">
+          {/* text-amber-900 is explicit because the page inherits near-white
+              text in dark mode while this box keeps a light background */}
+          <aside className="mt-4 p-3 border border-amber-300 bg-amber-50 text-amber-900 text-sm rounded">
             <strong>Dev mode:</strong> this example wires up{" "}
             <code>NodemailerTransport</code> with{" "}
             <code>isDevelopment=true</code>, so no email is actually sent — the
