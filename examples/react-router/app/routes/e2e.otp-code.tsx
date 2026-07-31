@@ -1,4 +1,4 @@
-import { getCapturedEmail } from "~/lib/auth.server"
+import { getCapturedEmail } from "~/lib/capture-transport.server"
 import type { Route } from "./+types/e2e.otp-code"
 
 /**
