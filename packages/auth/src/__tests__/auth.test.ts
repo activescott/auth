@@ -171,6 +171,79 @@ describe("Auth", () => {
 
       expect(response.status).toBe(500)
     })
+
+    it("should append setCookies from initiate result to the response", async () => {
+      const provider = createMockProvider({
+        initiate: vi.fn().mockResolvedValue({
+          success: true,
+          message: "Sent",
+          setCookies: ["auth_challenge=abc; HttpOnly", "other=1; Path=/"],
+        }),
+      })
+      auth = new Auth(createAuthConfig({ providers: [provider] }))
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+      })
+      const response = await auth.handleRequest(request)
+
+      expect(response.headers.getSetCookie()).toEqual([
+        "auth_challenge=abc; HttpOnly",
+        "other=1; Path=/",
+      ])
+    })
+
+    it("should append setCookies from verify result to the response", async () => {
+      const provider = createMockProvider({
+        verify: vi.fn().mockResolvedValue({
+          success: true,
+          user: { id: "user-1" },
+          identity: createMockIdentity(),
+          setCookies: ["auth_challenge=; Max-Age=0"],
+        }),
+      })
+      auth = new Auth(createAuthConfig({ providers: [provider] }))
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/verify`)
+      const response = await auth.handleRequest(request)
+
+      expect(response.headers.getSetCookie()).toEqual([
+        "auth_challenge=; Max-Age=0",
+      ])
+    })
+
+    it("should set no cookies when results omit setCookies", async () => {
+      auth = new Auth(createAuthConfig())
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+      })
+      const response = await auth.handleRequest(request)
+
+      expect(response.headers.getSetCookie()).toEqual([])
+    })
+  })
+
+  describe("createContext", () => {
+    it("should pass challengeStore through to the context", () => {
+      const challengeStore = {
+        create: vi.fn(),
+        findById: vi.fn(),
+        incrementAttempts: vi.fn(),
+        delete: vi.fn(),
+      }
+      auth = new Auth(createAuthConfig({ challengeStore }))
+
+      const context = auth.createContext(new Request(TEST_BASE_URL))
+      expect(context.challengeStore).toBe(challengeStore)
+    })
+
+    it("should leave challengeStore undefined when not configured", () => {
+      auth = new Auth(createAuthConfig())
+
+      const context = auth.createContext(new Request(TEST_BASE_URL))
+      expect(context.challengeStore).toBeUndefined()
+    })
   })
 
   describe("verifySession", () => {

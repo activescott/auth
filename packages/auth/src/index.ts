@@ -16,6 +16,8 @@ export type {
   AuthContext,
   ProviderRoute,
   AuthProvider,
+  Challenge,
+  ChallengeStore,
 } from "./types.js"
 
 // Auth class
@@ -23,6 +25,10 @@ export { Auth } from "./auth.js"
 
 // Session management
 export { SessionManager } from "./session/index.js"
+
+// OTP utilities and challenge storage
+export { generateOtpCode, hashOtpCode, verifyOtpCode } from "./otp.js"
+export { InMemoryChallengeStore } from "./stores/in-memory-challenge-store.js"
 
 // Errors
 export {
