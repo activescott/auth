@@ -1,0 +1,48 @@
+{
+  "name": "@activescott/auth-sms-twilio",
+  "version": "0.0.0",
+  "description": "Twilio SMS/RCS transport for @activescott/auth-provider-sms",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "authentication",
+    "sms",
+    "twilio",
+    "rcs",
+    "otp"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-sms-twilio"
+  },
+  "peerDependencies": {
+    "@activescott/auth-provider-sms": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@activescott/auth-provider-sms": "*",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.16"
+  }
+}
