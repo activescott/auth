@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react"
-import { Form, Link, redirect } from "react-router"
+import { Form, redirect } from "react-router"
 import { getAuthErrorMessage } from "@activescott/auth"
 import { getSession } from "~/lib/auth.server"
+import { CodeForm } from "~/components/code-form"
+import { TabLink } from "~/components/tab-link"
+import { usePreservedInput } from "~/hooks/use-preserved-input"
 import type { Route } from "./+types/login"
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -43,49 +45,8 @@ export default function Login({ loaderData }: Route.ComponentProps) {
   )
 }
 
-function TabLink({
-  to,
-  active,
-  children,
-}: {
-  to: string
-  active: boolean
-  children: string
-}) {
-  return (
-    <Link
-      to={to}
-      className={
-        active
-          ? "pb-2 border-b-2 border-blue-600 font-semibold text-blue-600"
-          : "pb-2 text-gray-500 hover:text-gray-800"
-      }
-    >
-      {children}
-    </Link>
-  )
-}
-
-/**
- * Keeps a form value across the full-page round trip to the auth route.
- * The form posts directly to the provider, which redirects back with
- * ?sent=1 or ?error=..., reloading the page and losing input state — so
- * the value is saved to sessionStorage on submit and restored on load
- * (letting the user resend or retry after an error without retyping).
- * sessionStorage rather than the redirect URL keeps the address/number
- * out of URLs, history, and server logs.
- */
-function usePreservedInput(storageKey: string): [string, (v: string) => void] {
-  const [value, setValue] = useState("")
-  useEffect(() => {
-    const saved = sessionStorage.getItem(storageKey)
-    if (saved) setValue(saved)
-  }, [storageKey])
-  return [value, setValue]
-}
-
 function EmailLogin({ sent }: { sent: boolean }) {
-  const [email, setEmail] = usePreservedInput("login.email")
+  const [email, setEmail, saveEmail] = usePreservedInput("login.email")
 
   return (
     <>
@@ -97,7 +58,7 @@ function EmailLogin({ sent }: { sent: boolean }) {
         action="/auth/email/initiate"
         reloadDocument
         className="flex flex-col gap-3"
-        onSubmit={() => sessionStorage.setItem("login.email", email)}
+        onSubmit={saveEmail}
       >
         <label htmlFor="email">Email</label>
         <input
@@ -147,7 +108,8 @@ function SmsLogin({ sent }: { sent: boolean }) {
   // The visible input takes the national number; the hidden field submits
   // the full E.164 value the provider expects. This example is wired for
   // US/Canada numbers (fixed +1) — adapt the prefix for your market.
-  const [nationalNumber, setNationalNumber] = usePreservedInput("login.phone")
+  const [nationalNumber, setNationalNumber, savePhone] =
+    usePreservedInput("login.phone")
 
   return (
     <>
@@ -159,7 +121,7 @@ function SmsLogin({ sent }: { sent: boolean }) {
         action="/auth/sms/initiate"
         reloadDocument
         className="flex flex-col gap-3"
-        onSubmit={() => sessionStorage.setItem("login.phone", nationalNumber)}
+        onSubmit={savePhone}
       >
         <label htmlFor="phone">Mobile phone number</label>
         <div className="flex rounded border focus-within:ring-2 focus-within:ring-blue-600">
@@ -208,39 +170,5 @@ function SmsLogin({ sent }: { sent: boolean }) {
         </>
       )}
     </>
-  )
-}
-
-/**
- * Code entry form shared by both providers — same input attributes
- * (one-time-code enables iOS/Android autofill), different verify action.
- */
-function CodeForm({ action, children }: { action: string; children: string }) {
-  return (
-    <Form
-      method="post"
-      action={action}
-      reloadDocument
-      className="flex flex-col gap-3 mt-6"
-    >
-      <label htmlFor="code">{children}</label>
-      <input
-        id="code"
-        name="code"
-        type="text"
-        autoComplete="one-time-code"
-        inputMode="numeric"
-        pattern="[0-9]{6}"
-        maxLength={6}
-        required
-        className="border p-2 rounded font-mono text-2xl tracking-[0.5em] text-center"
-      />
-      <button
-        type="submit"
-        className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-      >
-        Sign in with code
-      </button>
-    </Form>
   )
 }
