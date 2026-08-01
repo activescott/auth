@@ -62,7 +62,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build auth packages
-        run: npm run build --workspace=@activescott/auth --workspace=@activescott/auth-provider-sms --workspace=@activescott/auth-sms-twilio --workspace=@activescott/auth-sms-aws --workspace=@activescott/auth-adapter-react-router
+        run: npm run build --workspace=@activescott/auth --workspace=@activescott/auth-provider-sms --workspace=@activescott/auth-sms-twilio --workspace=@activescott/auth-adapter-react-router
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:

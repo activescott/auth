@@ -1,6 +1,6 @@
 /**
  * Sends SMS messages. Implementations live in vendor packages
- * (@activescott/auth-sms-twilio, @activescott/auth-sms-aws) or your own
+ * (@activescott/auth-sms-twilio) or your own
  * code; the provider itself has no vendor dependencies.
  */
 export interface SmsTransport {

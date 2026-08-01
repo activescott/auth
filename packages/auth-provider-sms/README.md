@@ -8,7 +8,6 @@ SMS one-time-code provider for [`@activescott/auth`](https://www.npmjs.com/packa
 This package has **no vendor dependencies** — message delivery is injected via the `SmsTransport` interface. Use a vendor package or write your own:
 
 - [`@activescott/auth-sms-twilio`](https://www.npmjs.com/package/@activescott/auth-sms-twilio) — Twilio (SMS, or RCS via a Messaging Service)
-- [`@activescott/auth-sms-aws`](https://www.npmjs.com/package/@activescott/auth-sms-aws) — AWS End User Messaging
 - `ConsoleTransport` (included) — prints codes to the server console for development
 - Custom: implement `SmsTransport { sendMessage(to, message): Promise<boolean> }`
 

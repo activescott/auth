@@ -20,17 +20,16 @@ No env vars to set — the default `SMS_TRANSPORT=console` prints the code to th
 
 ## Send real texts
 
-The transport is selected by `SMS_TRANSPORT` (`console` | `twilio` | `aws`) in `.env`. Each vendor has an interactive setup script that verifies credentials, helps pick/provision a sender, writes `.env`, and prints the manual steps (carrier registration, RCS onboarding) it can't do for you:
+The transport is selected by `SMS_TRANSPORT` (`console` | `twilio`) in `.env`. An interactive setup script verifies credentials, helps pick/provision a sender, writes `.env`, and prints the manual steps (carrier registration, RCS onboarding) it can't do for you:
 
 ```bash
 cd examples/react-router-sms
 ./scripts/setup-twilio.mts   # Twilio: SMS, or RCS via a Messaging Service
-./scripts/setup-aws.mts      # AWS End User Messaging: SMS, or RCS via a pool
 ```
 
-The scripts are plain TypeScript run directly by Node ([type stripping](https://nodejs.org/api/typescript.html#type-stripping), on by default since Node 22.18) — no install or build step. The repo's `.nvmrc` pins Node 22.
+The script is plain TypeScript run directly by Node ([type stripping](https://nodejs.org/api/typescript.html#type-stripping), on by default since Node 22.18) — no install or build step. The repo's `.nvmrc` pins Node 22.
 
-See [`.env.example`](./.env.example) for the variables each transport uses, and the vendor package READMEs ([`auth-sms-twilio`](../../packages/auth-sms-twilio), [`auth-sms-aws`](../../packages/auth-sms-aws)) for provisioning details.
+See [`.env.example`](./.env.example) for the variables the transport uses, and the [`auth-sms-twilio` README](../../packages/auth-sms-twilio) for provisioning details.
 
 If a text never arrives, check Twilio's [per-message delivery log](https://console.twilio.com/us1/monitor/logs/sms) — carriers can filter messages the API accepted (e.g. error 30034, an unregistered A2P 10DLC number), and that log is the only place the failure shows. More troubleshooting in the [`auth-sms-twilio` README](../../packages/auth-sms-twilio#provisioning-step-by-step).
 
