@@ -1,0 +1,52 @@
+{
+  "name": "@activescott/auth-sms-aws",
+  "version": "0.0.0",
+  "description": "AWS End User Messaging SMS transport for @activescott/auth-provider-sms",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "authentication",
+    "sms",
+    "aws",
+    "pinpoint",
+    "end-user-messaging",
+    "otp"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-sms-aws"
+  },
+  "dependencies": {
+    "@aws-sdk/client-pinpoint-sms-voice-v2": "^3.750.0"
+  },
+  "peerDependencies": {
+    "@activescott/auth-provider-sms": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@activescott/auth-provider-sms": "*",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.16"
+  }
+}

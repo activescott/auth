@@ -171,6 +171,7 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 | [`@activescott/auth-provider-email`](./packages/auth-provider-email)             | Email magic link provider. Ships a Nodemailer SMTP transport; the `EmailTransport` interface lets you swap in others (Resend, SES, etc.). |
 | [`@activescott/auth-provider-sms`](./packages/auth-provider-sms)                 | SMS one-time-code provider. Vendor-neutral (`SmsTransport` interface); ships a console transport for development.                         |
 | [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transport (SMS, or RCS via a Messaging Service). Raw fetch, zero dependencies.                                                     |
+| [`@activescott/auth-sms-aws`](./packages/auth-sms-aws)                           | AWS End User Messaging transport (SMS; RCS via phone pools).                                                                              |
 | [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v7 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.                            |
 
 Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
