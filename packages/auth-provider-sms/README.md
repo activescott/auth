@@ -9,7 +9,7 @@ This package has **no vendor dependencies** — message delivery is injected via
 
 - [`@activescott/auth-sms-twilio`](https://www.npmjs.com/package/@activescott/auth-sms-twilio) — Twilio (SMS, or RCS via a Messaging Service)
 - `ConsoleTransport` (included) — prints codes to the server console for development
-- Custom: implement `SmsTransport { sendMessage(to, message): Promise<boolean> }`
+- Custom: implement `SmsTransport { sendMessage(to, message): Promise<boolean> }`. An AWS End User Messaging transport is drafted in [PR #37](https://github.com/activescott/auth/pull/37) — implemented and unit-tested but unverified against a live AWS account; if you want AWS and can test it end to end, feel free to take over that PR ([#36](https://github.com/activescott/auth/issues/36) has the checklist).
 
 ## Usage
 
@@ -78,7 +78,7 @@ Your MyApp sign-in code is: 123456
 @myapp.example #123456
 ```
 
-The literal sentence `Your <app> sign-in code is: <code>` is what iOS keys its AutoFill heuristics on; the last line is the WebOTP format. Custom templates should keep a similar shape for autofill to work.
+The last line is the [origin-bound one-time code format](https://wicg.github.io/sms-one-time-codes/) (a WICG spec co-edited by Apple and Google — what [WebOTP](https://developer.mozilla.org/docs/Web/API/WebOTP_API) and Safari's code autofill parse). The human-readable sentence matters too: Apple publishes no exact grammar for iOS Security Code AutoFill, which recognizes codes heuristically from the message text (see [`autocomplete="one-time-code"` on MDN](https://developer.mozilla.org/docs/Web/HTML/Attributes/autocomplete)) — `Your <app> sign-in code is: <code>` follows the widely observed patterns. Custom templates should keep a similar shape for autofill to work.
 
 ## Phone numbers
 
@@ -89,3 +89,5 @@ Input is normalized (spaces, dashes, dots, parentheses stripped; leading `00` �
 Same challenge model as the email provider: one server-side challenge per send, code stored only as a salted SHA-256 hash, attempts counted **before** each comparison (capped at `maxAttempts`), constant-time compare, single-use (deleted on success), and the challenge is bound to the initiating browser by an HttpOnly cookie — a code alone is useless without it.
 
 Delivery-level protections (per-number send throttling, fraud/pumping protection) belong at the app and vendor level; both Twilio and AWS offer built-in fraud guards.
+
+If you think any of this should work differently — protections that belong in this library, a weakness in the model — please [open an issue or PR](https://github.com/activescott/auth/issues) to discuss.

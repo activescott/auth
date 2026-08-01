@@ -55,7 +55,7 @@ Everything speaks Fetch-API `Request`/`Response` (no Node-only APIs in core path
 Follow best practices for best-in-class, easy-to-understand JS/TS open-source projects. Here that means:
 
 - Small, focused modules with named exports; kebab-case filenames. No barrel `index.ts` aggregating fewer than 3 modules.
-- JSDoc on every export. In example app, write for reader copying code into own app: explain *why* (which input attributes trigger OTP autofill, why tabs are links, why sessionStorage instead of redirect URL) — not restatement of code.
+- JSDoc on every export. In example app, write for reader copying code into own app: explain _why_ (which input attributes trigger OTP autofill, why tabs are links, why sessionStorage instead of redirect URL) — not restatement of code.
 - Examples teaching material first: prefer little duplication over indirection making reader chase imports to understand flow. Generic reusable pieces (components, hooks) get extracted — with standalone docs.
 - Resolve messy input at boundary where it enters (e.g. login form composes full E.164 number before submit) so everything downstream handles one canonical form.
 - Zero runtime deps in core and provider packages; deps live only in vendor adapter packages.

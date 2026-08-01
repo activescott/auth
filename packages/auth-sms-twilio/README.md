@@ -28,7 +28,7 @@ new SmsProvider(
 1. Create a Twilio account: https://www.twilio.com/try-twilio
 2. Grab the **Account SID** and **Auth Token** from https://console.twilio.com
 3. Buy an SMS-capable number (Console → Phone Numbers → Buy a Number), or run the repo's interactive script which does 1–3 checks and the purchase for you: [`./infra/twilio/setup-twilio.mts`](https://github.com/activescott/auth/tree/main/infra/twilio)
-4. **US traffic**: register for A2P 10DLC or complete toll-free verification — unregistered numbers get filtered by carriers. Console → Regulatory Compliance.
+4. **US traffic**: register for [A2P 10DLC](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc) or complete toll-free verification — unregistered numbers get filtered by carriers. Console → Regulatory Compliance.
 5. Set the env vars above; done.
 
 Troubleshooting:
@@ -46,10 +46,14 @@ Twilio delivers RCS through a **Messaging Service** with an onboarded RCS sender
 
 ## Testing
 
-The constructor accepts an injectable `fetch` for tests:
+Three levels, cheapest first:
+
+1. **No Twilio at all** (recommended for app development): use the provider's `ConsoleTransport` — codes print to the server console. The [example app](https://github.com/activescott/auth/tree/main/examples/react-router) does this by default and its e2e suite captures messages at the `SmsTransport` seam, so full sign-in flows are tested without any SMS gateway.
+2. **Exercise the real API without sending or charging**: Twilio's [test credentials](https://www.twilio.com/docs/iam/test-credentials) — a separate SID/token pair with magic numbers (`+15005550006` succeeds; others reproduce specific errors like invalid-number 21211). Note test-credential messages are never delivered and don't appear in the console's message logs, so they verify your API integration and error handling, not message content or delivery.
+3. **Real delivery**: live credentials and a registered number; verify content and delivery in the [per-message log](https://console.twilio.com/us1/monitor/logs/sms).
+
+For unit tests, the constructor accepts an injectable `fetch` (this package's own tests use it; apps usually don't need it):
 
 ```ts
 new TwilioTransport({ accountSid, authToken, from, fetch: fetchMock })
 ```
-
-Twilio's [test credentials](https://www.twilio.com/docs/iam/test-credentials) (magic numbers like `+15005550006`) exercise the API without sending or charging.

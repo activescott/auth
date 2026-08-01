@@ -2,7 +2,7 @@
   "name": "activescott-auth",
   "version": "0.0.0",
   "private": true,
-  "description": "Passwordless, framework-agnostic direct authentication: magic links, email and SMS one-time codes, passkeys planned",
+  "description": "Framework-agnostic direct authentication, deliberately small: single-use magic links and one-time codes via email and SMS today; passkeys planned. No third-party identity providers.",
   "type": "module",
   "workspaces": [
     "packages/auth",
