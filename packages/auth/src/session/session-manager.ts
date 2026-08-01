@@ -1,10 +1,6 @@
 import { SignJWT, jwtVerify } from "jose"
 import type { Session, SessionConfig, AuthUser, Identity } from "../types.js"
-
-// Time unit multipliers in seconds
-const SECONDS_PER_MINUTE = 60
-const SECONDS_PER_HOUR = 3600
-const SECONDS_PER_DAY = 86_400
+import { parseDuration } from "../provider-util.js"
 
 /**
  * Manages session creation, verification, and cookie handling
@@ -19,7 +15,7 @@ export class SessionManager {
     user: AuthUser,
     identity: Identity,
   ): Promise<string> {
-    const expiresInSeconds = this.parseMaxAge(this.config.maxAge)
+    const expiresInSeconds = parseDuration(this.config.maxAge)
 
     return new SignJWT({
       userId: user.id,
@@ -129,7 +125,7 @@ export class SessionManager {
     overrides?: { maxAge?: number },
   ): string {
     const { cookieName, cookie, maxAge } = this.config
-    const maxAgeSeconds = overrides?.maxAge ?? this.parseMaxAge(maxAge)
+    const maxAgeSeconds = overrides?.maxAge ?? parseDuration(maxAge)
 
     const parts = [
       `${cookieName}=${encodeURIComponent(value)}`,
@@ -160,28 +156,6 @@ export class SessionManager {
     )
     if (!target) return null
     return decodeURIComponent(target.split("=")[1] ?? "")
-  }
-
-  /**
-   * Parse a max age string like "30d", "7d", "24h" to seconds
-   */
-  private parseMaxAge(maxAge: string): number {
-    // Match patterns like "30d", "7d", "24h", "60m", "3600s"
-    const match = maxAge.match(/^(\d+)([dhms])$/)
-    if (!match) return 0
-
-    const [, valueString, unitChar] = match
-    if (!valueString || !unitChar) return 0
-
-    const value = Number.parseInt(valueString, 10)
-    const multipliers: Record<string, number> = {
-      s: 1,
-      m: SECONDS_PER_MINUTE,
-      h: SECONDS_PER_HOUR,
-      d: SECONDS_PER_DAY,
-    }
-
-    return value * (multipliers[unitChar] ?? 1)
   }
 
   /**
