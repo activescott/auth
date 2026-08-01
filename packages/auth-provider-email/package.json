@@ -36,7 +36,7 @@
     "directory": "packages/auth-provider-email"
   },
   "dependencies": {
-    "nodemailer": "^8.0.7"
+    "nodemailer": "^9.0.3"
   },
   "peerDependencies": {
     "@activescott/auth": "^2.1.0"
