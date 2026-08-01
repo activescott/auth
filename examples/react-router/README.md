@@ -34,7 +34,7 @@ cp .env.example.smtp .env      # send real email via an SMTP provider
 
 ## Send real texts
 
-Set `SMS_TRANSPORT=twilio` in `.env`. The interactive setup script verifies credentials, helps pick/provision a sender, writes `.env`, and prints the manual steps (carrier registration, RCS onboarding) it can't do for you — run from the repo root:
+Set the Twilio env vars in `.env` (see [`.env.example`](./.env.example)) — when they're all present the app texts real messages; when any are missing it falls back to the console transport and logs which vars are absent. The interactive setup script verifies credentials, helps pick/provision a sender, writes `.env`, and prints the manual steps (carrier registration, RCS onboarding) it can't do for you — run from the repo root:
 
 ```bash
 ./infra/twilio/setup-twilio.mts
@@ -55,7 +55,7 @@ npm run install-browsers --workspace=@activescott/auth-example-react-router-e2e 
 npm run e2e --workspace=@activescott/auth-example-react-router-e2e
 ```
 
-Playwright's `webServer` block builds the app, starts it on `:3200` with stable test secrets, runs the tests, and tears it down. E2e always forces `SMS_TRANSPORT=console`, so tests never text real messages.
+Playwright's `webServer` block builds the app, starts it on `:3200` with stable test secrets, runs the tests, and tears it down. `E2E_TEST_MODE` forces the console SMS transport, so tests never text real messages even if Twilio env vars are present.
 
 ## Testing pattern: capture transports + readback route
 

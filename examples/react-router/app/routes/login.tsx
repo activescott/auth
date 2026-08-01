@@ -160,12 +160,11 @@ function SmsLogin({ sent }: { sent: boolean }) {
           {/* text-amber-900 is explicit because the page inherits near-white
               text in dark mode while this box keeps a light background */}
           <aside className="mt-4 p-3 border border-amber-300 bg-amber-50 text-amber-900 text-sm rounded">
-            <strong>Dev mode:</strong> with the default{" "}
-            <code>SMS_TRANSPORT=console</code>, no SMS is actually sent — the
-            code is printed to the <strong>server console</strong> (the terminal
-            running <code>npm run dev</code>). Set{" "}
-            <code>SMS_TRANSPORT=twilio</code> in <code>.env</code> to text real
-            messages.
+            <strong>Dev mode:</strong> unless Twilio is configured in{" "}
+            <code>.env</code>, no SMS is actually sent — the code is printed to
+            the <strong>server console</strong> (the terminal running{" "}
+            <code>npm run dev</code>). Set the <code>TWILIO_*</code> vars in{" "}
+            <code>.env</code> to text real messages.
           </aside>
         </>
       )}

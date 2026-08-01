@@ -227,7 +227,6 @@ a suspension notice at https://www.twilio.com/console/projects/summary
   ).trim()
 
   const lines = [
-    "SMS_TRANSPORT=twilio",
     `TWILIO_ACCOUNT_SID=${accountSid}`,
     `TWILIO_AUTH_TOKEN=${authToken}`,
     messagingServiceSid

@@ -30,11 +30,10 @@ export default defineConfig({
       // the test run (port, prod mode for `react-router-serve`).
       NODE_ENV: "production",
       PORT: String(PORT),
-      // Console transport regardless of the developer's .env — e2e must
-      // never text real messages
-      SMS_TRANSPORT: "console",
       // Enables the /e2e/otp-code readback route so specs can fetch the
-      // OTP code without an inbox or a phone
+      // OTP code without an inbox or a phone. Also forces the console SMS
+      // transport so e2e never texts real messages even when Twilio env
+      // vars are present in the shell environment.
       E2E_TEST_MODE: "true",
     },
   },
