@@ -293,6 +293,12 @@ export interface AuthContext {
   /** Challenge store for magic links, OTP codes, and similar short-lived
    * verification state */
   challengeStore: ChallengeStore
+  /** Return the authenticated user and identity for the request's session
+   * cookie, or null when there is no valid session. Lets providers require
+   * an existing session (e.g., passkey registration). */
+  getSession?: (
+    request: Request,
+  ) => Promise<{ user: AuthUser; identity: Identity } | null>
 }
 
 /**
@@ -342,6 +348,18 @@ export interface AuthProvider {
    * prefetch URLs cannot consume the link).
    */
   verify(request: Request, context: AuthContext): Promise<AuthResult | Response>
+
+  /**
+   * Handle a provider-specific action beyond initiate/verify — e.g., the
+   * passkey provider's register-options, register-verify,
+   * authenticate-options, authenticate-verify. `Auth.handleRequest`
+   * dispatches actions it does not recognize here before returning 404.
+   */
+  handleAction?(
+    action: string,
+    request: Request,
+    context: AuthContext,
+  ): Promise<Response>
 
   /**
    * Check if this provider can handle the given request.

@@ -185,6 +185,10 @@ export class Auth {
         return this.authResultToResponse(result)
       }
 
+      if (provider.handleAction) {
+        return await provider.handleAction(action, request, context)
+      }
+
       return new Response("Unknown action", { status: 404 })
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -290,6 +294,7 @@ export class Auth {
       createSession: (user, identity) =>
         this.sessionManager.createSessionCookie(user, identity),
       challengeStore: this.config.challengeStore,
+      getSession: (sessionRequest) => this.verifySession(sessionRequest),
     }
   }
 
