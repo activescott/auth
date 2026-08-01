@@ -10,7 +10,14 @@ import {
   EmailProvider,
   NodemailerTransport,
 } from "@activescott/auth-provider-email"
-import { CaptureTransport } from "./capture-transport.server"
+import {
+  SmsProvider,
+  ConsoleTransport,
+  type SmsTransport,
+} from "@activescott/auth-provider-sms"
+import { TwilioTransport } from "@activescott/auth-sms-twilio"
+import { CaptureEmailTransport } from "./capture-email-transport.server"
+import { CaptureSmsTransport } from "./capture-sms-transport.server"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
 
 /**
@@ -28,9 +35,11 @@ const userStore: UserStore = {
     return users.get(id) ?? null
   },
   async create({ identifier }) {
+    // identifier is an email or a phone number depending on which
+    // provider signed the user up
     const user: AuthUser = {
       id: crypto.randomUUID(),
-      metadata: { email: identifier },
+      metadata: { identifier },
     }
     users.set(user.id, user)
     return user
@@ -89,6 +98,48 @@ const SESSION_SECRET =
  */
 const smtpConfigured = Boolean(process.env.SMTP_HOST)
 
+/**
+ * Vendor selection via SMS_TRANSPORT=console|twilio (see .env.example).
+ * Console is the zero-setup default: codes are printed to the server
+ * console instead of texted.
+ */
+function createSmsTransport(): SmsTransport {
+  const transport = process.env.SMS_TRANSPORT ?? "console"
+
+  switch (transport) {
+    case "twilio": {
+      console.log(
+        "SMS via Twilio. If a text never arrives, check the delivery log " +
+          "(carriers can filter messages the API accepted, e.g. error 30034 " +
+          "for unregistered A2P 10DLC numbers): " +
+          "https://console.twilio.com/us1/monitor/logs/sms",
+      )
+      return new TwilioTransport({
+        accountSid: requireEnv("TWILIO_ACCOUNT_SID"),
+        authToken: requireEnv("TWILIO_AUTH_TOKEN"),
+        from: process.env.TWILIO_FROM,
+        messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+      })
+    }
+    case "console": {
+      return new ConsoleTransport()
+    }
+    default: {
+      throw new Error(
+        `Unknown SMS_TRANSPORT "${transport}" (expected console or twilio)`,
+      )
+    }
+  }
+}
+
+function requireEnv(name: string): string {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(`${name} is required when SMS_TRANSPORT is set`)
+  }
+  return value
+}
+
 export const auth = new Auth({
   session: {
     secret: SESSION_SECRET,
@@ -123,7 +174,18 @@ export const auth = new Auth({
       // Dev mode (no SMTP configured) → emails are logged to the server
       // console instead of sent. Set SMTP_HOST (see .env.example) to send
       // real email.
-      new CaptureTransport(new NodemailerTransport(!smtpConfigured)),
+      new CaptureEmailTransport(new NodemailerTransport(!smtpConfigured)),
+    ),
+    new SmsProvider(
+      {
+        appName: "RR Auth Example",
+        // Uncomment with your app's domain to enable WebOTP one-tap
+        // autofill on Android/Chrome (appends "@domain #code" to the SMS):
+        // webOtpDomain: "example.com",
+      },
+      // The capture wrapper records the last code per phone number for
+      // the e2e readback route; it delegates to the real transport.
+      new CaptureSmsTransport(createSmsTransport()),
     ),
   ],
 })

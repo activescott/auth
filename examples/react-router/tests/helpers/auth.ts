@@ -48,3 +48,52 @@ export async function loginAs(page: Page, email: string): Promise<void> {
   await page.getByRole("button", { name: /confirm sign-in/i }).click()
   await page.waitForURL("**/dashboard")
 }
+
+interface CapturedSms {
+  message: string
+  code?: string
+}
+
+/**
+ * Request a sign-in code via the phone tab of the login form, then return
+ * the captured SMS. The login UI fixes the +1 prefix, so pass the national
+ * number (e.g. "4155550100"); the message is captured under the full E.164
+ * form.
+ */
+export async function requestSignInCode(
+  page: Page,
+  nationalNumber: string,
+): Promise<CapturedSms> {
+  await page.goto("/login?via=sms")
+  await page.getByLabel(/mobile phone number/i).fill(nationalNumber)
+  await page.getByRole("button", { name: /text me a code/i }).click()
+  await expect(page.getByLabel(/enter the code/i)).toBeVisible()
+
+  const phone = `+1${nationalNumber.replaceAll(/[\s().-]/g, "")}`
+  const response = await page.request.get(
+    `/e2e/otp-code?phone=${encodeURIComponent(phone)}`,
+    { headers: { "x-e2e-secret": E2E_SECRET } },
+  )
+  if (!response.ok()) {
+    throw new Error(`No captured SMS for ${phone}: ${response.status()}`)
+  }
+  return (await response.json()) as CapturedSms
+}
+
+/**
+ * Log in by requesting a texted code and submitting it through the code
+ * form — the same path a real user takes from their messages
+ */
+export async function loginWithSms(
+  page: Page,
+  nationalNumber: string,
+): Promise<void> {
+  const { code } = await requestSignInCode(page, nationalNumber)
+  if (!code) throw new Error("no code captured")
+
+  await page.getByLabel(/enter the code/i).fill(code)
+  await Promise.all([
+    page.waitForURL("**/dashboard"),
+    page.getByRole("button", { name: /sign in with code/i }).click(),
+  ])
+}

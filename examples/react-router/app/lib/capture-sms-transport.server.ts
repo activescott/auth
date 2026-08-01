@@ -17,7 +17,7 @@ export function getCapturedSms(phone: string): CapturedSms | null {
   return capturedMessages.get(phone) ?? null
 }
 
-export class CaptureTransport implements SmsTransport {
+export class CaptureSmsTransport implements SmsTransport {
   public constructor(private readonly inner: SmsTransport) {}
 
   public sendMessage(to: string, message: string): Promise<boolean> {

@@ -34,7 +34,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build auth packages
-        run: npm run build --workspace=@activescott/auth --workspace=@activescott/auth-provider-email --workspace=@activescott/auth-adapter-react-router
+        run: npm run build --workspace=@activescott/auth --workspace=@activescott/auth-provider-email --workspace=@activescott/auth-provider-sms --workspace=@activescott/auth-sms-twilio --workspace=@activescott/auth-adapter-react-router
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -52,36 +52,8 @@ jobs:
           path: examples/react-router/tests/playwright-report
           retention-days: 7
 
-  sms-example-e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Build auth packages
-        run: npm run build --workspace=@activescott/auth --workspace=@activescott/auth-provider-sms --workspace=@activescott/auth-sms-twilio --workspace=@activescott/auth-adapter-react-router
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('examples/react-router-sms/tests/package.json') }}
-      - name: Install Playwright browsers
-        run: npm run install-browsers --workspace=@activescott/auth-example-react-router-sms-e2e
-      - name: Run e2e tests
-        run: npm run e2e --workspace=@activescott/auth-example-react-router-sms-e2e
-      - name: Upload Playwright report on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-sms
-          path: examples/react-router-sms/tests/playwright-report
-          retention-days: 7
-
   release:
-    needs: [validate, example-e2e, sms-example-e2e]
+    needs: [validate, example-e2e]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:

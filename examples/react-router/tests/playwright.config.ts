@@ -30,8 +30,11 @@ export default defineConfig({
       // the test run (port, prod mode for `react-router-serve`).
       NODE_ENV: "production",
       PORT: String(PORT),
+      // Console transport regardless of the developer's .env — e2e must
+      // never text real messages
+      SMS_TRANSPORT: "console",
       // Enables the /e2e/otp-code readback route so specs can fetch the
-      // OTP code without an inbox
+      // OTP code without an inbox or a phone
       E2E_TEST_MODE: "true",
     },
   },

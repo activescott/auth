@@ -11,9 +11,7 @@
     "packages/auth-sms-twilio",
     "packages/auth-adapter-react-router",
     "examples/react-router",
-    "examples/react-router/tests",
-    "examples/react-router-sms",
-    "examples/react-router-sms/tests"
+    "examples/react-router/tests"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
