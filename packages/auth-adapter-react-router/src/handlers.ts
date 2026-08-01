@@ -86,8 +86,13 @@ export function createAuthHandlers<TUser = AuthUser>(
       const url = new URL(request.url)
       const path = url.pathname
 
-      // Check if this is a verify/callback request
-      const isVerify = path.includes("/verify") || path.includes("/callback")
+      // Exact action match: only the verify|callback actions get the
+      // session-and-redirect handling below. Provider-specific actions
+      // whose names merely contain "verify" (e.g. the passkey
+      // provider's register-verify) fall through to auth.handleRequest.
+      const actionMatch = path.match(/\/auth\/[^/]+\/([^/]+)/)
+      const action = actionMatch?.[1]
+      const isVerify = action === "verify" || action === "callback"
 
       if (!isVerify) {
         // For initiate requests, use the default handler
