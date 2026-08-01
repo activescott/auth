@@ -53,3 +53,27 @@ test.describe("auth", () => {
     await expect(page).toHaveURL(/\/login/)
   })
 })
+
+test.describe("input preservation", () => {
+  test("the email survives the sent round trip for resend", async ({
+    page,
+  }) => {
+    await page.goto("/login")
+    await page.getByLabel(/email/i).fill("keep-me@example.com")
+    await page.getByRole("button", { name: /send magic link/i }).click()
+    await expect(page.getByText(/check your email/i)).toBeVisible()
+    await expect(page.getByLabel("Email", { exact: true })).toHaveValue(
+      "keep-me@example.com",
+    )
+  })
+
+  test("the phone number survives an error round trip", async ({ page }) => {
+    await page.goto("/login?via=sms")
+    await page.getByLabel(/mobile phone number/i).fill("notaphone")
+    await page.getByRole("button", { name: /text me a code/i }).click()
+    await expect(page).toHaveURL(/error=/)
+    await expect(page.getByLabel(/mobile phone number/i)).toHaveValue(
+      "notaphone",
+    )
+  })
+})

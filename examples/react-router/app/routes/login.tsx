@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Form, Link, redirect } from "react-router"
 import { getAuthErrorMessage } from "@activescott/auth"
 import { getSession } from "~/lib/auth.server"
@@ -66,7 +66,27 @@ function TabLink({
   )
 }
 
+/**
+ * Keeps a form value across the full-page round trip to the auth route.
+ * The form posts directly to the provider, which redirects back with
+ * ?sent=1 or ?error=..., reloading the page and losing input state — so
+ * the value is saved to sessionStorage on submit and restored on load
+ * (letting the user resend or retry after an error without retyping).
+ * sessionStorage rather than the redirect URL keeps the address/number
+ * out of URLs, history, and server logs.
+ */
+function usePreservedInput(storageKey: string): [string, (v: string) => void] {
+  const [value, setValue] = useState("")
+  useEffect(() => {
+    const saved = sessionStorage.getItem(storageKey)
+    if (saved) setValue(saved)
+  }, [storageKey])
+  return [value, setValue]
+}
+
 function EmailLogin({ sent }: { sent: boolean }) {
+  const [email, setEmail] = usePreservedInput("login.email")
+
   return (
     <>
       {/* Posts directly to the auth catch-all route. The provider sends
@@ -77,6 +97,7 @@ function EmailLogin({ sent }: { sent: boolean }) {
         action="/auth/email/initiate"
         reloadDocument
         className="flex flex-col gap-3"
+        onSubmit={() => sessionStorage.setItem("login.email", email)}
       >
         <label htmlFor="email">Email</label>
         <input
@@ -85,6 +106,8 @@ function EmailLogin({ sent }: { sent: boolean }) {
           type="email"
           autoComplete="email"
           required
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
           className="border p-2 rounded"
         />
         <button
@@ -124,7 +147,7 @@ function SmsLogin({ sent }: { sent: boolean }) {
   // The visible input takes the national number; the hidden field submits
   // the full E.164 value the provider expects. This example is wired for
   // US/Canada numbers (fixed +1) — adapt the prefix for your market.
-  const [nationalNumber, setNationalNumber] = useState("")
+  const [nationalNumber, setNationalNumber] = usePreservedInput("login.phone")
 
   return (
     <>
@@ -136,6 +159,7 @@ function SmsLogin({ sent }: { sent: boolean }) {
         action="/auth/sms/initiate"
         reloadDocument
         className="flex flex-col gap-3"
+        onSubmit={() => sessionStorage.setItem("login.phone", nationalNumber)}
       >
         <label htmlFor="phone">Mobile phone number</label>
         <div className="flex rounded border focus-within:ring-2 focus-within:ring-blue-600">
