@@ -96,6 +96,10 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.release.outputs.packages != '[]'
     strategy:
+      # One package failing to publish must not cancel the others —
+      # their tags already exist, and a cancelled publish has no retry
+      # path (reruns use the original workflow snapshot and re-cancel).
+      fail-fast: false
       matrix:
         package: ${{ fromJson(needs.release.outputs.packages) }}
 
