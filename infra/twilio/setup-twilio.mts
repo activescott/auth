@@ -6,16 +6,22 @@ import { resolve, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
 /**
- * Interactive Twilio provisioning for the SMS example. Prompts for
- * credentials, verifies them, helps you pick (or buy) a number or a
- * Messaging Service, and writes the result to .env. Manual steps that
- * can't be scripted (RCS onboarding, toll-free verification) are printed
- * as a checklist at the end.
+ * Interactive Twilio provisioning for SMS auth. Prompts for credentials,
+ * verifies them, helps you pick (or buy) a number or a Messaging Service,
+ * and writes the result to a .env file. Manual steps that can't be
+ * scripted (RCS onboarding, toll-free verification) are printed as a
+ * checklist at the end.
+ *
+ * Usage: ./infra/twilio/setup-twilio.mts [path/to/.env]
+ * The default target is the example app's .env; pass a path to write your
+ * own app's env file instead.
  */
 
 const API = "https://api.twilio.com/2010-04-01"
-const exampleDir = resolve(dirname(fileURLToPath(import.meta.url)), "..")
-const envPath = resolve(exampleDir, ".env")
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
+const envPath = resolve(
+  process.argv[2] ?? resolve(repoRoot, "examples/react-router/.env"),
+)
 
 async function question(prompt: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
@@ -248,7 +254,9 @@ Manual steps you may still need (not scriptable):
     Once onboarded, set TWILIO_MESSAGING_SERVICE_SID in .env; Twilio
     delivers via RCS with automatic SMS fallback, no code changes.
 
-Run: npm run dev   → http://localhost:5173/login
+Try it (from the repo root):
+  npm run dev --workspace=examples/react-router
+  → http://localhost:5173/login?via=sms
 `)
 }
 

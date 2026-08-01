@@ -47,11 +47,7 @@ cp examples/react-router/.env.example.mailpit examples/react-router/.env
 
 Restart the dev server; emails land in the Mailpit inbox at http://localhost:8025.
 
-There's also an **SMS example** ([`examples/react-router-sms`](./examples/react-router-sms)) — same app shape, but sign-in codes are texted (or printed to the console with the default `SMS_TRANSPORT=console`):
-
-```bash
-npm run dev --workspace=examples/react-router-sms
-```
+The same app also demonstrates **SMS sign-in** — open the Phone tab (http://localhost:5173/login?via=sms); codes are printed to the console with the default `SMS_TRANSPORT=console`, or texted for real once you run the Twilio setup script (`./infra/twilio/setup-twilio.mts`). See the [example README](./examples/react-router#send-real-texts).
 
 ## Install
 
