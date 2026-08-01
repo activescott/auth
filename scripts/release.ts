@@ -68,6 +68,10 @@ try {
       name: "@activescott/auth-provider-sms",
       dir: "packages/auth-provider-sms",
     },
+    "auth-provider-passkey": {
+      name: "@activescott/auth-provider-passkey",
+      dir: "packages/auth-provider-passkey",
+    },
     "auth-sms-twilio": {
       name: "@activescott/auth-sms-twilio",
       dir: "packages/auth-sms-twilio",

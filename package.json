@@ -8,6 +8,7 @@
     "packages/auth",
     "packages/auth-provider-email",
     "packages/auth-provider-sms",
+    "packages/auth-provider-passkey",
     "packages/auth-sms-twilio",
     "packages/auth-adapter-react-router",
     "examples/react-router",

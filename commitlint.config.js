@@ -8,6 +8,7 @@ export default {
         "auth",
         "auth-provider-email",
         "auth-provider-sms",
+        "auth-provider-passkey",
         "auth-sms-twilio",
         "auth-adapter-react-router",
         "examples",

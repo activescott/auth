@@ -1,0 +1,55 @@
+{
+  "name": "@activescott/auth-provider-passkey",
+  "version": "0.1.0",
+  "description": "Passkey (WebAuthn) provider for @activescott/auth",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "authentication",
+    "passkey",
+    "webauthn",
+    "fido2"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-provider-passkey"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.2.2",
+    "jose": "^6.2.6"
+  },
+  "peerDependencies": {
+    "@activescott/auth": "^2.2.0"
+  },
+  "devDependencies": {
+    "@activescott/auth": "*",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.16"
+  }
+}
