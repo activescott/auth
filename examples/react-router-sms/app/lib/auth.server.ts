@@ -12,6 +12,7 @@ import {
   type SmsTransport,
 } from "@activescott/auth-provider-sms"
 import { TwilioTransport } from "@activescott/auth-sms-twilio"
+import { AwsSmsTransport } from "@activescott/auth-sms-aws"
 import { CaptureTransport } from "./capture-transport.server"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
 
@@ -97,12 +98,19 @@ function createSmsTransport(): SmsTransport {
         messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
       })
     }
+    case "aws": {
+      return new AwsSmsTransport({
+        originationIdentity: requireEnv("AWS_SMS_ORIGINATION_IDENTITY"),
+        configurationSetName: process.env.AWS_SMS_CONFIGURATION_SET,
+        region: process.env.AWS_REGION,
+      })
+    }
     case "console": {
       return new ConsoleTransport()
     }
     default: {
       throw new Error(
-        `Unknown SMS_TRANSPORT "${transport}" (expected console or twilio)`,
+        `Unknown SMS_TRANSPORT "${transport}" (expected console, twilio, or aws)`,
       )
     }
   }

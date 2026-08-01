@@ -9,6 +9,7 @@
     "packages/auth-provider-email",
     "packages/auth-provider-sms",
     "packages/auth-sms-twilio",
+    "packages/auth-sms-aws",
     "packages/auth-adapter-react-router",
     "examples/react-router",
     "examples/react-router/tests",

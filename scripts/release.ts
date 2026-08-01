@@ -72,6 +72,10 @@ try {
       name: "@activescott/auth-sms-twilio",
       dir: "packages/auth-sms-twilio",
     },
+    "auth-sms-aws": {
+      name: "@activescott/auth-sms-aws",
+      dir: "packages/auth-sms-aws",
+    },
     "auth-adapter-react-router": {
       name: "@activescott/auth-adapter-react-router",
       dir: "packages/auth-adapter-react-router",
