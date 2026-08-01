@@ -38,7 +38,7 @@ const auth = new Auth({
 })
 ```
 
-The login form posts the phone number to `/auth/sms/initiate` (the provider texts the code, sets an HttpOnly challenge cookie, and redirects back with `?sent=1`); the code form posts to `/auth/sms/verify`:
+The login form posts the phone number to `/auth/sms/initiate` (the provider texts the code, sets an HttpOnly challenge cookie, and redirects back with `?sent=1`); the code form posts to `/auth/sms/verify`. A runnable app demonstrating the full flow is at [`examples/react-router`](https://github.com/activescott/auth/tree/main/examples/react-router):
 
 ```html
 <form method="post" action="/auth/sms/initiate">
