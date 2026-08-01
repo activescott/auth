@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.1](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.0.0...auth-adapter-react-router@1.0.1) (2026-08-01)
+
+### Bug Fixes
+
+* correct auth peer dependency range ([8df3496](https://github.com/activescott/auth/commit/8df3496371bbcffbe763000e4018873037edfa83))
+
 ## [1.0.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@0.1.3...auth-adapter-react-router@1.0.0) (2026-07-31)
 
 ### ⚠ BREAKING CHANGES

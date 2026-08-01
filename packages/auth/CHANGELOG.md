@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.1.0](https://github.com/activescott/auth/compare/auth@2.0.0...auth@2.1.0) (2026-08-01)
+
+### Features
+
+* add verifyOtpChallenge and shared provider utilities ([8bf3dfe](https://github.com/activescott/auth/commit/8bf3dfe7e38e9609a602c8874313576da36e1783))
+
 ## [2.0.0](https://github.com/activescott/auth/compare/auth@1.0.0...auth@2.0.0) (2026-07-31)
 
 ### ⚠ BREAKING CHANGES

@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.1](https://github.com/activescott/auth/compare/auth-provider-email@1.0.0...auth-provider-email@1.0.1) (2026-08-01)
+
+### Bug Fixes
+
+* use shared core helpers and correct peer range ([3255f23](https://github.com/activescott/auth/commit/3255f23f8a528f16f675c1a605c7339c771899cb))
+
 ## [1.0.0](https://github.com/activescott/auth/compare/auth-provider-email@0.1.5...auth-provider-email@1.0.0) (2026-07-31)
 
 ### ⚠ BREAKING CHANGES
