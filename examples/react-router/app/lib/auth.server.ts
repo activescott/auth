@@ -16,6 +16,10 @@ import {
   type SmsTransport,
 } from "@activescott/auth-provider-sms"
 import { TwilioTransport } from "@activescott/auth-sms-twilio"
+import {
+  PasskeyProvider,
+  InMemoryCredentialStore,
+} from "@activescott/auth-provider-passkey"
 import { CaptureEmailTransport } from "./capture-email-transport.server"
 import { CaptureSmsTransport } from "./capture-sms-transport.server"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
@@ -203,6 +207,14 @@ export const auth = new Auth({
       // the e2e readback route; it delegates to the real transport.
       new CaptureSmsTransport(createSmsTransport()),
     ),
+    new PasskeyProvider({
+      rpName: "RR Auth Example",
+      // rpID and expectedOrigin default to the request's hostname/origin,
+      // which suits dev and e2e on localhost. Set both explicitly in
+      // production (passkeys are bound to the domain they were created on).
+      credentialStore: new InMemoryCredentialStore(),
+      challengeSecret: SESSION_SECRET,
+    }),
   ],
 })
 

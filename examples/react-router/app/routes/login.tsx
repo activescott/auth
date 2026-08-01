@@ -1,4 +1,5 @@
-import { Form, redirect } from "react-router"
+import { useEffect, useState } from "react"
+import { Form, redirect, useNavigate } from "react-router"
 import { getAuthErrorMessage } from "@activescott/auth"
 import { getSession } from "~/lib/auth.server"
 import { CodeForm } from "~/components/code-form"
@@ -41,7 +42,67 @@ export default function Login({ loaderData }: Route.ComponentProps) {
       {via === "email" ? <EmailLogin sent={sent} /> : <SmsLogin sent={sent} />}
 
       {error && <p className="text-red-700 mt-3">Error: {error}</p>}
+
+      <PasskeyLogin />
     </main>
+  )
+}
+
+function PasskeyLogin() {
+  const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
+
+  // Conditional UI: offer passkeys in the browser's autofill on the
+  // email input (autoComplete="username webauthn"). The request stays
+  // pending until the user picks a passkey there; clicking the passkey
+  // button below aborts it and runs the modal flow instead.
+  useEffect(() => {
+    let cancelled = false
+    async function offerPasskeyAutofill() {
+      const { signInWithPasskey, isConditionalUIAvailable } =
+        await import("~/lib/passkey.client")
+      if (!(await isConditionalUIAvailable())) return
+      try {
+        await signInWithPasskey(true)
+        if (!cancelled) await navigate("/dashboard")
+      } catch {
+        // Aborted by the modal flow or dismissed — not an error to show
+      }
+    }
+    void offerPasskeyAutofill()
+    return () => {
+      cancelled = true
+    }
+  }, [navigate])
+
+  async function handleClick() {
+    setError(null)
+    try {
+      const { signInWithPasskey } = await import("~/lib/passkey.client")
+      await signInWithPasskey()
+      await navigate("/dashboard")
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Passkey sign-in failed",
+      )
+    }
+  }
+
+  return (
+    <div className="mt-6 pt-4 border-t">
+      <button
+        type="button"
+        onClick={handleClick}
+        className="w-full border py-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800"
+      >
+        Sign in with a passkey
+      </button>
+      {error && (
+        <p className="text-red-700 mt-3" data-testid="passkey-error">
+          Error: {error}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -65,7 +126,9 @@ function EmailLogin({ sent }: { sent: boolean }) {
           id="email"
           name="email"
           type="email"
-          autoComplete="email"
+          // "webauthn" lets the browser offer passkeys in the autofill
+          // dropdown on this field (conditional UI)
+          autoComplete="username webauthn"
           required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
