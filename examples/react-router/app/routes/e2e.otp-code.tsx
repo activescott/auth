@@ -1,9 +1,11 @@
-import { getCapturedEmail } from "~/lib/capture-transport.server"
+import { getCapturedEmail } from "~/lib/capture-email-transport.server"
+import { getCapturedSms } from "~/lib/capture-sms-transport.server"
 import type { Route } from "./+types/e2e.otp-code"
 
 /**
- * E2E-only endpoint returning the last captured email (OTP code + magic
- * link) for a recipient, so tests can read the code without an inbox.
+ * E2E-only endpoint returning the last captured message for a recipient
+ * (`?email=` for the emailed OTP code + magic link, `?phone=` for the
+ * texted code), so tests can read codes without an inbox or a phone.
  * Returns 404 unless E2E_TEST_MODE=true and the shared secret header
  * matches — never enable E2E_TEST_MODE in production.
  */
@@ -20,14 +22,23 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const url = new URL(request.url)
   const email = url.searchParams.get("email")
-  if (!email) {
-    throw new Response("email query param is required", { status: 400 })
+  const phone = url.searchParams.get("phone")
+
+  if (email) {
+    const captured = getCapturedEmail(email)
+    if (!captured) {
+      throw new Response("No email captured for that address", { status: 404 })
+    }
+    return Response.json(captured)
   }
 
-  const captured = getCapturedEmail(email)
-  if (!captured) {
-    throw new Response("No email captured for that address", { status: 404 })
+  if (phone) {
+    const captured = getCapturedSms(phone)
+    if (!captured) {
+      throw new Response("No SMS captured for that number", { status: 404 })
+    }
+    return Response.json(captured)
   }
 
-  return Response.json(captured)
+  throw new Response("email or phone query param is required", { status: 400 })
 }

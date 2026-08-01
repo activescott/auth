@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@activescott/auth.svg)](https://www.npmjs.com/package/@activescott/auth)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Passwordless, framework-agnostic authentication for TypeScript. Email magic links and one-time codes today; SMS and passkeys planned. Runs on Node and edge runtimes (e.g. Cloudflare Workers).
+Framework-agnostic direct authentication, deliberately small: single-use magic links and one-time codes via email and SMS today; passkeys planned. No third-party identity providers. Runs on Node and edge runtimes (e.g. Cloudflare Workers).
 
 Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbot.com](https://tinkerbellbot.com).
 
@@ -25,7 +25,7 @@ Passkeys (planned) push the same idea further: phishing-resistant, no shared sec
 - ✅ **Bring your own database** — three small store interfaces (`IdentityStore`, `UserStore`, `ChallengeStore`); implement them with Prisma, Drizzle, raw SQL, Redis, whatever you use.
 - ✅ **Edge-ready, [WinterTC-compatible](https://wintertc.org/faq) core** — standard Fetch `Request`/`Response`, WebCrypto, and [`jose`](https://github.com/panva/jose) for session JWTs; no Node-only APIs, so it runs on Cloudflare Workers, Deno, Bun, and any WinterTC-aligned runtime.
 - ✅ **React Router v7 adapter** — `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.
-- 🔜 **SMS one-time codes** — planned.
+- ✅ **SMS one-time codes** — vendor-neutral provider with a Twilio transport (RCS-ready), [WebOTP](https://developer.mozilla.org/docs/Web/API/WebOTP_API) autofill support, and an interactive provisioning script. An AWS transport is drafted in [#37](https://github.com/activescott/auth/pull/37) awaiting a tester.
 - 🔜 **Passkeys (WebAuthn)** — planned.
 
 The provider interface (`AuthProvider` in `@activescott/auth`) is the extension point. Implementing a new provider does not require changes to the core package.
@@ -46,6 +46,8 @@ cp examples/react-router/.env.example.mailpit examples/react-router/.env
 ```
 
 Restart the dev server; emails land in the Mailpit inbox at http://localhost:8025.
+
+The same app also demonstrates **SMS sign-in** — open the Phone tab (http://localhost:5173/login?via=sms). Codes are printed to the console by default; to text them for real, configure Twilio (a script that configures Twilio from scratch is at `./infra/twilio/setup-twilio.mts`). See the [example README](./examples/react-router#send-real-texts).
 
 ## Install
 
@@ -163,6 +165,8 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | [`@activescott/auth`](./packages/auth)                                           | Core: `Auth` class, `SessionManager`, types (`AuthProvider`, `IdentityStore`, `UserStore`), JWT-cookie sessions.                          |
 | [`@activescott/auth-provider-email`](./packages/auth-provider-email)             | Email magic link provider. Ships a Nodemailer SMTP transport; the `EmailTransport` interface lets you swap in others (Resend, SES, etc.). |
+| [`@activescott/auth-provider-sms`](./packages/auth-provider-sms)                 | SMS one-time-code provider. Vendor-neutral (`SmsTransport` interface); ships a console transport for development.                         |
+| [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transport (SMS, or RCS via a Messaging Service). Raw fetch, zero dependencies.                                                     |
 | [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v7 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.                            |
 
 Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.

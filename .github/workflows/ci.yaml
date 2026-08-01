@@ -33,8 +33,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build auth packages
-        run: npm run build --workspace=@activescott/auth --workspace=@activescott/auth-provider-email --workspace=@activescott/auth-adapter-react-router
+      - run: npm run build
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:

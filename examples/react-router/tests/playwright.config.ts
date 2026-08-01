@@ -31,7 +31,9 @@ export default defineConfig({
       NODE_ENV: "production",
       PORT: String(PORT),
       // Enables the /e2e/otp-code readback route so specs can fetch the
-      // OTP code without an inbox
+      // OTP code without an inbox or a phone. Also forces the console SMS
+      // transport so e2e never texts real messages even when Twilio env
+      // vars are present in the shell environment.
       E2E_TEST_MODE: "true",
     },
   },

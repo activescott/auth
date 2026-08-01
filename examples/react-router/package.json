@@ -13,6 +13,8 @@
     "@activescott/auth": "*",
     "@activescott/auth-adapter-react-router": "*",
     "@activescott/auth-provider-email": "*",
+    "@activescott/auth-provider-sms": "*",
+    "@activescott/auth-sms-twilio": "*",
     "@react-router/node": "7.15.0",
     "@react-router/serve": "7.15.0",
     "isbot": "^5.1.36",

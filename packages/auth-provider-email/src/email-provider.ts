@@ -4,22 +4,26 @@ import type {
   AuthResult,
   AuthInitResult,
   Challenge,
-  ChallengeStore,
   ProviderRoute,
 } from "@activescott/auth"
 import {
   AuthErrors,
   generateOtpCode,
   hashOtpCode,
-  verifyOtpCode,
+  verifyOtpChallenge,
+  constantTimeEqual,
+  parseRequestBody,
+  isBrowserFormPost,
+  buildReturnUrl,
+  buildChallengeCookie,
+  buildChallengeClearingCookie,
+  readCookie,
+  parseDuration,
+  authenticateWithIdentifier,
 } from "@activescott/auth"
 import type { EmailProviderConfig, EmailTransport } from "./types.js"
 import { NodemailerTransport } from "./transports/nodemailer.js"
 
-// Time unit multipliers in seconds
-const SECONDS_PER_MINUTE = 60
-const SECONDS_PER_HOUR = 3600
-const SECONDS_PER_DAY = 86_400
 const MS_PER_SECOND = 1000
 
 const CHALLENGE_TYPE = "email"
@@ -67,7 +71,7 @@ export class EmailProvider implements AuthProvider {
     context: AuthContext,
   ): Promise<AuthInitResult | Response> {
     try {
-      const body = await this.parseRequestBody(request)
+      const body = await parseRequestBody(request)
       const rawEmail = body.email
 
       if (!rawEmail || typeof rawEmail !== "string") {
@@ -94,9 +98,7 @@ export class EmailProvider implements AuthProvider {
       const code = generateOtpCode(
         this.config.otp?.length ?? DEFAULT_OTP_LENGTH,
       )
-      const expirySeconds = this.parseMaxAge(
-        this.config.expiry ?? DEFAULT_EXPIRY,
-      )
+      const expirySeconds = parseDuration(this.config.expiry ?? DEFAULT_EXPIRY)
 
       await context.challengeStore.create({
         id: challengeId,
@@ -130,14 +132,15 @@ export class EmailProvider implements AuthProvider {
         )
       }
 
-      const challengeCookie = this.buildChallengeCookie(
+      const challengeCookie = buildChallengeCookie(
+        this.cookieName(),
         challengeId,
         expirySeconds,
-        context,
+        context.baseUrl,
       )
 
-      if (this.isBrowserFormPost(request)) {
-        const returnUrl = this.buildReturnUrl(request, { sent: "1" })
+      if (isBrowserFormPost(request)) {
+        const returnUrl = buildReturnUrl(request, { sent: "1" })
         return new Response(null, {
           status: 302,
           headers: {
@@ -190,7 +193,7 @@ export class EmailProvider implements AuthProvider {
         return this.renderConfirmPage(request, context, challengeId, key)
       }
 
-      const body = await this.parseRequestBody(request)
+      const body = await parseRequestBody(request)
 
       if (typeof body.challenge === "string" && typeof body.key === "string") {
         return this.redeemLink(context, body.challenge, body.key)
@@ -282,12 +285,18 @@ export class EmailProvider implements AuthProvider {
     // Single use: consumed by redemption
     await context.challengeStore.delete(challenge.id)
 
-    const result = await this.authenticateEmail(challenge.identifier, context)
+    const result = await authenticateWithIdentifier(
+      this.id,
+      challenge.identifier,
+      context,
+    )
     if (!result.success) return result
 
     return {
       ...result,
-      setCookies: [this.buildChallengeClearingCookie(context)],
+      setCookies: [
+        buildChallengeClearingCookie(this.cookieName(), context.baseUrl),
+      ],
     }
   }
 
@@ -347,9 +356,7 @@ export class EmailProvider implements AuthProvider {
     context: AuthContext,
     code: string,
   ): Promise<AuthResult> {
-    const challengeStore: ChallengeStore = context.challengeStore
-
-    const challengeId = this.readChallengeCookie(request)
+    const challengeId = readCookie(request, this.cookieName())
     if (!challengeId) {
       return {
         success: false,
@@ -360,99 +367,53 @@ export class EmailProvider implements AuthProvider {
       }
     }
 
-    const challenge = await challengeStore.findById(challengeId)
-    if (!challenge || challenge.type !== CHALLENGE_TYPE) {
-      return {
-        success: false,
-        error: AuthErrors.invalidCredentials({
-          reason: "Verification not found. Request a new code.",
-        }),
-      }
+    const outcome = await verifyOtpChallenge(
+      context.challengeStore,
+      challengeId,
+      CHALLENGE_TYPE,
+      code,
+    )
+
+    if (!outcome.ok) {
+      return { success: false, error: this.otpFailureError(outcome.reason) }
     }
 
-    if (challenge.expiresAt.getTime() < Date.now()) {
-      return {
-        success: false,
-        error: AuthErrors.expiredToken({ reason: "Code has expired" }),
-      }
-    }
-
-    // Count the attempt before comparing so failed comparisons can't be
-    // retried indefinitely
-    const attempts = await challengeStore.incrementAttempts(challenge.id)
-    if (attempts > challenge.maxAttempts) {
-      return {
-        success: false,
-        error: AuthErrors.rateLimited({ reason: "Too many attempts" }),
-      }
-    }
-
-    const valid = await verifyOtpCode(challenge, code.trim())
-    if (!valid) {
-      return {
-        success: false,
-        error: AuthErrors.invalidCredentials({ reason: "Incorrect code" }),
-      }
-    }
-
-    // Single use: the challenge is consumed by successful verification
-    await challengeStore.delete(challenge.id)
-
-    const result = await this.authenticateEmail(challenge.identifier, context)
+    const result = await authenticateWithIdentifier(
+      this.id,
+      outcome.challenge.identifier,
+      context,
+    )
     if (!result.success) return result
 
     return {
       ...result,
-      setCookies: [this.buildChallengeClearingCookie(context)],
+      setCookies: [
+        buildChallengeClearingCookie(this.cookieName(), context.baseUrl),
+      ],
     }
   }
 
   /**
-   * Look up or create the user and identity for a verified email address.
-   * Link and code redemption both converge here.
+   * Map a shared OTP redemption failure to this provider's error responses
    */
-  private async authenticateEmail(
-    email: string,
-    context: AuthContext,
-  ): Promise<AuthResult> {
-    let identity = await context.identityStore.findByProviderAndIdentifier(
-      this.id,
-      email,
-    )
-
-    let user
-
-    if (identity) {
-      user = await context.userStore.findById(identity.userId)
-      if (!user) {
-        return {
-          success: false,
-          error: AuthErrors.userNotFound({ email }),
-        }
+  private otpFailureError(
+    reason: "not_found" | "expired" | "rate_limited" | "invalid_code",
+  ): ReturnType<typeof AuthErrors.invalidCredentials> {
+    switch (reason) {
+      case "not_found": {
+        return AuthErrors.invalidCredentials({
+          reason: "Verification not found. Request a new code.",
+        })
       }
-    } else {
-      user = await context.userStore.create({
-        provider: this.id,
-        identifier: email,
-      })
-
-      identity = await context.identityStore.create({
-        userId: user.id,
-        provider: this.id,
-        identifier: email,
-      })
-    }
-
-    if (context.identityStore.update) {
-      await context.identityStore.update(identity.id, {
-        verifiedAt: new Date(),
-      })
-    }
-
-    return {
-      success: true,
-      user,
-      identity,
+      case "expired": {
+        return AuthErrors.expiredToken({ reason: "Code has expired" })
+      }
+      case "rate_limited": {
+        return AuthErrors.rateLimited({ reason: "Too many attempts" })
+      }
+      case "invalid_code": {
+        return AuthErrors.invalidCredentials({ reason: "Incorrect code" })
+      }
     }
   }
 
@@ -472,41 +433,6 @@ export class EmailProvider implements AuthProvider {
   }
 
   /**
-   * A browser form post: urlencoded body and the client renders HTML.
-   * These get redirect responses; JSON/fetch callers get AuthInitResult.
-   */
-  private isBrowserFormPost(request: Request): boolean {
-    const contentType = request.headers.get("content-type") ?? ""
-    const accept = request.headers.get("accept") ?? ""
-    return (
-      contentType.includes("application/x-www-form-urlencoded") &&
-      accept.includes("text/html")
-    )
-  }
-
-  /**
-   * Where to send the browser back after a form post to initiate:
-   * the submitting page (Referer) with the given query params merged in,
-   * falling back to /login.
-   */
-  private buildReturnUrl(
-    request: Request,
-    params: Record<string, string>,
-  ): string {
-    const referer = request.headers.get("referer")
-    let url: URL
-    try {
-      url = new URL(referer ?? "/login", request.url)
-    } catch {
-      url = new URL("/login", request.url)
-    }
-    for (const [name, value] of Object.entries(params)) {
-      url.searchParams.set(name, value)
-    }
-    return url.toString()
-  }
-
-  /**
    * Failure counterpart of the browser-form redirect: send the browser
    * back with ?error=<code>; other callers get the AuthInitResult.
    */
@@ -514,11 +440,11 @@ export class EmailProvider implements AuthProvider {
     request: Request,
     error: ReturnType<typeof AuthErrors.invalidCredentials>,
   ): AuthInitResult | Response {
-    if (this.isBrowserFormPost(request)) {
+    if (isBrowserFormPost(request)) {
       return new Response(null, {
         status: 302,
         headers: {
-          Location: this.buildReturnUrl(request, { error: error.code }),
+          Location: buildReturnUrl(request, { error: error.code }),
         },
       })
     }
@@ -542,71 +468,10 @@ export class EmailProvider implements AuthProvider {
   }
 
   /**
-   * Build the Set-Cookie value binding the challenge to this browser
+   * The configured challenge cookie name
    */
-  private buildChallengeCookie(
-    challengeId: string,
-    maxAgeSeconds: number,
-    context: AuthContext,
-  ): string {
-    const name = this.config.otp?.cookieName ?? DEFAULT_OTP_COOKIE_NAME
-    const secure = context.baseUrl.startsWith("https://") ? "; Secure" : ""
-    return `${name}=${challengeId}; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure}`
-  }
-
-  /**
-   * Build a Set-Cookie value that clears the challenge cookie
-   */
-  private buildChallengeClearingCookie(context: AuthContext): string {
-    const name = this.config.otp?.cookieName ?? DEFAULT_OTP_COOKIE_NAME
-    const secure = context.baseUrl.startsWith("https://") ? "; Secure" : ""
-    return `${name}=; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
-  }
-
-  /**
-   * Read the challenge ID from the request's challenge cookie
-   */
-  private readChallengeCookie(request: Request): string | null {
-    const cookieHeader = request.headers.get("Cookie")
-    if (!cookieHeader) return null
-
-    const name = this.config.otp?.cookieName ?? DEFAULT_OTP_COOKIE_NAME
-    const cookies = cookieHeader.split(";").map((part) => part.trim())
-    const target = cookies.find((part) => part.startsWith(`${name}=`))
-    if (!target) return null
-
-    const value = target.slice(name.length + 1)
-    return value || null
-  }
-
-  /**
-   * Parse request body (handles both JSON and form data)
-   */
-  private async parseRequestBody(
-    request: Request,
-  ): Promise<Record<string, unknown>> {
-    const contentType = request.headers.get("content-type") ?? ""
-
-    if (contentType.includes("application/json")) {
-      return (await request.json()) as Record<string, unknown>
-    }
-
-    if (contentType.includes("application/x-www-form-urlencoded")) {
-      const text = await request.text()
-      const parameters = new URLSearchParams(text)
-      const result: Record<string, unknown> = {}
-      for (const [key, value] of parameters.entries()) {
-        result[key] = value
-      }
-      return result
-    }
-
-    // Try to parse as JSON anyway
-    try {
-      return (await request.json()) as Record<string, unknown>
-    } catch {
-      return {}
-    }
+  private cookieName(): string {
+    return this.config.otp?.cookieName ?? DEFAULT_OTP_COOKIE_NAME
   }
 
   /**
@@ -614,27 +479,6 @@ export class EmailProvider implements AuthProvider {
    */
   private isValidEmail(email: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  }
-
-  /**
-   * Parse a max age string like "30d", "7d", "24h" to seconds
-   */
-  private parseMaxAge(maxAge: string): number {
-    const match = maxAge.match(/^(\d+)([dhms])$/)
-    if (!match) return 0
-
-    const [, valueString, unitChar] = match
-    if (!valueString || !unitChar) return 0
-
-    const value = Number.parseInt(valueString, 10)
-    const multipliers: Record<string, number> = {
-      s: 1,
-      m: SECONDS_PER_MINUTE,
-      h: SECONDS_PER_HOUR,
-      d: SECONDS_PER_DAY,
-    }
-
-    return value * (multipliers[unitChar] ?? 1)
   }
 }
 
@@ -645,13 +489,4 @@ function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;")
-}
-
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let index = 0; index < a.length; index++) {
-    diff |= a.charCodeAt(index) ^ b.charCodeAt(index)
-  }
-  return diff === 0
 }

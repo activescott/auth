@@ -12,7 +12,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
     <main className="container mx-auto p-8 max-w-xl">
       <h1 className="text-3xl font-bold mb-4">Dashboard</h1>
       <p className="mb-4">
-        Signed in as <code>{String(loaderData.user.metadata?.email)}</code>
+        Signed in as <code>{String(loaderData.user.metadata?.identifier)}</code>
       </p>
       <Form method="post" action="/logout">
         <button

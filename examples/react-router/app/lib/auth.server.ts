@@ -10,7 +10,14 @@ import {
   EmailProvider,
   NodemailerTransport,
 } from "@activescott/auth-provider-email"
-import { CaptureTransport } from "./capture-transport.server"
+import {
+  SmsProvider,
+  ConsoleTransport,
+  type SmsTransport,
+} from "@activescott/auth-provider-sms"
+import { TwilioTransport } from "@activescott/auth-sms-twilio"
+import { CaptureEmailTransport } from "./capture-email-transport.server"
+import { CaptureSmsTransport } from "./capture-sms-transport.server"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
 
 /**
@@ -28,9 +35,11 @@ const userStore: UserStore = {
     return users.get(id) ?? null
   },
   async create({ identifier }) {
+    // identifier is an email or a phone number depending on which
+    // provider signed the user up
     const user: AuthUser = {
       id: crypto.randomUUID(),
-      metadata: { email: identifier },
+      metadata: { identifier },
     }
     users.set(user.id, user)
     return user
@@ -89,6 +98,64 @@ const SESSION_SECRET =
  */
 const smtpConfigured = Boolean(process.env.SMTP_HOST)
 
+/**
+ * Twilio is considered configured when its env vars are all set (see
+ * .env.example): account SID, auth token, and a sender (from number or
+ * Messaging Service SID). Fully configured → real texts. Anything less →
+ * console transport (codes printed to the server console), with a log
+ * line naming exactly what's missing — so a subtle misconfiguration
+ * (one env var absent in prod) is diagnosable instead of silent.
+ */
+function createSmsTransport(): SmsTransport {
+  // E2e must never text real messages, even if Twilio env vars leak in
+  // from the shell environment.
+  if (process.env.E2E_TEST_MODE === "true") {
+    return new ConsoleTransport()
+  }
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID
+  const authToken = process.env.TWILIO_AUTH_TOKEN
+  const from = process.env.TWILIO_FROM
+  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
+
+  if (accountSid && authToken && (from || messagingServiceSid)) {
+    console.log(
+      "SMS via Twilio. If a text never arrives, check the delivery log " +
+        "(carriers can filter messages the API accepted, e.g. error 30034 " +
+        "for unregistered A2P 10DLC numbers): " +
+        "https://console.twilio.com/us1/monitor/logs/sms",
+    )
+    return new TwilioTransport({
+      accountSid,
+      authToken,
+      from,
+      messagingServiceSid,
+    })
+  }
+
+  const missing = [
+    !accountSid && "TWILIO_ACCOUNT_SID",
+    !authToken && "TWILIO_AUTH_TOKEN",
+    !from &&
+      !messagingServiceSid &&
+      "TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID",
+  ].filter((name): name is string => typeof name === "string")
+
+  if (missing.length < 3) {
+    // Partially configured — likely a misconfiguration, so be loud
+    console.warn(
+      `SMS: falling back to the console transport because Twilio is only partially configured — missing ${missing.join(", ")}. Set it to send real texts.`,
+    )
+  } else {
+    console.log(
+      "SMS: no Twilio configuration found — sign-in codes will be printed " +
+        "to this console. Run ./infra/twilio/setup-twilio.mts to configure " +
+        "real texting.",
+    )
+  }
+  return new ConsoleTransport()
+}
+
 export const auth = new Auth({
   session: {
     secret: SESSION_SECRET,
@@ -123,7 +190,18 @@ export const auth = new Auth({
       // Dev mode (no SMTP configured) → emails are logged to the server
       // console instead of sent. Set SMTP_HOST (see .env.example) to send
       // real email.
-      new CaptureTransport(new NodemailerTransport(!smtpConfigured)),
+      new CaptureEmailTransport(new NodemailerTransport(!smtpConfigured)),
+    ),
+    new SmsProvider(
+      {
+        appName: "RR Auth Example",
+        // Uncomment with your app's domain to enable WebOTP one-tap
+        // autofill on Android/Chrome (appends "@domain #code" to the SMS):
+        // webOtpDomain: "example.com",
+      },
+      // The capture wrapper records the last code per phone number for
+      // the e2e readback route; it delegates to the real transport.
+      new CaptureSmsTransport(createSmsTransport()),
     ),
   ],
 })

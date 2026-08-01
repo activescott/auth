@@ -21,7 +21,7 @@ export function getCapturedEmail(to: string): CapturedEmail | null {
   return capturedEmails.get(to.toLowerCase()) ?? null
 }
 
-export class CaptureTransport implements EmailTransport {
+export class CaptureEmailTransport implements EmailTransport {
   public constructor(private readonly inner: EmailTransport) {}
 
   public sendMagicLink(

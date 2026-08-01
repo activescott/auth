@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest"
-import { generateOtpCode, hashOtpCode, verifyOtpCode } from "../otp.js"
+import {
+  generateOtpCode,
+  hashOtpCode,
+  verifyOtpCode,
+  verifyOtpChallenge,
+} from "../otp.js"
+import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
 
 const DEFAULT_LENGTH = 6
 const SAMPLE_SIZE = 1000
@@ -96,5 +102,102 @@ describe("verifyOtpCode", () => {
   it("should reject when the challenge has no hashed code", async () => {
     const result = await verifyOtpCode({ id: "challenge-1" }, "123456")
     expect(result).toBe(false)
+  })
+})
+
+describe("verifyOtpChallenge", () => {
+  async function createChallenge(store: InMemoryChallengeStore, code: string) {
+    const id = crypto.randomUUID()
+    return store.create({
+      id,
+      type: "sms",
+      identifier: "+14155550100",
+      hashedCode: await hashOtpCode(id, code),
+      maxAttempts: 3,
+      expiresAt: new Date(Date.now() + 60_000),
+    })
+  }
+
+  it("should redeem a correct code and consume the challenge", async () => {
+    const store = new InMemoryChallengeStore()
+    const challenge = await createChallenge(store, "123456")
+
+    const result = await verifyOtpChallenge(
+      store,
+      challenge.id,
+      "sms",
+      "123456",
+    )
+
+    expect(result.ok).toBe(true)
+    expect(await store.findById(challenge.id)).toBeNull()
+    store.destroy()
+  })
+
+  it("should fail with not_found for an unknown id or wrong type", async () => {
+    const store = new InMemoryChallengeStore()
+    const challenge = await createChallenge(store, "123456")
+
+    const unknown = await verifyOtpChallenge(store, "nope", "sms", "123456")
+    expect(unknown).toEqual({ ok: false, reason: "not_found" })
+
+    const wrongType = await verifyOtpChallenge(
+      store,
+      challenge.id,
+      "email",
+      "123456",
+    )
+    expect(wrongType).toEqual({ ok: false, reason: "not_found" })
+    store.destroy()
+  })
+
+  it("should fail with expired for an expired challenge", async () => {
+    const store = new InMemoryChallengeStore()
+    const challenge = await createChallenge(store, "123456")
+    challenge.expiresAt = new Date(Date.now() - 1000)
+
+    const result = await verifyOtpChallenge(
+      store,
+      challenge.id,
+      "sms",
+      "123456",
+    )
+    expect(result).toEqual({ ok: false, reason: "expired" })
+    store.destroy()
+  })
+
+  it("should fail with invalid_code for a wrong code and count the attempt", async () => {
+    const store = new InMemoryChallengeStore()
+    const challenge = await createChallenge(store, "123456")
+
+    const result = await verifyOtpChallenge(
+      store,
+      challenge.id,
+      "sms",
+      "000000",
+    )
+    expect(result).toEqual({ ok: false, reason: "invalid_code" })
+
+    const stored = await store.findById(challenge.id)
+    expect(stored?.attempts).toBe(1)
+    store.destroy()
+  })
+
+  it("should rate limit after max attempts even with the correct code", async () => {
+    const store = new InMemoryChallengeStore()
+    const challenge = await createChallenge(store, "123456")
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await verifyOtpChallenge(store, challenge.id, "sms", "000000")
+    }
+
+    const result = await verifyOtpChallenge(
+      store,
+      challenge.id,
+      "sms",
+      "123456",
+    )
+    expect(result).toEqual({ ok: false, reason: "rate_limited" })
+    store.destroy()
   })
 })

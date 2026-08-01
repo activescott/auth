@@ -27,8 +27,27 @@ export { Auth } from "./auth.js"
 export { SessionManager } from "./session/index.js"
 
 // OTP utilities and challenge storage
-export { generateOtpCode, hashOtpCode, verifyOtpCode } from "./otp.js"
+export {
+  generateOtpCode,
+  hashOtpCode,
+  verifyOtpCode,
+  verifyOtpChallenge,
+  constantTimeEqual,
+} from "./otp.js"
+export type { OtpVerifyFailure, OtpChallengeResult } from "./otp.js"
 export { InMemoryChallengeStore } from "./stores/in-memory-challenge-store.js"
+
+// Utilities for provider authors
+export {
+  parseRequestBody,
+  isBrowserFormPost,
+  buildReturnUrl,
+  buildChallengeCookie,
+  buildChallengeClearingCookie,
+  readCookie,
+  parseDuration,
+  authenticateWithIdentifier,
+} from "./provider-util.js"
 
 // Errors
 export {

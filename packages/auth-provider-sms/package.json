@@ -1,7 +1,7 @@
 {
-  "name": "@activescott/auth-adapter-react-router",
-  "version": "1.0.0",
-  "description": "React Router adapter for @activescott/auth",
+  "name": "@activescott/auth-provider-sms",
+  "version": "0.0.0",
+  "description": "SMS one-time-code provider for @activescott/auth",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,24 +24,24 @@
   "keywords": [
     "auth",
     "authentication",
-    "react-router",
-    "remix"
+    "sms",
+    "otp",
+    "one-time-code",
+    "webotp"
   ],
   "author": "Scott Willeke",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/activescott/auth.git",
-    "directory": "packages/auth-adapter-react-router"
+    "directory": "packages/auth-provider-sms"
   },
   "peerDependencies": {
-    "@activescott/auth": "^2.0.0",
-    "react-router": "^7.0.0"
+    "@activescott/auth": "^2.1.0"
   },
   "devDependencies": {
     "@activescott/auth": "*",
     "@types/node": "^22",
-    "react-router": "^7.13.0",
     "typescript": "^5.7.2",
     "vitest": "^4.0.16"
   }
