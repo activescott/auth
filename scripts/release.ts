@@ -64,6 +64,18 @@ try {
       name: "@activescott/auth-provider-email",
       dir: "packages/auth-provider-email",
     },
+    "auth-provider-sms": {
+      name: "@activescott/auth-provider-sms",
+      dir: "packages/auth-provider-sms",
+    },
+    "auth-sms-twilio": {
+      name: "@activescott/auth-sms-twilio",
+      dir: "packages/auth-sms-twilio",
+    },
+    "auth-sms-aws": {
+      name: "@activescott/auth-sms-aws",
+      dir: "packages/auth-sms-aws",
+    },
     "auth-adapter-react-router": {
       name: "@activescott/auth-adapter-react-router",
       dir: "packages/auth-adapter-react-router",

@@ -2,14 +2,19 @@
   "name": "activescott-auth",
   "version": "0.0.0",
   "private": true,
-  "description": "Framework-agnostic authentication with provider pattern for magic links, OAuth, and more",
+  "description": "Passwordless, framework-agnostic direct authentication: magic links, email and SMS one-time codes, passkeys planned",
   "type": "module",
   "workspaces": [
     "packages/auth",
     "packages/auth-provider-email",
+    "packages/auth-provider-sms",
+    "packages/auth-sms-twilio",
+    "packages/auth-sms-aws",
     "packages/auth-adapter-react-router",
     "examples/react-router",
-    "examples/react-router/tests"
+    "examples/react-router/tests",
+    "examples/react-router-sms",
+    "examples/react-router-sms/tests"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

@@ -4,7 +4,15 @@ export default {
     "scope-enum": [
       2,
       "always",
-      ["auth", "auth-provider-email", "auth-adapter-react-router", "examples"],
+      [
+        "auth",
+        "auth-provider-email",
+        "auth-provider-sms",
+        "auth-sms-twilio",
+        "auth-sms-aws",
+        "auth-adapter-react-router",
+        "examples",
+      ],
     ],
   },
 }
