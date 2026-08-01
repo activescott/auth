@@ -56,20 +56,21 @@ interface CapturedSms {
 
 /**
  * Request a sign-in code via the phone tab of the login form, then return
- * the captured SMS. The login UI fixes the +1 prefix, so pass the national
- * number (e.g. "4155550100"); the message is captured under the full E.164
- * form.
+ * the captured SMS. Takes the full E.164 number (e.g. "+14155550100");
+ * the login UI fixes the +1 prefix, so only the national part is typed
+ * into the form — that translation happens here, at the UI boundary, and
+ * nowhere else.
  */
 export async function requestSignInCode(
   page: Page,
-  nationalNumber: string,
+  phone: string,
 ): Promise<CapturedSms> {
+  const nationalNumber = phone.replace(/^\+1/, "")
   await page.goto("/login?via=sms")
   await page.getByLabel(/mobile phone number/i).fill(nationalNumber)
   await page.getByRole("button", { name: /text me a code/i }).click()
   await expect(page.getByLabel(/enter the code/i)).toBeVisible()
 
-  const phone = `+1${nationalNumber.replaceAll(/[\s().-]/g, "")}`
   const response = await page.request.get(
     `/e2e/otp-code?phone=${encodeURIComponent(phone)}`,
     { headers: { "x-e2e-secret": E2E_SECRET } },
@@ -81,14 +82,12 @@ export async function requestSignInCode(
 }
 
 /**
- * Log in by requesting a texted code and submitting it through the code
- * form — the same path a real user takes from their messages
+ * Log in with an E.164 phone number by requesting a texted code and
+ * submitting it through the code form — the same path a real user takes
+ * from their messages
  */
-export async function loginWithSms(
-  page: Page,
-  nationalNumber: string,
-): Promise<void> {
-  const { code } = await requestSignInCode(page, nationalNumber)
+export async function loginWithSms(page: Page, phone: string): Promise<void> {
+  const { code } = await requestSignInCode(page, phone)
   if (!code) throw new Error("no code captured")
 
   await page.getByLabel(/enter the code/i).fill(code)

@@ -35,7 +35,7 @@ test.describe("sms auth", () => {
   test("signing in with the texted code reaches the dashboard", async ({
     page,
   }) => {
-    await loginWithSms(page, "4155550201")
+    await loginWithSms(page, "+14155550201")
     await expect(
       page.getByRole("heading", { name: /dashboard/i }),
     ).toBeVisible()
@@ -43,7 +43,7 @@ test.describe("sms auth", () => {
   })
 
   test("a wrong code shows an error and does not sign in", async ({ page }) => {
-    const { code } = await requestSignInCode(page, "4155550202")
+    const { code } = await requestSignInCode(page, "+14155550202")
     const wrongCode = code === "000000" ? "111111" : "000000"
 
     await page.getByLabel(/enter the code/i).fill(wrongCode)
@@ -59,7 +59,7 @@ test.describe("sms auth", () => {
   test("the code cannot be replayed after a successful sign-in", async ({
     page,
   }) => {
-    const { code } = await requestSignInCode(page, "4155550203")
+    const { code } = await requestSignInCode(page, "+14155550203")
     if (!code) throw new Error("no code captured")
 
     await page.getByLabel(/enter the code/i).fill(code)
@@ -70,21 +70,37 @@ test.describe("sms auth", () => {
 
     // New browser state, same code: the challenge was consumed
     await page.context().clearCookies()
-    await requestSignInCode(page, "4155550203")
+    await requestSignInCode(page, "+14155550203")
     await page.getByLabel(/enter the code/i).fill(code)
     await page.getByRole("button", { name: /sign in with code/i }).click()
     await expect(page).toHaveURL(/error=/)
   })
 
   test("the phone number is normalized before texting", async ({ page }) => {
-    // Punctuation in the national number survives the fixed +1 prefix and
-    // is stripped by the provider; captured under the normalized E.164 form
-    const { code } = await requestSignInCode(page, "(415) 555-0204")
+    // Typed punctuation is stripped by the provider's normalization; the
+    // message is captured under the clean E.164 form. This drives the raw
+    // form (not the E.164 helpers) because messy input is the point.
+    await page.goto("/login?via=sms")
+    await page.getByLabel(/mobile phone number/i).fill("(415) 555-0204")
+    await page.getByRole("button", { name: /text me a code/i }).click()
+    await expect(page.getByLabel(/enter the code/i)).toBeVisible()
+
+    const response = await page.request.get(
+      `/e2e/otp-code?phone=${encodeURIComponent("+14155550204")}`,
+      {
+        headers: {
+          "x-e2e-secret":
+            process.env.E2E_MAGIC_LINK_SECRET ?? "e2e_test_magic_link_secret",
+        },
+      },
+    )
+    expect(response.ok()).toBe(true)
+    const { code } = (await response.json()) as { code?: string }
     expect(code).toMatch(/^[0-9]{6}$/)
   })
 
   test("logout clears an sms session", async ({ page }) => {
-    await loginWithSms(page, "4155550133")
+    await loginWithSms(page, "+14155550133")
     await page.goto("/dashboard")
     await Promise.all([
       page.waitForURL("**/"),
