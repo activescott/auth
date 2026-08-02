@@ -189,6 +189,63 @@ describe("createAuthHandlers", () => {
       expect(mockAuth.handleRequest).toHaveBeenCalledWith(request)
     })
 
+    it("should delegate actions merely containing 'verify' to auth.handleRequest", async () => {
+      const provider = {
+        id: "passkey",
+        name: "Passkey",
+        verify: vi.fn(),
+        initiate: vi.fn(),
+        canHandle: vi.fn(),
+        getRoutes: vi.fn(),
+      }
+      const mockAuth = createMockAuth({
+        getProvider: vi.fn().mockReturnValue(provider),
+      })
+      const handlers = createAuthHandlers(mockAuth)
+
+      for (const action of [
+        "register-verify",
+        "authenticate-verify",
+        "register-options",
+        "callback-status",
+      ]) {
+        const request = new Request(`${TEST_BASE_URL}/auth/passkey/${action}`, {
+          method: "POST",
+        })
+        await handlers.handleAuth({ request })
+        expect(mockAuth.handleRequest).toHaveBeenCalledWith(request)
+      }
+
+      expect(provider.verify).not.toHaveBeenCalled()
+    })
+
+    it("should handle the callback action like verify", async () => {
+      const provider = {
+        id: "email",
+        name: "Email",
+        verify: vi.fn().mockResolvedValue({
+          success: true,
+          user: { id: "user-1" },
+          identity: createMockIdentity(),
+        }),
+        initiate: vi.fn(),
+        canHandle: vi.fn(),
+        getRoutes: vi.fn(),
+      }
+      const mockAuth = createMockAuth({
+        getProvider: vi.fn().mockReturnValue(provider),
+      })
+      const handlers = createAuthHandlers(mockAuth, {
+        successRedirect: "/dashboard",
+      })
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/callback`)
+      const response = await handlers.handleAuth({ request })
+
+      expect(provider.verify).toHaveBeenCalledTimes(1)
+      expect(response.status).toBe(302)
+    })
+
     it("should handle verify requests with session cookie and redirect", async () => {
       const provider = {
         id: "email",

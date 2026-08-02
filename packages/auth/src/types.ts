@@ -26,8 +26,16 @@ export interface Identity {
   provider: string
   /** The identifier within that provider (email address, phone number, passkey credential ID) */
   identifier: string
-  /** Additional metadata from the provider */
-  metadata?: Record<string, unknown>
+  /**
+   * Provider-owned state for this identity — e.g., the passkey provider
+   * stores the credential public key and signature counter here;
+   * providers with no per-identity state store an empty object.
+   * Opaque to the application: stores must persist and return it
+   * unmodified (a JSON/JSONB column works). May contain sensitive
+   * material; protect it accordingly (encryption at rest is a
+   * reasonable default).
+   */
+  metadata: Record<string, unknown>
   /** When this identity was created */
   createdAt: Date
   /** When this identity was last verified */
@@ -131,13 +139,16 @@ export interface IdentityStore {
     userId: string
     provider: string
     identifier: string
-    metadata?: Record<string, unknown>
+    metadata: Record<string, unknown>
   }): Promise<Identity>
 
   /**
-   * Update an identity (e.g., update verifiedAt)
+   * Update an identity's provider-owned metadata and/or verifiedAt.
+   * A provided metadata value replaces the stored one wholesale.
+   * Required: providers depend on it — e.g., the passkey provider
+   * writes the signature counter here on every sign-in.
    */
-  update?(
+  update(
     id: string,
     data: Partial<Pick<Identity, "metadata" | "verifiedAt">>,
   ): Promise<Identity>
@@ -293,6 +304,12 @@ export interface AuthContext {
   /** Challenge store for magic links, OTP codes, and similar short-lived
    * verification state */
   challengeStore: ChallengeStore
+  /** Return the authenticated user and identity for the request's session
+   * cookie, or null when there is no valid session. Lets providers require
+   * an existing session (e.g., passkey registration). */
+  getSession?: (
+    request: Request,
+  ) => Promise<{ user: AuthUser; identity: Identity } | null>
 }
 
 /**
@@ -342,6 +359,18 @@ export interface AuthProvider {
    * prefetch URLs cannot consume the link).
    */
   verify(request: Request, context: AuthContext): Promise<AuthResult | Response>
+
+  /**
+   * Handle a provider-specific action beyond initiate/verify — e.g., the
+   * passkey provider's register-options, register-verify,
+   * authenticate-options, authenticate-verify. `Auth.handleRequest`
+   * dispatches actions it does not recognize here before returning 404.
+   */
+  handleAction?(
+    action: string,
+    request: Request,
+    context: AuthContext,
+  ): Promise<Response>
 
   /**
    * Check if this provider can handle the given request.

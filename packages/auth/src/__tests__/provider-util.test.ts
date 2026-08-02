@@ -20,6 +20,7 @@ function createMockIdentity(overrides: Partial<Identity> = {}): Identity {
     userId: "user-1",
     provider: "sms",
     identifier: "+14155550100",
+    metadata: {},
     createdAt: new Date(),
     ...overrides,
   }
@@ -202,7 +203,12 @@ describe("authenticateWithIdentifier", () => {
       provider: "sms",
       identifier: "+14155550100",
     })
-    expect(context.identityStore.create).toHaveBeenCalledTimes(1)
+    expect(context.identityStore.create).toHaveBeenCalledWith({
+      userId: "user-1",
+      provider: "sms",
+      identifier: "+14155550100",
+      metadata: {},
+    })
   })
 
   it("should update verifiedAt on success", async () => {

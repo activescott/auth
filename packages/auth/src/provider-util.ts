@@ -174,14 +174,13 @@ export async function authenticateWithIdentifier(
       userId: user.id,
       provider: providerId,
       identifier,
+      metadata: {},
     })
   }
 
-  if (context.identityStore.update) {
-    await context.identityStore.update(identity.id, {
-      verifiedAt: new Date(),
-    })
-  }
+  await context.identityStore.update(identity.id, {
+    verifiedAt: new Date(),
+  })
 
   return {
     success: true,

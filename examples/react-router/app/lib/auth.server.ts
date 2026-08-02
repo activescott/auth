@@ -16,6 +16,10 @@ import {
   type SmsTransport,
 } from "@activescott/auth-provider-sms"
 import { TwilioTransport } from "@activescott/auth-sms-twilio"
+import {
+  PasskeyProvider,
+  parsePasskeyCredentialMetadata,
+} from "@activescott/auth-provider-passkey"
 import { CaptureEmailTransport } from "./capture-email-transport.server"
 import { CaptureSmsTransport } from "./capture-sms-transport.server"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
@@ -90,6 +94,40 @@ const identityStore: IdentityStore = {
  */
 const SESSION_SECRET =
   process.env.JWT_SECRET ?? "dev-only-session-secret-do-not-use-in-production"
+
+/**
+ * The signed-in user's passkeys for the dashboard list. Passkeys are
+ * ordinary identity rows ({provider: "passkey"}) whose provider-owned
+ * metadata holds the credential state; a restart wipes the in-memory
+ * store, orphaning any passkeys saved in the browser/password manager
+ * for localhost (delete those there when it happens).
+ */
+export async function listPasskeys(userId: string): Promise<
+  {
+    credentialId: string
+    nickname: string | null
+    synced: boolean
+    createdAt: string
+    lastUsedAt: string | null
+  }[]
+> {
+  const all = await identityStore.findByUserId(userId)
+  const passkeys = []
+  for (const identity of all) {
+    if (identity.provider !== "passkey") continue
+    const credential = parsePasskeyCredentialMetadata(identity.metadata)
+    if (!credential) continue
+    passkeys.push({
+      credentialId: identity.identifier,
+      nickname: credential.nickname ?? null,
+      // "multiDevice" = synced to a cloud keychain / password manager
+      synced: credential.deviceType === "multiDevice",
+      createdAt: identity.createdAt.toISOString(),
+      lastUsedAt: credential.lastUsedAt ?? null,
+    })
+  }
+  return passkeys
+}
 
 /**
  * SMTP is considered configured when SMTP_HOST is set (see .env.example).
@@ -203,6 +241,13 @@ export const auth = new Auth({
       // the e2e readback route; it delegates to the real transport.
       new CaptureSmsTransport(createSmsTransport()),
     ),
+    new PasskeyProvider({
+      rpName: "RR Auth Example",
+      // rpID and expectedOrigin default to the request's hostname/origin,
+      // which suits dev and e2e on localhost. Set both explicitly in
+      // production (passkeys are bound to the domain they were created on).
+      challengeSecret: SESSION_SECRET,
+    }),
   ],
 })
 

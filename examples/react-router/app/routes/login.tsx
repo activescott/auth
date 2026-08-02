@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { Form, redirect } from "react-router"
 import { getAuthErrorMessage } from "@activescott/auth"
 import { getSession } from "~/lib/auth.server"
@@ -41,7 +42,100 @@ export default function Login({ loaderData }: Route.ComponentProps) {
       {via === "email" ? <EmailLogin sent={sent} /> : <SmsLogin sent={sent} />}
 
       {error && <p className="text-red-700 mt-3">Error: {error}</p>}
+
+      <PasskeyLogin />
+
+      <p className="text-xs text-gray-400 mt-8">
+        Dev note: this example keeps users, identities, and passkey credentials
+        in memory, so restarting the server forgets them all. A passkey saved in
+        your password manager survives the restart, but the server no longer
+        recognizes it (&ldquo;Unknown credential&rdquo;) — delete it there and
+        add a new one. A real app would back the stores with a database.
+      </p>
     </main>
+  )
+}
+
+function PasskeyLogin() {
+  const [error, setError] = useState<string | null>(null)
+
+  // Conditional UI: offer passkeys in the browser's autofill on the
+  // email input (autoComplete="username webauthn"). The request stays
+  // pending until the user picks a passkey there; clicking the passkey
+  // button below aborts it and runs the modal flow instead.
+  useEffect(() => {
+    async function offerPasskeyAutofill() {
+      const { signInWithPasskey, isConditionalUIAvailable } =
+        await import("~/lib/passkey.client")
+      if (!(await isConditionalUIAvailable())) return
+      try {
+        await signInWithPasskey(true)
+        // Full page load: fresh server render with the new session
+        window.location.assign("/dashboard")
+      } catch (caught) {
+        // DOMExceptions are ceremony noise the user never initiated
+        // (aborted by the button's modal flow, dismissed, or the
+        // browser not supporting conditional requests). A plain Error
+        // is the server rejecting a completed assertion — e.g. an
+        // orphaned credential after a dev-server restart — and the
+        // user did act on that one, so show it.
+        if (caught instanceof Error && !(caught instanceof DOMException)) {
+          setError(caught.message)
+        }
+      }
+    }
+    // The timeout makes React StrictMode's dev-only mount→unmount→remount
+    // start exactly ONE WebAuthn ceremony (the first mount's timer is
+    // cleared before it fires). Start-abort-start cycles broke sign-in
+    // two ways: the user could pick a passkey on the aborted ceremony,
+    // whose completion handler never navigates; and 1Password's
+    // extension ignores AbortController on conditional requests
+    // (acknowledged, unfixed: https://www.1password.community/1password-at-home-31/passkey-authentication-doesn-t-abort-on-signal-2930),
+    // so each aborted ceremony strands a 1Password-internal one that
+    // later surfaces "1Password encountered a problem" even when
+    // sign-in succeeded.
+    const timer = setTimeout(() => void offerPasskeyAutofill(), 0)
+    return () => clearTimeout(timer)
+  }, [])
+
+  async function handleClick() {
+    setError(null)
+    try {
+      const { signInWithPasskey } = await import("~/lib/passkey.client")
+      // Starting the modal ceremony aborts the pending conditional one
+      // (required by WebAuthn). Because of the 1Password abort bug cited
+      // above, 1Password may show its "encountered a problem" toast on
+      // this path even when sign-in succeeds — not fixable site-side.
+      await signInWithPasskey()
+      // Full page load: fresh server render with the new session
+      window.location.assign("/dashboard")
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Passkey sign-in failed",
+      )
+    }
+  }
+
+  return (
+    <div className="mt-6 pt-4 border-t">
+      <button
+        type="button"
+        onClick={handleClick}
+        className="w-full border py-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800"
+      >
+        Sign in with a passkey
+      </button>
+      <p className="text-sm text-gray-500 mt-2">
+        Already added a passkey to your account? Sign in with it here. First
+        time? Sign in with your email or mobile number above, then add a passkey
+        from the dashboard.
+      </p>
+      {error && (
+        <p className="text-red-700 mt-3" data-testid="passkey-error">
+          Error: {error}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -65,7 +159,9 @@ function EmailLogin({ sent }: { sent: boolean }) {
           id="email"
           name="email"
           type="email"
-          autoComplete="email"
+          // "webauthn" lets the browser offer passkeys in the autofill
+          // dropdown on this field (conditional UI)
+          autoComplete="username webauthn"
           required
           value={email}
           onChange={(event) => setEmail(event.target.value)}

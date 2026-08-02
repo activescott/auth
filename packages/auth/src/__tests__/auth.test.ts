@@ -34,6 +34,7 @@ function createMockIdentity(overrides: Partial<Identity> = {}): Identity {
     userId: "user-1",
     provider: "email",
     identifier: "user@example.com",
+    metadata: {},
     createdAt: new Date(),
     ...overrides,
   }
@@ -68,6 +69,7 @@ function createMockStores(): {
       findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
       findByUserId: vi.fn().mockResolvedValue([createMockIdentity()]),
       create: vi.fn().mockResolvedValue(createMockIdentity()),
+      update: vi.fn().mockResolvedValue(createMockIdentity()),
     },
     userStore: {
       findById: vi.fn().mockResolvedValue({ id: "user-1" }),
@@ -174,13 +176,66 @@ describe("Auth", () => {
       expect(response.status).toBe(404)
     })
 
-    it("should return 404 for unknown action", async () => {
+    it("should return 404 for unknown action when provider has no handleAction", async () => {
       auth = new Auth(createAuthConfig())
 
       const request = new Request(`${TEST_BASE_URL}/auth/email/unknown`)
       const response = await auth.handleRequest(request)
 
       expect(response.status).toBe(404)
+    })
+
+    it("should dispatch unknown actions to provider handleAction", async () => {
+      const actionResponse = new Response(JSON.stringify({ ok: true }), {
+        headers: { "Content-Type": "application/json" },
+      })
+      const handleAction = vi.fn().mockResolvedValue(actionResponse)
+      const provider = createMockProvider({ id: "passkey", handleAction })
+      auth = new Auth(createAuthConfig({ providers: [provider] }))
+
+      const request = new Request(
+        `${TEST_BASE_URL}/auth/passkey/register-options`,
+        { method: "POST" },
+      )
+      const response = await auth.handleRequest(request)
+
+      expect(handleAction).toHaveBeenCalledWith(
+        "register-options",
+        request,
+        expect.objectContaining({ challengeStore: expect.anything() }),
+      )
+      expect(response).toBe(actionResponse)
+    })
+
+    it("should prefer built-in actions over handleAction", async () => {
+      const handleAction = vi.fn()
+      const provider = createMockProvider({ handleAction })
+      auth = new Auth(createAuthConfig({ providers: [provider] }))
+
+      await auth.handleRequest(
+        new Request(`${TEST_BASE_URL}/auth/email/verify`),
+      )
+      await auth.handleRequest(
+        new Request(`${TEST_BASE_URL}/auth/email/initiate`, { method: "POST" }),
+      )
+
+      expect(provider.verify).toHaveBeenCalledTimes(1)
+      expect(provider.initiate).toHaveBeenCalledTimes(1)
+      expect(handleAction).not.toHaveBeenCalled()
+    })
+
+    it("should return 500 when handleAction throws", async () => {
+      const provider = createMockProvider({
+        handleAction: vi.fn().mockRejectedValue(new Error("boom")),
+      })
+      auth = new Auth(createAuthConfig({ providers: [provider] }))
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/unknown`, {
+        method: "POST",
+      })
+      const response = await auth.handleRequest(request)
+
+      expect(response.status).toBe(500)
     })
 
     it("should return 500 when provider throws", async () => {
@@ -256,6 +311,33 @@ describe("Auth", () => {
 
       const context = auth.createContext(new Request(TEST_BASE_URL))
       expect(context.challengeStore).toBe(challengeStore)
+    })
+
+    it("should bind getSession to verifySession", async () => {
+      auth = new Auth(createAuthConfig())
+
+      const user = { id: "user-1" }
+      const identity = createMockIdentity()
+      const cookie = await auth.createSessionCookie(user, identity)
+      const cookieValue = cookie.split(";")[0]
+
+      const request = new Request(TEST_BASE_URL, {
+        headers: { Cookie: cookieValue },
+      })
+      const context = auth.createContext(request)
+
+      const result = await context.getSession?.(request)
+      expect(result?.user.id).toBe("user-1")
+      expect(result?.identity.identifier).toBe("user@example.com")
+    })
+
+    it("should return null from getSession without a session cookie", async () => {
+      auth = new Auth(createAuthConfig())
+
+      const request = new Request(TEST_BASE_URL)
+      const context = auth.createContext(request)
+
+      expect(await context.getSession?.(request)).toBeNull()
     })
   })
 

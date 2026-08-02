@@ -1,7 +1,7 @@
 {
-  "name": "@activescott/auth-provider-email",
-  "version": "1.0.1",
-  "description": "Email magic link provider for @activescott/auth",
+  "name": "@activescott/auth-provider-passkey",
+  "version": "0.1.0",
+  "description": "Passkey (WebAuthn) provider for @activescott/auth",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
     }
   },
   "files": [
@@ -24,26 +28,27 @@
   "keywords": [
     "auth",
     "authentication",
-    "magic-link",
-    "email",
-    "nodemailer"
+    "passkey",
+    "webauthn",
+    "fido2"
   ],
   "author": "Scott Willeke",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/activescott/auth.git",
-    "directory": "packages/auth-provider-email"
+    "directory": "packages/auth-provider-passkey"
   },
   "dependencies": {
-    "nodemailer": "^9.0.3"
+    "@simplewebauthn/server": "^13.2.2",
+    "jose": "^6.2.6",
+    "zod": "^4.3.5"
   },
   "peerDependencies": {
     "@activescott/auth": "^3.0.0"
   },
   "devDependencies": {
     "@activescott/auth": "*",
-    "@types/nodemailer": "^8.0.0",
     "@types/node": "^22",
     "typescript": "^5.7.2",
     "vitest": "^4.0.16"

@@ -1,6 +1,6 @@
 # React Router framework example
 
-A minimal, runnable React Router v7 (framework mode, Node SSR) app demonstrating `@activescott/auth` with **email magic-link + code login** and **SMS one-time-code login** side by side. Scaffolded from the official `create-react-router` template, then wired up with the auth packages.
+A minimal, runnable React Router (framework mode, Node SSR) app demonstrating `@activescott/auth` with **email magic-link + code login**, **SMS one-time-code login**, and **passkeys** side by side. Scaffolded from the official `create-react-router` template, then wired up with the auth packages.
 
 It's a workspace member of the [`@activescott/auth` monorepo](../../README.md), so it always builds against the local source.
 
@@ -22,6 +22,10 @@ No env vars to set — `app/lib/auth.server.ts` ships with a hardcoded `dev-only
 - **Phone tab** (`/login?via=sms`): enter any US-format number (the example fixes the `+1` prefix), then type the code from the terminal.
 
 The login page keeps the two providers on separate tabs via the `?via=` query param — each provider redirects back to the page the form was posted from, so the active tab survives the round trip.
+
+## Passkeys
+
+Sign in (email or phone), click **Add a passkey** on the dashboard, log out, then use **Sign in with a passkey** on the login page. The email input also offers passkey autofill (conditional UI) in browsers that support it. Unlike the email/SMS forms, the passkey buttons are `fetch()` calls — WebAuthn ceremonies run in page JavaScript (see `app/lib/passkey.client.ts`), and the verify endpoints return JSON plus the session cookie rather than a redirect. The e2e specs exercise the real ceremonies against a Chrome DevTools Protocol virtual authenticator (`tests/passkeys.spec.ts`).
 
 ## Send real email
 

@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@activescott/auth.svg)](https://www.npmjs.com/package/@activescott/auth)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Framework-agnostic direct authentication, deliberately small: single-use magic links and one-time codes via email and SMS today; passkeys planned. No third-party identity providers. Runs on Node and edge runtimes (e.g. Cloudflare Workers).
+Framework-agnostic direct authentication, deliberately small: single-use magic links and one-time codes via email and SMS, and passkeys (WebAuthn). No third-party identity providers. Runs on Node and edge runtimes (e.g. Cloudflare Workers).
 
 Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbot.com](https://tinkerbellbot.com).
 
@@ -16,7 +16,7 @@ Everyone has an email address or a phone number. Nobody wants another password. 
 - **Private by design.** No third-party identity provider in the loop — big tech doesn't learn when (or that) your users sign in to your app.
 - **Deliberately small.** This is not a works-with-every-OAuth-provider auth library — that niche is well served by projects like [BetterAuth](https://www.better-auth.com/). Constraining the scope is what keeps this one easy to drop into a new app.
 
-Passkeys (planned) push the same idea further: phishing-resistant, no shared secret, and still no third party.
+Passkeys push the same idea further: phishing-resistant, no shared secret, and still no third party.
 
 ## Features
 
@@ -26,15 +26,15 @@ Passkeys (planned) push the same idea further: phishing-resistant, no shared sec
 - ✅ **Edge-ready, [WinterTC-compatible](https://wintertc.org/faq) core** — standard Fetch `Request`/`Response`, WebCrypto, and [`jose`](https://github.com/panva/jose) for session JWTs; no Node-only APIs, so it runs on Cloudflare Workers, Deno, Bun, and any WinterTC-aligned runtime.
 - ✅ **React Router v7 adapter** — `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.
 - ✅ **SMS one-time codes** — vendor-neutral provider with a Twilio transport (RCS-ready), [WebOTP](https://developer.mozilla.org/docs/Web/API/WebOTP_API) autofill support, and an interactive provisioning script. An AWS transport is drafted in [#37](https://github.com/activescott/auth/pull/37) awaiting a tester.
-- 🔜 **Passkeys (WebAuthn)** — planned.
+- ✅ **Passkeys (WebAuthn)** — add a passkey while signed in, then sign in usernameless with Touch ID, Face ID, Windows Hello, 1Password, iCloud Keychain, or a security key; conditional UI (passkey autofill) supported. Verification via [`@simplewebauthn/server`](https://simplewebauthn.dev/); zero-dependency browser client included.
 
 The provider interface (`AuthProvider` in `@activescott/auth`) is the extension point. Implementing a new provider does not require changes to the core package.
 
 ## Try the example
 
 ```bash
-npm ci && npm run build
-npm run dev --workspace=examples/react-router
+npm ci
+npm run dev   # builds the packages, then starts the example app
 ```
 
 Open http://localhost:5173/login. Sign-in emails are printed to the server console (magic link + code) — no SMTP needed.
@@ -48,6 +48,8 @@ cp examples/react-router/.env.example.mailpit examples/react-router/.env
 Restart the dev server; emails land in the Mailpit inbox at http://localhost:8025.
 
 The same app also demonstrates **SMS sign-in** — open the Phone tab (http://localhost:5173/login?via=sms). Codes are printed to the console by default; to text them for real, configure Twilio (a script that configures Twilio from scratch is at `./infra/twilio/setup-twilio.mts`). See the [example README](./examples/react-router#send-real-texts).
+
+It also demonstrates **passkeys** — sign in (email or phone), click "Add a passkey" on the dashboard, log out, and use "Sign in with a passkey" on the login page.
 
 ## Install
 
@@ -87,9 +89,7 @@ export const auth = new Auth({
   challengeStore: new InMemoryChallengeStore(),
   providers: [
     new EmailProvider({
-      smtp: {
-        /* host, port, user, pass */
-      },
+      smtp: {/* host, port, user, pass */},
       from: process.env.FROM_EMAIL!,
     }),
   ],
@@ -107,7 +107,7 @@ No token secrets to manage for sign-in emails — links and codes are backed by 
 
 ### Step 3 — Add the catch-all auth route
 
-A single file at `app/routes/auth.$provider.$action.tsx` handles every provider's HTTP endpoints (`/auth/email/initiate`, `/auth/email/verify`, future `/auth/sms/...`, etc.):
+A single file at `app/routes/auth.$provider.$action.tsx` handles every provider's HTTP endpoints (`/auth/email/initiate`, `/auth/email/verify`, `/auth/sms/...`, `/auth/passkey/...`, etc.):
 
 ```tsx
 import { handleAuth } from "~/lib/auth.server"
@@ -147,7 +147,7 @@ flowchart LR
     app["Your app<br/><br/>• IdentityStore impl<br/>• UserStore impl<br/>• login / logout routes"]
     adapter["Framework adapter<br/>(e.g. react-router)<br/><br/>createAuthHandlers()"]
     core["@activescott/auth<br/><br/>• Auth<br/>• SessionManager (JWT)<br/>• cookie session cache"]
-    providers["AuthProvider<br/><br/>• email (magic link + code)<br/>• sms (planned)<br/>• passkey (planned)"]
+    providers["AuthProvider<br/><br/>• email (magic link + code)<br/>• sms (one-time code)<br/>• passkey (WebAuthn)"]
 
     app -- "calls" --> adapter
     adapter -- "delegates to" --> core
@@ -161,13 +161,14 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 
 ## Packages
 
-| Package                                                                          | Description                                                                                                                               |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@activescott/auth`](./packages/auth)                                           | Core: `Auth` class, `SessionManager`, types (`AuthProvider`, `IdentityStore`, `UserStore`), JWT-cookie sessions.                          |
-| [`@activescott/auth-provider-email`](./packages/auth-provider-email)             | Email magic link provider. Ships a Nodemailer SMTP transport; the `EmailTransport` interface lets you swap in others (Resend, SES, etc.). |
-| [`@activescott/auth-provider-sms`](./packages/auth-provider-sms)                 | SMS one-time-code provider. Vendor-neutral (`SmsTransport` interface); ships a console transport for development.                         |
-| [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transport (SMS, or RCS via a Messaging Service). Raw fetch, zero dependencies.                                                     |
-| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v7 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.                            |
+| Package                                                                          | Description                                                                                                                                                 |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@activescott/auth`](./packages/auth)                                           | Core: `Auth` class, `SessionManager`, types (`AuthProvider`, `IdentityStore`, `UserStore`), JWT-cookie sessions.                                            |
+| [`@activescott/auth-provider-email`](./packages/auth-provider-email)             | Email magic link provider. Ships a Nodemailer SMTP transport; the `EmailTransport` interface lets you swap in others (Resend, SES, etc.).                   |
+| [`@activescott/auth-provider-sms`](./packages/auth-provider-sms)                 | SMS one-time-code provider. Vendor-neutral (`SmsTransport` interface); ships a console transport for development.                                           |
+| [`@activescott/auth-provider-passkey`](./packages/auth-provider-passkey)         | Passkey (WebAuthn) provider. Credentials are ordinary identity rows (no extra storage interface); zero-dependency browser client at the `/browser` subpath. |
+| [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transport (SMS, or RCS via a Messaging Service). Raw fetch, zero dependencies.                                                                       |
+| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v7 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.                                              |
 
 Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
 

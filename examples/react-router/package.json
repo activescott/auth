@@ -13,6 +13,7 @@
     "@activescott/auth": "*",
     "@activescott/auth-adapter-react-router": "*",
     "@activescott/auth-provider-email": "*",
+    "@activescott/auth-provider-passkey": "*",
     "@activescott/auth-provider-sms": "*",
     "@activescott/auth-sms-twilio": "*",
     "@react-router/node": "8.3.0",
