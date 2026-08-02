@@ -74,14 +74,10 @@ export function constantTimeEqual(a: string, b: string): boolean {
 
 /** Why an OTP challenge redemption failed */
 export type OtpVerifyFailure =
-  | "not_found"
-  | "expired"
-  | "rate_limited"
-  | "invalid_code"
+  "not_found" | "expired" | "rate_limited" | "invalid_code"
 
 export type OtpChallengeResult =
-  | { ok: true; challenge: Challenge }
-  | { ok: false; reason: OtpVerifyFailure }
+  { ok: true; challenge: Challenge } | { ok: false; reason: OtpVerifyFailure }
 
 /**
  * Redeem a one-time code against a stored challenge: checks the challenge
