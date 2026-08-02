@@ -44,6 +44,14 @@ export default function Login({ loaderData }: Route.ComponentProps) {
       {error && <p className="text-red-700 mt-3">Error: {error}</p>}
 
       <PasskeyLogin />
+
+      <p className="text-xs text-gray-400 mt-8">
+        Dev note: this example keeps users, identities, and passkey credentials
+        in memory, so restarting the server forgets them all. A passkey saved in
+        your password manager survives the restart, but the server no longer
+        recognizes it (&ldquo;Unknown credential&rdquo;) — delete it there and
+        add a new one. A real app would back the stores with a database.
+      </p>
     </main>
   )
 }
