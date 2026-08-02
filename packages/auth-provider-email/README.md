@@ -72,9 +72,7 @@ import {
 } from "@activescott/auth-provider-email"
 
 new EmailProvider(
-  {
-    /* ...config... */
-  },
+  {/* ...config... */},
   new NodemailerTransport(true), // dev mode: log link, don't send
 )
 ```

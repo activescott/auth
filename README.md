@@ -24,7 +24,7 @@ Passkeys push the same idea further: phishing-resistant, no shared secret, and s
 - ✅ **Email one-time codes** — every sign-in email also includes a numeric code with iOS/macOS AutoFill support, so users can type the code instead of switching to the inbox tab.
 - ✅ **Bring your own database** — three small store interfaces (`IdentityStore`, `UserStore`, `ChallengeStore`); implement them with Prisma, Drizzle, raw SQL, Redis, whatever you use.
 - ✅ **Edge-ready, [WinterTC-compatible](https://wintertc.org/faq) core** — standard Fetch `Request`/`Response`, WebCrypto, and [`jose`](https://github.com/panva/jose) for session JWTs; no Node-only APIs, so it runs on Cloudflare Workers, Deno, Bun, and any WinterTC-aligned runtime.
-- ✅ **React Router v7 adapter** — `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.
+- ✅ **React Router v8 adapter** — `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.
 - ✅ **SMS one-time codes** — vendor-neutral provider with a Twilio transport (RCS-ready), [WebOTP](https://developer.mozilla.org/docs/Web/API/WebOTP_API) autofill support, and an interactive provisioning script. An AWS transport is drafted in [#37](https://github.com/activescott/auth/pull/37) awaiting a tester.
 - ✅ **Passkeys (WebAuthn)** — add a passkey while signed in, then sign in usernameless with Touch ID, Face ID, Windows Hello, 1Password, iCloud Keychain, or a security key; conditional UI (passkey autofill) supported. Verification via [`@simplewebauthn/server`](https://simplewebauthn.dev/); zero-dependency browser client included.
 
@@ -59,7 +59,7 @@ npm install @activescott/auth @activescott/auth-provider-email @activescott/auth
 
 ## React Router quick start
 
-A complete, runnable example lives in [`examples/react-router`](./examples/react-router) — a real React Router v7 framework-mode app with login, logout, a protected dashboard, and a Playwright e2e suite. CI runs the example end-to-end on every PR.
+A complete, runnable example lives in [`examples/react-router`](./examples/react-router) — a real React Router v8 framework-mode app with login, logout, a protected dashboard, and a Playwright e2e suite. CI runs the example end-to-end on every PR.
 
 If you'd rather wire it into an existing app, the steps are:
 
@@ -168,7 +168,7 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 | [`@activescott/auth-provider-sms`](./packages/auth-provider-sms)                 | SMS one-time-code provider. Vendor-neutral (`SmsTransport` interface); ships a console transport for development.                                           |
 | [`@activescott/auth-provider-passkey`](./packages/auth-provider-passkey)         | Passkey (WebAuthn) provider. Credentials are ordinary identity rows (no extra storage interface); zero-dependency browser client at the `/browser` subpath. |
 | [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transport (SMS, or RCS via a Messaging Service). Raw fetch, zero dependencies.                                                                       |
-| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v7 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.                                              |
+| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v8 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.                                              |
 
 Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
 

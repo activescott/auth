@@ -16,8 +16,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     <main className="container mx-auto p-8 max-w-xl">
       <h1 className="text-3xl font-bold mb-4">RR Auth Example</h1>
       <p className="mb-6">
-        Minimal React Router v7 app demonstrating <code>@activescott/auth</code>{" "}
-        with email magic-link login.
+        Minimal React Router v8 app demonstrating <code>@activescott/auth</code>{" "}
+        with email, SMS, and passkey sign-in.
       </p>
       {loaderData.user ? (
         <p>
