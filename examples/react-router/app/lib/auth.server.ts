@@ -96,6 +96,14 @@ const SESSION_SECRET =
   process.env.JWT_SECRET ?? "dev-only-session-secret-do-not-use-in-production"
 
 /**
+ * Registered passkeys. Exported so the dashboard loader can list the
+ * signed-in user's passkeys. In-memory like the other stores — restart
+ * wipes it, orphaning any passkeys saved in the browser/password
+ * manager for localhost (delete those there when it happens).
+ */
+export const credentialStore = new InMemoryCredentialStore()
+
+/**
  * SMTP is considered configured when SMTP_HOST is set (see .env.example).
  * Configured → real emails are sent. Not configured → dev mode: emails are
  * logged to the server console instead.
@@ -212,7 +220,7 @@ export const auth = new Auth({
       // rpID and expectedOrigin default to the request's hostname/origin,
       // which suits dev and e2e on localhost. Set both explicitly in
       // production (passkeys are bound to the domain they were created on).
-      credentialStore: new InMemoryCredentialStore(),
+      credentialStore,
       challengeSecret: SESSION_SECRET,
     }),
   ],

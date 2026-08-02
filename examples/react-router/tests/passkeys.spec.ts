@@ -29,13 +29,28 @@ test("add a passkey on the dashboard, then sign in with it", async ({
   await loginAs(page, "passkey-user@example.com")
   await page.getByRole("button", { name: /add a passkey/i }).click()
   await expect(page.getByText(/passkey added/i)).toBeVisible()
+  await expect(page.getByTestId("passkey-item")).toHaveCount(1)
+  await expect(
+    page.getByRole("button", { name: /add another passkey/i }),
+  ).toBeVisible()
 
   await page.getByRole("button", { name: /log out/i }).click()
   await page.waitForURL(/\/$/)
 
   await page.goto("/login")
-  await page.getByRole("button", { name: /sign in with a passkey/i }).click()
-  await page.waitForURL("**/dashboard")
+  // The virtual authenticator auto-resolves the conditional-UI request
+  // that starts on page load, so the page may sign in and redirect
+  // before the button click lands. Both paths are real passkey
+  // sign-ins; accept whichever wins the race.
+  const CONDITIONAL_UI_GRACE_MS = 3000
+  const autoSignedIn = await page
+    .waitForURL("**/dashboard", { timeout: CONDITIONAL_UI_GRACE_MS })
+    .then(() => true)
+    .catch(() => false)
+  if (!autoSignedIn) {
+    await page.getByRole("button", { name: /sign in with a passkey/i }).click()
+    await page.waitForURL("**/dashboard")
+  }
   await expect(page.getByText("passkey-user@example.com")).toBeVisible()
 })
 

@@ -1,11 +1,22 @@
 import { useState } from "react"
-import { Form } from "react-router"
-import { requireAuth } from "~/lib/auth.server"
+import { Form, useRevalidator } from "react-router"
+import { requireAuth, credentialStore } from "~/lib/auth.server"
 import type { Route } from "./+types/dashboard"
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireAuth(request)
-  return { user }
+  const credentials = await credentialStore.findByUserId(user.id)
+  return {
+    user,
+    passkeys: credentials.map((credential) => ({
+      credentialId: credential.credentialId,
+      nickname: credential.nickname ?? null,
+      // "multiDevice" = synced to a cloud keychain / password manager
+      synced: credential.deviceType === "multiDevice",
+      createdAt: credential.createdAt.toISOString(),
+      lastUsedAt: credential.lastUsedAt?.toISOString() ?? null,
+    })),
+  }
 }
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
@@ -15,7 +26,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
       <p className="mb-4">
         Signed in as <code>{String(loaderData.user.metadata?.identifier)}</code>
       </p>
-      <AddPasskey />
+      <Passkeys passkeys={loaderData.passkeys} />
 
       <Form method="post" action="/logout">
         <button
@@ -29,16 +40,23 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
   )
 }
 
-function AddPasskey() {
+function Passkeys({
+  passkeys,
+}: {
+  passkeys: Route.ComponentProps["loaderData"]["passkeys"]
+}) {
   const [status, setStatus] = useState<
     { state: "idle" } | { state: "added" } | { state: "error"; message: string }
   >({ state: "idle" })
+  const revalidator = useRevalidator()
 
   async function handleClick() {
     try {
       const { registerPasskey } = await import("~/lib/passkey.client")
       await registerPasskey()
       setStatus({ state: "added" })
+      // Reload the loader data so the new passkey shows in the list
+      await revalidator.revalidate()
     } catch (caught) {
       setStatus({
         state: "error",
@@ -52,15 +70,39 @@ function AddPasskey() {
     <section className="mb-6 p-4 border rounded">
       <h2 className="font-semibold mb-2">Passkeys</h2>
       <p className="text-sm mb-3">
-        Add a passkey to sign in with Touch ID, Face ID, Windows Hello, or your
-        password manager — no email or text required.
+        Sign in with Touch ID, Face ID, Windows Hello, or your password manager
+        — no email or text required.
       </p>
+
+      {passkeys.length > 0 && (
+        <ul className="mb-3 divide-y border rounded">
+          {passkeys.map((passkey) => (
+            <li
+              key={passkey.credentialId}
+              data-testid="passkey-item"
+              className="p-2 text-sm flex items-baseline justify-between gap-2"
+            >
+              <span className="font-mono truncate" title={passkey.credentialId}>
+                {passkey.nickname ??
+                  abbreviateCredentialId(passkey.credentialId)}
+              </span>
+              <span className="text-gray-500 whitespace-nowrap">
+                {passkey.synced ? "synced" : "device-bound"} · added{" "}
+                {formatDate(passkey.createdAt)}
+                {passkey.lastUsedAt &&
+                  ` · last used ${formatDate(passkey.lastUsedAt)}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <button
         type="button"
         onClick={handleClick}
         className="border py-2 px-4 rounded hover:bg-gray-50 dark:hover:bg-gray-800"
       >
-        Add a passkey
+        {passkeys.length > 0 ? "Add another passkey" : "Add a passkey"}
       </button>
       {status.state === "added" && (
         <p className="text-green-700 mt-3">Passkey added.</p>
@@ -72,4 +114,13 @@ function AddPasskey() {
       )}
     </section>
   )
+}
+
+function abbreviateCredentialId(credentialId: string): string {
+  const PREFIX_LENGTH = 8
+  return `Passkey ${credentialId.slice(0, PREFIX_LENGTH)}…`
+}
+
+function formatDate(isoDate: string): string {
+  return new Date(isoDate).toLocaleDateString()
 }

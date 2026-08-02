@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Form, redirect, useNavigate } from "react-router"
+import { Form, redirect } from "react-router"
 import { getAuthErrorMessage } from "@activescott/auth"
 import { getSession } from "~/lib/auth.server"
 import { CodeForm } from "~/components/code-form"
@@ -50,7 +50,6 @@ export default function Login({ loaderData }: Route.ComponentProps) {
 
 function PasskeyLogin() {
   const [error, setError] = useState<string | null>(null)
-  const navigate = useNavigate()
 
   // Conditional UI: offer passkeys in the browser's autofill on the
   // email input (autoComplete="username webauthn"). The request stays
@@ -64,7 +63,10 @@ function PasskeyLogin() {
       if (!(await isConditionalUIAvailable())) return
       try {
         await signInWithPasskey(true)
-        if (!cancelled) await navigate("/dashboard")
+        // Full page load (not a client-side navigation) so password
+        // managers see the sign-in land — 1Password otherwise reports
+        // a problem after a successful assertion.
+        if (!cancelled) window.location.assign("/dashboard")
       } catch {
         // Aborted by the modal flow or dismissed — not an error to show
       }
@@ -73,14 +75,15 @@ function PasskeyLogin() {
     return () => {
       cancelled = true
     }
-  }, [navigate])
+  }, [])
 
   async function handleClick() {
     setError(null)
     try {
       const { signInWithPasskey } = await import("~/lib/passkey.client")
       await signInWithPasskey()
-      await navigate("/dashboard")
+      // Full page load — see the conditional-UI comment above
+      window.location.assign("/dashboard")
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Passkey sign-in failed",
@@ -97,6 +100,11 @@ function PasskeyLogin() {
       >
         Sign in with a passkey
       </button>
+      <p className="text-sm text-gray-500 mt-2">
+        Already added a passkey to your account? Sign in with it here. First
+        time? Sign in with your email or mobile number above, then add a passkey
+        from the dashboard.
+      </p>
       {error && (
         <p className="text-red-700 mt-3" data-testid="passkey-error">
           Error: {error}
