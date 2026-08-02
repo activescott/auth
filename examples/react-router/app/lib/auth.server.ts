@@ -18,7 +18,7 @@ import {
 import { TwilioTransport } from "@activescott/auth-sms-twilio"
 import {
   PasskeyProvider,
-  InMemoryCredentialStore,
+  parsePasskeyCredentialMetadata,
 } from "@activescott/auth-provider-passkey"
 import { CaptureEmailTransport } from "./capture-email-transport.server"
 import { CaptureSmsTransport } from "./capture-sms-transport.server"
@@ -96,12 +96,38 @@ const SESSION_SECRET =
   process.env.JWT_SECRET ?? "dev-only-session-secret-do-not-use-in-production"
 
 /**
- * Registered passkeys. Exported so the dashboard loader can list the
- * signed-in user's passkeys. In-memory like the other stores — restart
- * wipes it, orphaning any passkeys saved in the browser/password
- * manager for localhost (delete those there when it happens).
+ * The signed-in user's passkeys for the dashboard list. Passkeys are
+ * ordinary identity rows ({provider: "passkey"}) whose provider-owned
+ * metadata holds the credential state; a restart wipes the in-memory
+ * store, orphaning any passkeys saved in the browser/password manager
+ * for localhost (delete those there when it happens).
  */
-export const credentialStore = new InMemoryCredentialStore()
+export async function listPasskeys(userId: string): Promise<
+  {
+    credentialId: string
+    nickname: string | null
+    synced: boolean
+    createdAt: string
+    lastUsedAt: string | null
+  }[]
+> {
+  const all = await identityStore.findByUserId(userId)
+  const passkeys = []
+  for (const identity of all) {
+    if (identity.provider !== "passkey") continue
+    const credential = parsePasskeyCredentialMetadata(identity.metadata)
+    if (!credential) continue
+    passkeys.push({
+      credentialId: identity.identifier,
+      nickname: credential.nickname ?? null,
+      // "multiDevice" = synced to a cloud keychain / password manager
+      synced: credential.deviceType === "multiDevice",
+      createdAt: identity.createdAt.toISOString(),
+      lastUsedAt: credential.lastUsedAt ?? null,
+    })
+  }
+  return passkeys
+}
 
 /**
  * SMTP is considered configured when SMTP_HOST is set (see .env.example).
@@ -220,7 +246,6 @@ export const auth = new Auth({
       // rpID and expectedOrigin default to the request's hostname/origin,
       // which suits dev and e2e on localhost. Set both explicitly in
       // production (passkeys are bound to the domain they were created on).
-      credentialStore,
       challengeSecret: SESSION_SECRET,
     }),
   ],

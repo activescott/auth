@@ -1,22 +1,11 @@
 import { useState } from "react"
 import { Form, useRevalidator } from "react-router"
-import { requireAuth, credentialStore } from "~/lib/auth.server"
+import { requireAuth, listPasskeys } from "~/lib/auth.server"
 import type { Route } from "./+types/dashboard"
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireAuth(request)
-  const credentials = await credentialStore.findByUserId(user.id)
-  return {
-    user,
-    passkeys: credentials.map((credential) => ({
-      credentialId: credential.credentialId,
-      nickname: credential.nickname ?? null,
-      // "multiDevice" = synced to a cloud keychain / password manager
-      synced: credential.deviceType === "multiDevice",
-      createdAt: credential.createdAt.toISOString(),
-      lastUsedAt: credential.lastUsedAt?.toISOString() ?? null,
-    })),
-  }
+  return { user, passkeys: await listPasskeys(user.id) }
 }
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
