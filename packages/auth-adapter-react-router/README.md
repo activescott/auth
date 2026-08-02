@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@activescott/auth-adapter-react-router.svg)](https://www.npmjs.com/package/@activescott/auth-adapter-react-router)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-React Router v7 adapter for [`@activescott/auth`](https://www.npmjs.com/package/@activescott/auth). Wraps the framework-agnostic `Auth` class in handlers that read/write standard `Request` and `Response` objects — exactly what React Router loaders and actions return.
+React Router v8 adapter for [`@activescott/auth`](https://www.npmjs.com/package/@activescott/auth). Wraps the framework-agnostic `Auth` class in handlers that read/write standard `Request` and `Response` objects — exactly what React Router loaders and actions return.
 
 Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbot.com](https://tinkerbellbot.com).
 
@@ -21,9 +21,7 @@ import { Auth } from "@activescott/auth"
 import { EmailProvider } from "@activescott/auth-provider-email"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
 
-export const auth = new Auth({
-  /* ...session, stores, providers... */
-})
+export const auth = new Auth({/* ...session, stores, providers... */})
 
 export const { handleAuth, getSession, requireAuth, optionalAuth, logout } =
   createAuthHandlers(auth, {
@@ -43,7 +41,7 @@ export const loader = ({ request }: Route.LoaderArgs) => handleAuth({ request })
 export const action = ({ request }: Route.ActionArgs) => handleAuth({ request })
 ```
 
-This one file covers `/auth/<provider>/<action>` for every registered provider — e.g. `POST /auth/email/initiate` (your login form posts here), `GET /auth/email/verify?...` (magic-link confirm page), `POST /auth/email/verify` (link redemption or code entry), and future `/auth/sms/...`, etc. `handleAuth` dispatches to the right provider, runs `verify` or `initiate`, sets/clears the session cookie, and returns a redirect — or passes through a page the provider renders (like the magic-link confirm page).
+This one file covers `/auth/<provider>/<action>` for every registered provider — e.g. `POST /auth/email/initiate` (your login form posts here), `GET /auth/email/verify?...` (magic-link confirm page), `POST /auth/email/verify` (link redemption or code entry), `/auth/sms/...`, `/auth/passkey/...`, etc. `handleAuth` dispatches to the right provider, runs `verify` or `initiate`, sets/clears the session cookie, and returns a redirect — or passes through a page the provider renders (like the magic-link confirm page).
 
 Protect any loader with `requireAuth(request)`:
 
