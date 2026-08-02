@@ -43,10 +43,17 @@ async function postJson<T>(url: string, body?: object): Promise<T> {
   })
   const json = await response.json().catch(() => null)
   if (!response.ok) {
+    // Prefer the specific reason (e.g. "Unknown credential" — a passkey
+    // saved in a password manager that the server no longer knows,
+    // common here because the example's stores reset on restart).
     const message =
-      json && typeof json.error?.message === "string"
+      (json && typeof json.error?.details?.reason === "string"
+        ? json.error.details.reason
+        : undefined) ??
+      (json && typeof json.error?.message === "string"
         ? json.error.message
-        : `Request to ${url} failed (${response.status})`
+        : undefined) ??
+      `Request to ${url} failed (${response.status})`
     throw new Error(message)
   }
   return json

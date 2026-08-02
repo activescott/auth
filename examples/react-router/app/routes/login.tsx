@@ -56,33 +56,50 @@ function PasskeyLogin() {
   // pending until the user picks a passkey there; clicking the passkey
   // button below aborts it and runs the modal flow instead.
   useEffect(() => {
-    let cancelled = false
     async function offerPasskeyAutofill() {
       const { signInWithPasskey, isConditionalUIAvailable } =
         await import("~/lib/passkey.client")
       if (!(await isConditionalUIAvailable())) return
       try {
         await signInWithPasskey(true)
-        // Full page load (not a client-side navigation) so password
-        // managers see the sign-in land — 1Password otherwise reports
-        // a problem after a successful assertion.
-        if (!cancelled) window.location.assign("/dashboard")
-      } catch {
-        // Aborted by the modal flow or dismissed — not an error to show
+        // Full page load: fresh server render with the new session
+        window.location.assign("/dashboard")
+      } catch (caught) {
+        // DOMExceptions are ceremony noise the user never initiated
+        // (aborted by the button's modal flow, dismissed, or the
+        // browser not supporting conditional requests). A plain Error
+        // is the server rejecting a completed assertion — e.g. an
+        // orphaned credential after a dev-server restart — and the
+        // user did act on that one, so show it.
+        if (caught instanceof Error && !(caught instanceof DOMException)) {
+          setError(caught.message)
+        }
       }
     }
-    void offerPasskeyAutofill()
-    return () => {
-      cancelled = true
-    }
+    // The timeout makes React StrictMode's dev-only mount→unmount→remount
+    // start exactly ONE WebAuthn ceremony (the first mount's timer is
+    // cleared before it fires). Start-abort-start cycles broke sign-in
+    // two ways: the user could pick a passkey on the aborted ceremony,
+    // whose completion handler never navigates; and 1Password's
+    // extension ignores AbortController on conditional requests
+    // (acknowledged, unfixed: https://www.1password.community/1password-at-home-31/passkey-authentication-doesn-t-abort-on-signal-2930),
+    // so each aborted ceremony strands a 1Password-internal one that
+    // later surfaces "1Password encountered a problem" even when
+    // sign-in succeeded.
+    const timer = setTimeout(() => void offerPasskeyAutofill(), 0)
+    return () => clearTimeout(timer)
   }, [])
 
   async function handleClick() {
     setError(null)
     try {
       const { signInWithPasskey } = await import("~/lib/passkey.client")
+      // Starting the modal ceremony aborts the pending conditional one
+      // (required by WebAuthn). Because of the 1Password abort bug cited
+      // above, 1Password may show its "encountered a problem" toast on
+      // this path even when sign-in succeeds — not fixable site-side.
       await signInWithPasskey()
-      // Full page load — see the conditional-UI comment above
+      // Full page load: fresh server render with the new session
       window.location.assign("/dashboard")
     } catch (caught) {
       setError(
