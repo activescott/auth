@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.3](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.0.2...auth-adapter-react-router@1.0.3) (2026-08-02)
+
+### Bug Fixes
+
+* allow @activescott/auth v3 in peer range ([e5d3717](https://github.com/activescott/auth/commit/e5d3717719eac52d446cc9dd4aa1fb862d859e60))
+* match verify action exactly in handleAuth ([e60c427](https://github.com/activescott/auth/commit/e60c427cdce1ea169ce07a43216f73fbec4b3d1b))
+* require @activescott/auth v3 and react-router v8 ([22dc854](https://github.com/activescott/auth/commit/22dc854999cda522998e77b0bcb6f844488b073b))
+
 ## [1.0.2](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.0.1...auth-adapter-react-router@1.0.2) (2026-08-01)
 
 ### Bug Fixes

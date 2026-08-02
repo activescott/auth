@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.2](https://github.com/activescott/auth/compare/auth-provider-sms@0.1.1...auth-provider-sms@0.1.2) (2026-08-02)
+
+### Bug Fixes
+
+* allow @activescott/auth v3 in peer range ([2891f2e](https://github.com/activescott/auth/commit/2891f2ea25da5f800efe04df2d478fc57f2c661d))
+* require @activescott/auth v3 ([5aedd33](https://github.com/activescott/auth/commit/5aedd33614625bf2df8847bf9320a55a8dbe828d))
+
 ## [0.1.1](https://github.com/activescott/auth/compare/auth-provider-sms@0.1.0...auth-provider-sms@0.1.1) (2026-08-01)
 
 ### Bug Fixes

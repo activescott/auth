@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.2](https://github.com/activescott/auth/compare/auth-provider-email@1.0.1...auth-provider-email@1.0.2) (2026-08-02)
+
+### Bug Fixes
+
+* allow @activescott/auth v3 in peer range ([93557c3](https://github.com/activescott/auth/commit/93557c3a6f27296d0e54cd4864282b2619ba5807))
+* require @activescott/auth v3 ([f99433a](https://github.com/activescott/auth/commit/f99433a84a4820c85baa96a5f5593430aee778b7))
+
 ## [1.0.1](https://github.com/activescott/auth/compare/auth-provider-email@1.0.0...auth-provider-email@1.0.1) (2026-08-01)
 
 ### Bug Fixes

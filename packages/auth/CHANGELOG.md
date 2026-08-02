@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.0.0](https://github.com/activescott/auth/compare/auth@2.1.0...auth@3.0.0) (2026-08-02)
+
+### ⚠ BREAKING CHANGES
+
+* Identity.metadata and the metadata argument of
+IdentityStore.create are required, and IdentityStore.update is a
+required method.
+
+### Features
+
+* add provider handleAction and context getSession ([4269a6c](https://github.com/activescott/auth/commit/4269a6cc90d8a875a21dda886ec079da6952432b))
+* require Identity.metadata and IdentityStore.update ([b5c3c7b](https://github.com/activescott/auth/commit/b5c3c7b70c8c35c6d8841a19a35926705f1403a8))
+
 ## [2.1.0](https://github.com/activescott/auth/compare/auth@2.0.0...auth@2.1.0) (2026-08-01)
 
 ### Features
