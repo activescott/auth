@@ -33,8 +33,8 @@ The provider interface (`AuthProvider` in `@activescott/auth`) is the extension 
 ## Try the example
 
 ```bash
-npm ci && npm run build
-npm run dev --workspace=examples/react-router
+npm ci
+npm run dev   # builds the packages, then starts the example app
 ```
 
 Open http://localhost:5173/login. Sign-in emails are printed to the server console (magic link + code) — no SMTP needed.

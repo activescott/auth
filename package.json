@@ -15,6 +15,7 @@
     "examples/react-router/tests"
   ],
   "scripts": {
+    "dev": "npm run build && npm run dev --workspace=@activescott/auth-example-react-router",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
