@@ -21,6 +21,8 @@ const auth = new Auth({
   identityStore,
   challengeStore: new InMemoryChallengeStore(), // DB-backed in production
   providers: [
+    // other providers such as email and/or SMS go here too — users add
+    // a passkey while signed in, so another provider handles first sign-in
     new PasskeyProvider({
       rpName: "MyApp",
       challengeSecret: process.env.JWT_SECRET!,
@@ -100,7 +102,6 @@ Registration model: **add-passkey-while-signed-in**. Users sign in with another 
 | `challengeSecret`     | (required)                 | Signs the short-lived challenge cookie                                  |
 | `challengeExpiry`     | `"5m"`                     | Challenge lifetime                                                      |
 | `challengeCookieName` | `"auth_passkey_challenge"` | Challenge cookie name                                                   |
-| `challengeStore`      | (off)                      | Opt into strict single-use challenges (see below)                       |
 
 ## Storage: passkeys are identities
 
@@ -137,7 +138,7 @@ const passkeys = (await identityStore.findByUserId(user.id))
 
 ## Challenges
 
-Challenges are stateless by default: the options endpoints set an HttpOnly, SameSite=Lax cookie containing a signed JWT (`challengeSecret`, 5-minute expiry) and the verify endpoints require it. That means no storage, but a challenge could in principle be redeemed more than once within its 5-minute window. Pass a `challengeStore` to make challenges strictly single-use — each is recorded on issue and consumed on the first redemption attempt.
+The options endpoints set an HttpOnly, SameSite=Lax cookie containing a signed JWT (`challengeSecret`, 5-minute expiry) that binds the ceremony to the browser, and record the challenge in the core `challengeStore`. The verify endpoints require both and consume the stored challenge on the first redemption attempt — success or not — so every challenge is strictly single-use.
 
 ## Cross-platform notes
 

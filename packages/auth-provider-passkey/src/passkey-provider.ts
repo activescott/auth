@@ -21,10 +21,10 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server"
-import type {
-  AuthenticationResponseJSON,
-  RegistrationResponseJSON,
-} from "@simplewebauthn/server"
+import {
+  isAuthenticationResponse,
+  isRegistrationResponse,
+} from "./webauthn-response.js"
 import type { ChallengeTokenPayload } from "./challenge-token.js"
 import { signChallengeToken, verifyChallengeToken } from "./challenge-token.js"
 import { base64urlToUint8Array, uint8ArrayToBase64url } from "./base64url.js"
@@ -65,8 +65,8 @@ const defaultWebAuthn: WebAuthnServer = {
  *
  * All four are fetch/JSON endpoints (WebAuthn ceremonies run in page
  * JavaScript, not form navigations). Challenges are bound to the browser
- * with a short-lived signed-JWT HttpOnly cookie; configure
- * challengeStore for strict single-use challenges.
+ * with a short-lived signed-JWT HttpOnly cookie and recorded in the
+ * core challengeStore, so each is strictly single-use.
  */
 export class PasskeyProvider implements AuthProvider {
   public readonly id = "passkey"
@@ -483,15 +483,15 @@ export class PasskeyProvider implements AuthProvider {
     )
     const jti = crypto.randomUUID()
 
-    if (this.config.challengeStore) {
-      await this.config.challengeStore.create({
-        id: jti,
-        type: CHALLENGE_TYPE,
-        identifier: args.identifier,
-        maxAttempts: 1,
-        expiresAt: new Date(Date.now() + expirySeconds * MS_PER_SECOND),
-      })
-    }
+    // Record the challenge so redemption is strictly single-use; the
+    // core config always provides a challengeStore.
+    await args.context.challengeStore.create({
+      id: jti,
+      type: CHALLENGE_TYPE,
+      identifier: args.identifier,
+      maxAttempts: 1,
+      expiresAt: new Date(Date.now() + expirySeconds * MS_PER_SECOND),
+    })
 
     const token = await signChallengeToken(
       this.config.challengeSecret,
@@ -515,9 +515,8 @@ export class PasskeyProvider implements AuthProvider {
   }
 
   /**
-   * Read and validate the challenge cookie. When a challengeStore is
-   * configured the challenge row is deleted here — one redemption
-   * attempt per challenge, success or not.
+   * Read and validate the challenge cookie, consuming the challenge
+   * row — one redemption attempt per challenge, success or not.
    */
   private async consumeChallengeToken(
     request: Request,
@@ -532,11 +531,9 @@ export class PasskeyProvider implements AuthProvider {
     )
     if (!token) return null
 
-    if (this.config.challengeStore) {
-      const row = await this.config.challengeStore.findById(token.jti)
-      if (!row || row.expiresAt.getTime() < Date.now()) return null
-      await this.config.challengeStore.delete(token.jti)
-    }
+    const row = await context.challengeStore.findById(token.jti)
+    if (!row || row.expiresAt.getTime() < Date.now()) return null
+    await context.challengeStore.delete(token.jti)
 
     return token
   }
@@ -580,36 +577,4 @@ function jsonResponse(
     headers.append("Set-Cookie", cookie)
   }
   return new Response(JSON.stringify(body), { status, headers })
-}
-
-/**
- * Narrow a parsed body to a WebAuthn registration response. Field-level
- * validation is @simplewebauthn/server's job; this checks the envelope.
- */
-function isRegistrationResponse(
-  body: Record<string, unknown>,
-): body is RegistrationResponseJSON & Record<string, unknown> {
-  return (
-    typeof body.id === "string" &&
-    typeof body.rawId === "string" &&
-    typeof body.response === "object" &&
-    body.response !== null &&
-    body.type === "public-key"
-  )
-}
-
-/**
- * Narrow a parsed body to a WebAuthn authentication response. Field-level
- * validation is @simplewebauthn/server's job; this checks the envelope.
- */
-function isAuthenticationResponse(
-  body: Record<string, unknown>,
-): body is AuthenticationResponseJSON & Record<string, unknown> {
-  return (
-    typeof body.id === "string" &&
-    typeof body.rawId === "string" &&
-    typeof body.response === "object" &&
-    body.response !== null &&
-    body.type === "public-key"
-  )
 }

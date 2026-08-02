@@ -1,4 +1,3 @@
-import type { ChallengeStore } from "@activescott/auth"
 import type {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -27,11 +26,6 @@ export interface PasskeyProviderConfig {
   challengeExpiry?: string
   /** Challenge cookie name (default "auth_passkey_challenge") */
   challengeCookieName?: string
-  /** Optional store for strict single-use challenges. Without it,
-   * challenges are stateless signed tokens that expire but could be
-   * replayed within their lifetime; with it, each challenge is deleted
-   * on first redemption attempt. */
-  challengeStore?: ChallengeStore
 }
 
 /**

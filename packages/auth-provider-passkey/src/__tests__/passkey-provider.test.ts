@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import type {
   AuthContext,
-  ChallengeStore,
   Identity,
   IdentityStore,
   UserStore,
@@ -144,16 +143,12 @@ function createContext(overrides: Partial<AuthContext> = {}): AuthContext {
     findById: vi.fn().mockResolvedValue({ id: "user-1" }),
     create: vi.fn().mockResolvedValue({ id: "user-1" }),
   }
-  const challengeStore: ChallengeStore = {
-    create: vi.fn(),
-    findById: vi.fn().mockResolvedValue(null),
-    incrementAttempts: vi.fn().mockResolvedValue(1),
-    delete: vi.fn(),
-  }
   return {
     identityStore: new TestIdentityStore(),
     userStore,
-    challengeStore,
+    // Real store: challenges are recorded on options and consumed on
+    // verify, so mocks would break every verify path
+    challengeStore: new InMemoryChallengeStore(),
     baseUrl: BASE_URL,
     createSession: vi
       .fn()
@@ -725,12 +720,10 @@ describe("PasskeyProvider", () => {
     })
   })
 
-  describe("single-use challenges via challengeStore", () => {
-    it("should record the challenge on options and consume it on verify", async () => {
-      const challengeStore = new InMemoryChallengeStore()
-      const { provider, context, authCookie } = await registeredCredentialSetup(
-        { challengeStore },
-      )
+  describe("single-use challenges", () => {
+    it("should consume the challenge on first redemption and reject a replay", async () => {
+      const { provider, context, authCookie } =
+        await registeredCredentialSetup()
 
       const first = await provider.handleAction(
         "authenticate-verify",
