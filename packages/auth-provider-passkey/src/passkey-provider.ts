@@ -4,6 +4,7 @@ import type {
   AuthInitResult,
   AuthProvider,
   AuthResult,
+  Identity,
   ProviderRoute,
 } from "@activescott/auth"
 import {
@@ -27,6 +28,8 @@ import type {
 import type { ChallengeTokenPayload } from "./challenge-token.js"
 import { signChallengeToken, verifyChallengeToken } from "./challenge-token.js"
 import { base64urlToUint8Array, uint8ArrayToBase64url } from "./base64url.js"
+import type { PasskeyCredentialMetadata } from "./credential-metadata.js"
+import { parsePasskeyCredentialMetadata } from "./credential-metadata.js"
 import type { PasskeyProviderConfig, WebAuthnServer } from "./types.js"
 
 const MS_PER_SECOND = 1000
@@ -173,9 +176,7 @@ export class PasskeyProvider implements AuthProvider {
     const session = await this.requireSession(request, context)
     if (session instanceof Response) return session
 
-    const existing = await this.config.credentialStore.findByUserId(
-      session.user.id,
-    )
+    const existing = await this.findPasskeyIdentities(context, session.user.id)
 
     const options = await this.webauthn.generateRegistrationOptions({
       rpName: this.config.rpName,
@@ -184,8 +185,8 @@ export class PasskeyProvider implements AuthProvider {
       userName: session.identity.identifier,
       userDisplayName: session.identity.identifier,
       attestationType: "none",
-      excludeCredentials: existing.map((credential) => ({
-        id: credential.credentialId,
+      excludeCredentials: existing.map(({ identity, credential }) => ({
+        id: identity.identifier,
         transports: credential.transports,
       })),
       authenticatorSelection: {
@@ -258,21 +259,22 @@ export class PasskeyProvider implements AuthProvider {
     const { credential, credentialDeviceType, credentialBackedUp } =
       verification.registrationInfo
 
-    await this.config.credentialStore.create({
-      credentialId: credential.id,
+    // The identity row IS the credential record: identifier is the
+    // WebAuthn credential ID, and the provider-owned metadata holds the
+    // verification state (see passkeyCredentialMetadataSchema).
+    const metadata: PasskeyCredentialMetadata = {
       publicKey: uint8ArrayToBase64url(credential.publicKey),
       counter: credential.counter,
       transports: credential.transports,
-      userId: session.user.id,
       deviceType: credentialDeviceType,
       backedUp: credentialBackedUp,
       nickname: typeof body.nickname === "string" ? body.nickname : undefined,
-    })
-
+    }
     await context.identityStore.create({
       userId: session.user.id,
       provider: this.id,
       identifier: credential.id,
+      metadata,
     })
 
     return jsonResponse(
@@ -329,13 +331,26 @@ export class PasskeyProvider implements AuthProvider {
       })
     }
 
-    const stored = await this.config.credentialStore.findById(body.id)
-    if (!stored) {
+    const identity = await context.identityStore.findByProviderAndIdentifier(
+      this.id,
+      body.id,
+    )
+    if (!identity) {
       return jsonResponse(HTTP_UNAUTHORIZED, {
         success: false,
         error: AuthErrors.invalidCredentials({
           reason: "Unknown credential",
         }),
+      })
+    }
+
+    const stored = parsePasskeyCredentialMetadata(identity.metadata)
+    if (!stored) {
+      return jsonResponse(HTTP_SERVER_ERROR, {
+        success: false,
+        error: AuthErrors.providerError(
+          "Stored passkey credential is invalid — the identity store must persist Identity.metadata unmodified",
+        ),
       })
     }
 
@@ -345,7 +360,7 @@ export class PasskeyProvider implements AuthProvider {
       expectedOrigin: this.expectedOrigin(context),
       expectedRPID: this.rpID(context),
       credential: {
-        id: stored.credentialId,
+        id: identity.identifier,
         publicKey: base64urlToUint8Array(stored.publicKey),
         // The regression check is ours below (warn, not fail): synced
         // passkeys legitimately report 0 or regressed counters.
@@ -368,28 +383,11 @@ export class PasskeyProvider implements AuthProvider {
     if (stored.counter > 0 && newCounter <= stored.counter) {
       // eslint-disable-next-line no-console
       console.warn(
-        `Passkey counter regression for credential ${stored.credentialId}: stored ${stored.counter}, received ${newCounter}. Possible cloned authenticator; not blocking because synced passkeys regress legitimately.`,
+        `Passkey counter regression for credential ${identity.identifier}: stored ${stored.counter}, received ${newCounter}. Possible cloned authenticator; not blocking because synced passkeys regress legitimately.`,
       )
     }
-    await this.config.credentialStore.updateCounterAndLastUsed(
-      stored.credentialId,
-      newCounter,
-    )
 
-    const identity = await context.identityStore.findByProviderAndIdentifier(
-      this.id,
-      stored.credentialId,
-    )
-    if (!identity) {
-      return jsonResponse(HTTP_UNAUTHORIZED, {
-        success: false,
-        error: AuthErrors.identityNotFound({
-          reason: "Credential has no linked identity",
-        }),
-      })
-    }
-
-    const user = await context.userStore.findById(stored.userId)
+    const user = await context.userStore.findById(identity.userId)
     if (!user) {
       return jsonResponse(HTTP_UNAUTHORIZED, {
         success: false,
@@ -397,11 +395,14 @@ export class PasskeyProvider implements AuthProvider {
       })
     }
 
-    if (context.identityStore.update) {
-      await context.identityStore.update(identity.id, {
-        verifiedAt: new Date(),
-      })
-    }
+    await context.identityStore.update(identity.id, {
+      metadata: {
+        ...stored,
+        counter: newCounter,
+        lastUsedAt: new Date().toISOString(),
+      },
+      verifiedAt: new Date(),
+    })
 
     const sessionCookie = await context.createSession(user, identity)
 
@@ -410,6 +411,27 @@ export class PasskeyProvider implements AuthProvider {
       { success: true, verified: true, user: { id: user.id } },
       [sessionCookie, this.clearingCookie(context)],
     )
+  }
+
+  /**
+   * A user's passkey identities with their validated credential state;
+   * identities whose metadata fails validation are skipped
+   */
+  private async findPasskeyIdentities(
+    context: AuthContext,
+    userId: string,
+  ): Promise<{ identity: Identity; credential: PasskeyCredentialMetadata }[]> {
+    const identities = await context.identityStore.findByUserId(userId)
+    const result: {
+      identity: Identity
+      credential: PasskeyCredentialMetadata
+    }[] = []
+    for (const identity of identities) {
+      if (identity.provider !== this.id) continue
+      const credential = parsePasskeyCredentialMetadata(identity.metadata)
+      if (credential) result.push({ identity, credential })
+    }
+    return result
   }
 
   /**

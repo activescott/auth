@@ -9,14 +9,11 @@ Server-side WebAuthn verification uses [`@simplewebauthn/server`](https://simple
 
 ## Usage
 
-Server wiring:
+Server wiring — **no new storage interface**; passkeys reuse the `IdentityStore` you already have:
 
 ```ts
 import { Auth, InMemoryChallengeStore } from "@activescott/auth"
-import {
-  PasskeyProvider,
-  InMemoryCredentialStore,
-} from "@activescott/auth-provider-passkey"
+import { PasskeyProvider } from "@activescott/auth-provider-passkey"
 
 const auth = new Auth({
   session: { secret: process.env.JWT_SECRET! /* ... */ },
@@ -26,7 +23,6 @@ const auth = new Auth({
   providers: [
     new PasskeyProvider({
       rpName: "MyApp",
-      credentialStore: new InMemoryCredentialStore(), // DB-backed in production
       challengeSecret: process.env.JWT_SECRET!,
     }),
   ],
@@ -101,40 +97,42 @@ Registration model: **add-passkey-while-signed-in**. Users sign in with another 
 | `rpName`              | (required)                 | Relying party name shown in authenticator prompts                       |
 | `rpID`                | request hostname           | Relying party ID; set explicitly in production (e.g. `"myapp.example"`) |
 | `expectedOrigin`      | request origin             | Expected WebAuthn origin (e.g. `"https://myapp.example"`)               |
-| `credentialStore`     | (required)                 | Storage for registered credentials (see below)                          |
 | `challengeSecret`     | (required)                 | Signs the short-lived challenge cookie                                  |
 | `challengeExpiry`     | `"5m"`                     | Challenge lifetime                                                      |
 | `challengeCookieName` | `"auth_passkey_challenge"` | Challenge cookie name                                                   |
 | `challengeStore`      | (off)                      | Opt into strict single-use challenges (see below)                       |
 
-## CredentialStore
+## Storage: passkeys are identities
 
-The only interface an app implements. Use the shipped `InMemoryCredentialStore` for development; back it with your database for production:
+Each passkey is an ordinary identity row — `{provider: "passkey", identifier: <base64url credential ID>}` — so your existing `IdentityStore` is the only storage involved. The credential's verification state (public key, signature counter, transports, device type, ...) lives in the row's provider-owned `Identity.metadata`. Your store treats that metadata as an opaque JSON blob: persist it unmodified and return it exactly as stored — the provider validates it with a [zod](https://zod.dev) schema on every read and writes it back wholesale via `IdentityStore.update` after each sign-in (counter + last-used). A typical identities table:
 
 ```sql
-CREATE TABLE passkey_credentials (
-  credential_id TEXT PRIMARY KEY, -- base64url WebAuthn credential ID
-  public_key    TEXT NOT NULL,    -- base64url COSE public key
-  counter       BIGINT NOT NULL,
-  transports    TEXT,             -- JSON array, e.g. '["internal","hybrid"]'
-  user_id       TEXT NOT NULL REFERENCES users (id),
-  device_type   TEXT NOT NULL,    -- 'singleDevice' | 'multiDevice'
-  backed_up     BOOLEAN NOT NULL,
-  nickname      TEXT,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  last_used_at  TIMESTAMPTZ
+CREATE TABLE identities (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users (id),
+  provider    TEXT NOT NULL,       -- 'email' | 'sms' | 'passkey' | ...
+  identifier  TEXT NOT NULL,       -- email, E.164 phone, or WebAuthn credential ID
+  metadata    JSONB NOT NULL DEFAULT '{}', -- provider-owned; opaque to the app
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  verified_at TIMESTAMPTZ,
+  UNIQUE (provider, identifier)
 );
-CREATE INDEX passkey_credentials_user_id ON passkey_credentials (user_id);
+CREATE INDEX identities_user_id ON identities (user_id);
 ```
 
+Metadata may contain sensitive material — treat it like credential data (encryption at rest is a reasonable default). Integrity matters more than secrecy here: anyone who can write this column can register their own key, so guard writes accordingly.
+
+To list a user's passkeys (for a settings page), filter their identities to `provider === "passkey"` and validate each row's metadata:
+
 ```ts
-interface CredentialStore {
-  findById(credentialId: string): Promise<StoredCredential | null>
-  findByUserId(userId: string): Promise<StoredCredential[]>
-  create(data): Promise<StoredCredential>
-  updateCounterAndLastUsed(credentialId: string, counter: number): Promise<void>
-  delete?(credentialId: string): Promise<void>
-}
+import { parsePasskeyCredentialMetadata } from "@activescott/auth-provider-passkey"
+
+const passkeys = (await identityStore.findByUserId(user.id))
+  .filter((identity) => identity.provider === "passkey")
+  .flatMap((identity) => {
+    const credential = parsePasskeyCredentialMetadata(identity.metadata)
+    return credential ? [{ identity, credential }] : []
+  })
 ```
 
 ## Challenges

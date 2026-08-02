@@ -8,7 +8,6 @@ import type {
 } from "@activescott/auth"
 import { InMemoryChallengeStore } from "@activescott/auth"
 import { PasskeyProvider } from "../passkey-provider.js"
-import { InMemoryCredentialStore } from "../stores/in-memory-credential-store.js"
 import type { PasskeyProviderConfig, WebAuthnServer } from "../types.js"
 
 const BASE_URL = "https://example.com"
@@ -66,6 +65,19 @@ const VERIFIED_AUTHENTICATION = {
   },
 }
 
+/** Credential state as stored in Identity.metadata by the provider */
+function credentialMetadata(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    publicKey: "AQID",
+    counter: 0,
+    deviceType: "multiDevice",
+    backedUp: true,
+    ...overrides,
+  }
+}
+
 function createFakeWebAuthn(): WebAuthnServer {
   return {
     generateRegistrationOptions: vi.fn(async () => REG_OPTIONS),
@@ -75,26 +87,59 @@ function createFakeWebAuthn(): WebAuthnServer {
   }
 }
 
-function createMockIdentity(overrides: Partial<Identity> = {}): Identity {
-  return {
-    id: "identity-1",
-    userId: "user-1",
-    provider: "passkey",
-    identifier: "cred-1",
-    createdAt: new Date(),
-    ...overrides,
+/**
+ * Real (stateful) in-memory IdentityStore so tests exercise the actual
+ * create/find/update round trip the provider depends on
+ */
+class TestIdentityStore implements IdentityStore {
+  public identities = new Map<string, Identity>()
+  private nextId = 1
+
+  public async findByProviderAndIdentifier(
+    provider: string,
+    identifier: string,
+  ): Promise<Identity | null> {
+    for (const identity of this.identities.values()) {
+      if (identity.provider === provider && identity.identifier === identifier)
+        return identity
+    }
+    return null
+  }
+
+  public async findByUserId(userId: string): Promise<Identity[]> {
+    return [...this.identities.values()].filter(
+      (identity) => identity.userId === userId,
+    )
+  }
+
+  public async create(data: {
+    userId: string
+    provider: string
+    identifier: string
+    metadata: Record<string, unknown>
+  }): Promise<Identity> {
+    const identity: Identity = {
+      id: `identity-${this.nextId++}`,
+      createdAt: new Date(),
+      ...data,
+    }
+    this.identities.set(identity.id, identity)
+    return identity
+  }
+
+  public async update(
+    id: string,
+    data: Partial<Pick<Identity, "metadata" | "verifiedAt">>,
+  ): Promise<Identity> {
+    const existing = this.identities.get(id)
+    if (!existing) throw new Error(`Identity ${id} not found`)
+    const updated = { ...existing, ...data }
+    this.identities.set(id, updated)
+    return updated
   }
 }
 
 function createContext(overrides: Partial<AuthContext> = {}): AuthContext {
-  const identityStore: IdentityStore = {
-    findByProviderAndIdentifier: vi
-      .fn()
-      .mockResolvedValue(createMockIdentity()),
-    findByUserId: vi.fn().mockResolvedValue([]),
-    create: vi.fn().mockResolvedValue(createMockIdentity()),
-    update: vi.fn().mockResolvedValue(createMockIdentity()),
-  }
   const userStore: UserStore = {
     findById: vi.fn().mockResolvedValue({ id: "user-1" }),
     create: vi.fn().mockResolvedValue({ id: "user-1" }),
@@ -106,7 +151,7 @@ function createContext(overrides: Partial<AuthContext> = {}): AuthContext {
     delete: vi.fn(),
   }
   return {
-    identityStore,
+    identityStore: new TestIdentityStore(),
     userStore,
     challengeStore,
     baseUrl: BASE_URL,
@@ -115,10 +160,14 @@ function createContext(overrides: Partial<AuthContext> = {}): AuthContext {
       .mockResolvedValue("auth_session=session-token; Path=/; HttpOnly"),
     getSession: vi.fn().mockResolvedValue({
       user: { id: "user-1" },
-      identity: createMockIdentity({
+      identity: {
+        id: "identity-email",
+        userId: "user-1",
         provider: "email",
         identifier: "user@example.com",
-      }),
+        metadata: {},
+        createdAt: new Date(),
+      },
     }),
     ...overrides,
   }
@@ -134,7 +183,6 @@ function createProvider(
 } {
   const config: PasskeyProviderConfig = {
     rpName: "Test App",
-    credentialStore: new InMemoryCredentialStore(),
     challengeSecret: CHALLENGE_SECRET,
     ...configOverrides,
   }
@@ -188,6 +236,18 @@ function authenticationBody(overrides: Record<string, unknown> = {}): object {
   }
 }
 
+async function seedPasskeyIdentity(
+  context: AuthContext,
+  metadata: Record<string, unknown> = credentialMetadata(),
+): Promise<Identity> {
+  return context.identityStore.create({
+    userId: "user-1",
+    provider: "passkey",
+    identifier: "cred-1",
+    metadata,
+  })
+}
+
 async function registeredCredentialSetup(
   configOverrides: Partial<PasskeyProviderConfig> = {},
 ): Promise<{
@@ -200,14 +260,7 @@ async function registeredCredentialSetup(
   const { provider, webauthn, config } = createProvider(configOverrides)
   const context = createContext()
 
-  await config.credentialStore.create({
-    credentialId: "cred-1",
-    publicKey: "AQID",
-    counter: 0,
-    userId: "user-1",
-    deviceType: "multiDevice",
-    backedUp: true,
-  })
+  await seedPasskeyIdentity(context)
 
   const optionsResponse = await provider.handleAction(
     "authenticate-options",
@@ -217,6 +270,12 @@ async function registeredCredentialSetup(
   const authCookie = challengeCookieFrom(optionsResponse)
 
   return { provider, webauthn, config, context, authCookie }
+}
+
+async function findPasskeyIdentity(
+  context: AuthContext,
+): Promise<Identity | null> {
+  return context.identityStore.findByProviderAndIdentifier("passkey", "cred-1")
 }
 
 describe("PasskeyProvider", () => {
@@ -308,21 +367,32 @@ describe("PasskeyProvider", () => {
     })
 
     it("should exclude already-registered credentials", async () => {
-      const { provider, webauthn, config } = createProvider()
-      await config.credentialStore.create({
-        credentialId: "existing-cred",
-        publicKey: "AQID",
-        counter: 0,
-        transports: ["internal"],
+      const { provider, webauthn } = createProvider()
+      const context = createContext()
+      await context.identityStore.create({
         userId: "user-1",
-        deviceType: "multiDevice",
-        backedUp: true,
+        provider: "passkey",
+        identifier: "existing-cred",
+        metadata: credentialMetadata({ transports: ["internal"] }),
+      })
+      // A non-passkey identity and a corrupt passkey row are both skipped
+      await context.identityStore.create({
+        userId: "user-1",
+        provider: "email",
+        identifier: "user@example.com",
+        metadata: {},
+      })
+      await context.identityStore.create({
+        userId: "user-1",
+        provider: "passkey",
+        identifier: "corrupt-cred",
+        metadata: { not: "a credential" },
       })
 
       await provider.handleAction(
         "register-options",
         postRequest("register-options", {}),
-        createContext(),
+        context,
       )
 
       expect(webauthn.generateRegistrationOptions).toHaveBeenCalledWith(
@@ -389,7 +459,14 @@ describe("PasskeyProvider", () => {
       const otherUserContext = createContext({
         getSession: vi.fn().mockResolvedValue({
           user: { id: "user-2" },
-          identity: createMockIdentity({ userId: "user-2" }),
+          identity: {
+            id: "identity-2",
+            userId: "user-2",
+            provider: "email",
+            identifier: "other@example.com",
+            metadata: {},
+            createdAt: new Date(),
+          },
         }),
       })
       const response = await provider.handleAction(
@@ -435,8 +512,8 @@ describe("PasskeyProvider", () => {
       expect(response.status).toBe(401)
     })
 
-    it("should persist the credential and link a passkey identity", async () => {
-      const { provider, config, webauthn } = createProvider()
+    it("should create a passkey identity carrying the credential metadata", async () => {
+      const { provider, webauthn } = createProvider()
       const context = createContext()
       const cookie = await registrationCookie(provider, context)
 
@@ -464,20 +541,16 @@ describe("PasskeyProvider", () => {
         }),
       )
 
-      const stored = await config.credentialStore.findById("cred-1")
-      expect(stored).toMatchObject({
-        credentialId: "cred-1",
+      const identity = await findPasskeyIdentity(context)
+      expect(identity).not.toBeNull()
+      expect(identity?.userId).toBe("user-1")
+      expect(identity?.metadata).toMatchObject({
+        publicKey: "AQID",
         counter: 0,
-        userId: "user-1",
+        transports: ["internal"],
         deviceType: "multiDevice",
         backedUp: true,
         nickname: "MacBook Touch ID",
-      })
-
-      expect(context.identityStore.create).toHaveBeenCalledWith({
-        userId: "user-1",
-        provider: "passkey",
-        identifier: "cred-1",
       })
 
       const clearing = response.headers
@@ -540,6 +613,28 @@ describe("PasskeyProvider", () => {
       expect(body.error.code).toBe("INVALID_CREDENTIALS")
     })
 
+    it("should return 500 when the stored metadata is corrupt", async () => {
+      const { provider } = createProvider()
+      const context = createContext()
+      await seedPasskeyIdentity(context, { not: "a credential" })
+      const optionsResponse = await provider.handleAction(
+        "authenticate-options",
+        postRequest("authenticate-options", {}),
+        context,
+      )
+      const cookie = challengeCookieFrom(optionsResponse)
+
+      const response = await provider.handleAction(
+        "authenticate-verify",
+        postRequest("authenticate-verify", authenticationBody(), cookie),
+        context,
+      )
+
+      expect(response.status).toBe(500)
+      const body = await response.json()
+      expect(body.error.code).toBe("PROVIDER_ERROR")
+    })
+
     it("should return 401 when assertion verification fails", async () => {
       const { provider, webauthn, context, authCookie } =
         await registeredCredentialSetup()
@@ -557,8 +652,8 @@ describe("PasskeyProvider", () => {
       expect(response.status).toBe(401)
     })
 
-    it("should create a session and update the counter on success", async () => {
-      const { provider, config, context, authCookie } =
+    it("should create a session and update counter, lastUsedAt, and verifiedAt", async () => {
+      const { provider, context, authCookie } =
         await registeredCredentialSetup()
 
       const response = await provider.handleAction(
@@ -586,20 +681,27 @@ describe("PasskeyProvider", () => {
       ).toBe(true)
 
       expect(context.createSession).toHaveBeenCalledTimes(1)
-      expect(context.identityStore.update).toHaveBeenCalledWith("identity-1", {
-        verifiedAt: expect.any(Date),
-      })
 
-      const stored = await config.credentialStore.findById("cred-1")
-      expect(stored?.counter).toBe(1)
-      expect(stored?.lastUsedAt).toBeInstanceOf(Date)
+      const identity = await findPasskeyIdentity(context)
+      expect(identity?.metadata.counter).toBe(1)
+      expect(typeof identity?.metadata.lastUsedAt).toBe("string")
+      expect(identity?.verifiedAt).toBeInstanceOf(Date)
     })
 
     it("should warn but not fail on a counter regression", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
-      const { provider, config, webauthn, context, authCookie } =
-        await registeredCredentialSetup()
-      await config.credentialStore.updateCounterAndLastUsed("cred-1", 10)
+      const { provider, webauthn } = createProvider()
+      const testContext = createContext()
+      await seedPasskeyIdentity(
+        testContext,
+        credentialMetadata({ counter: 10 }),
+      )
+      const optionsResponse = await provider.handleAction(
+        "authenticate-options",
+        postRequest("authenticate-options", {}),
+        testContext,
+      )
+      const cookie = challengeCookieFrom(optionsResponse)
       vi.mocked(webauthn.verifyAuthenticationResponse).mockResolvedValue({
         ...VERIFIED_AUTHENTICATION,
         authenticationInfo: {
@@ -610,33 +712,16 @@ describe("PasskeyProvider", () => {
 
       const response = await provider.handleAction(
         "authenticate-verify",
-        postRequest("authenticate-verify", authenticationBody(), authCookie),
-        context,
+        postRequest("authenticate-verify", authenticationBody(), cookie),
+        testContext,
       )
 
       expect(response.status).toBe(200)
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining("counter regression"),
       )
-      expect((await config.credentialStore.findById("cred-1"))?.counter).toBe(5)
-    })
-
-    it("should return 401 when the credential has no linked identity", async () => {
-      const { provider, context, authCookie } =
-        await registeredCredentialSetup()
-      vi.mocked(
-        context.identityStore.findByProviderAndIdentifier,
-      ).mockResolvedValue(null)
-
-      const response = await provider.handleAction(
-        "authenticate-verify",
-        postRequest("authenticate-verify", authenticationBody(), authCookie),
-        context,
-      )
-
-      expect(response.status).toBe(401)
-      const body = await response.json()
-      expect(body.error.code).toBe("IDENTITY_NOT_FOUND")
+      const identity = await findPasskeyIdentity(testContext)
+      expect(identity?.metadata.counter).toBe(5)
     })
   })
 
