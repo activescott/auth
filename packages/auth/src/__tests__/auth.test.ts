@@ -34,6 +34,7 @@ function createMockIdentity(overrides: Partial<Identity> = {}): Identity {
     userId: "user-1",
     provider: "email",
     identifier: "user@example.com",
+    metadata: {},
     createdAt: new Date(),
     ...overrides,
   }
@@ -68,6 +69,7 @@ function createMockStores(): {
       findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
       findByUserId: vi.fn().mockResolvedValue([createMockIdentity()]),
       create: vi.fn().mockResolvedValue(createMockIdentity()),
+      update: vi.fn().mockResolvedValue(createMockIdentity()),
     },
     userStore: {
       findById: vi.fn().mockResolvedValue({ id: "user-1" }),

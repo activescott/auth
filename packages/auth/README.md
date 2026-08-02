@@ -42,7 +42,9 @@ npm install @activescott/auth
 
 You bring two adapters, `IdentityStore` and `UserStore`, that read/write your database. The library handles tokens, cookies, provider routing, and session verification.
 
-An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example.com")`) linked to one of your `User` records. One user can have multiple identities — the model is ready for a future where a user signs in via email _and_ Google.
+An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example.com")`) linked to one of your `User` records. One user can have multiple identities — email, phone, and passkeys all use the same table.
+
+`Identity.metadata` is **provider-owned state**, opaque to your application: persist it unmodified (a JSON/JSONB column) and return it exactly as stored. Providers with per-identity state keep it there — the passkey provider stores each credential's public key and signature counter — and stateless providers store `{}`. It may contain sensitive material, so protect it like credential data (encryption at rest is a reasonable default). `IdentityStore.update(id, {metadata, verifiedAt})` replaces stored metadata wholesale; providers rely on it, so it is a required method.
 
 ## Minimal shape
 

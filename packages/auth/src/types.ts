@@ -26,8 +26,16 @@ export interface Identity {
   provider: string
   /** The identifier within that provider (email address, phone number, passkey credential ID) */
   identifier: string
-  /** Additional metadata from the provider */
-  metadata?: Record<string, unknown>
+  /**
+   * Provider-owned state for this identity — e.g., the passkey provider
+   * stores the credential public key and signature counter here;
+   * providers with no per-identity state store an empty object.
+   * Opaque to the application: stores must persist and return it
+   * unmodified (a JSON/JSONB column works). May contain sensitive
+   * material; protect it accordingly (encryption at rest is a
+   * reasonable default).
+   */
+  metadata: Record<string, unknown>
   /** When this identity was created */
   createdAt: Date
   /** When this identity was last verified */
@@ -131,13 +139,16 @@ export interface IdentityStore {
     userId: string
     provider: string
     identifier: string
-    metadata?: Record<string, unknown>
+    metadata: Record<string, unknown>
   }): Promise<Identity>
 
   /**
-   * Update an identity (e.g., update verifiedAt)
+   * Update an identity's provider-owned metadata and/or verifiedAt.
+   * A provided metadata value replaces the stored one wholesale.
+   * Required: providers depend on it — e.g., the passkey provider
+   * writes the signature counter here on every sign-in.
    */
-  update?(
+  update(
     id: string,
     data: Partial<Pick<Identity, "metadata" | "verifiedAt">>,
   ): Promise<Identity>
