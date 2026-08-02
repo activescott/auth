@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.0.1](https://github.com/activescott/auth/compare/auth@3.0.0...auth@3.0.1) (2026-08-02)
+
+### Bug Fixes
+
+* rewrite readme with project intro, features, and current v3 facts ([863b91f](https://github.com/activescott/auth/commit/863b91f92da0be242e8d59910f73c1b76c012ad1))
+
 ## [3.0.0](https://github.com/activescott/auth/compare/auth@2.1.0...auth@3.0.0) (2026-08-02)
 
 ### ⚠ BREAKING CHANGES
