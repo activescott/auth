@@ -105,7 +105,23 @@ new EmailProvider(config, new ResendTransport())
 
 ## Testing pattern: capture transport
 
-In e2e tests, wrap your `EmailTransport` in a capture transport that records the last magic link + code per recipient, expose them through a test-only readback route (gated on a test-mode env var and a shared-secret header), and drive the real confirm-page or code-entry flow — no SMTP server, no inbox polling. See the runnable example linked below.
+In e2e tests, wrap your `EmailTransport` in `CaptureEmailTransport`, expose what it records through a test-only readback route (gated on a test-mode env var **and** a shared-secret header), and drive the real confirm-page or code-entry flow — no SMTP server, no inbox polling.
+
+```typescript
+import { CaptureEmailTransport } from "@activescott/auth-provider-email/testing"
+
+// Install it only under your test-mode flag: what it holds are live sign-in
+// credentials for as long as the challenge lives.
+export const emailTransport =
+  process.env.E2E_TEST_MODE === "true"
+    ? new CaptureEmailTransport(new NodemailerTransport())
+    : new NodemailerTransport()
+
+// in your gated readback route:
+const captured = emailTransport.getCapturedEmail(email) // { magicLink, code }
+```
+
+It lives at the `/testing` subpath rather than the package root so it stays out of your application's default import graph. See the runnable example linked below.
 
 ## Documentation & example
 
