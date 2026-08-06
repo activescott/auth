@@ -3,6 +3,8 @@ import type {
   AuthContext,
   AuthResult,
   AuthInitResult,
+  ChallengeStore,
+  OtpChallengeResult,
   ProviderRoute,
 } from "@activescott/auth"
 import {
@@ -20,7 +22,12 @@ import {
   authenticateWithIdentifier,
   initiateAccepted,
 } from "@activescott/auth"
-import type { SmsProviderConfig, SmsTransport } from "./types.js"
+import type {
+  SmsProviderConfig,
+  SmsTransport,
+  VerificationTransport,
+} from "./types.js"
+import { isVerificationTransport } from "./types.js"
 
 const MS_PER_SECOND = 1000
 
@@ -42,6 +49,12 @@ const E164_PATTERN = /^\+[1-9]\d{1,14}$/
  *
  * Vendor delivery (Twilio, AWS, ...) is injected via SmsTransport, so
  * this package has no vendor dependencies.
+ *
+ * Given a VerificationTransport instead, the vendor generates, delivers, and
+ * checks the code (Twilio Verify and friends) and the challenge record holds
+ * no code at all — only the phone number and the vendor's reference. Routes,
+ * request shapes, cookie binding, abuse checks, and error responses are
+ * identical either way, so swapping transports needs no other change.
  */
 export class SmsProvider implements AuthProvider {
   public readonly id = "sms"
@@ -50,7 +63,7 @@ export class SmsProvider implements AuthProvider {
 
   public constructor(
     private readonly config: SmsProviderConfig,
-    private readonly transport: SmsTransport,
+    private readonly transport: SmsTransport | VerificationTransport,
   ) {}
 
   /**
@@ -96,30 +109,55 @@ export class SmsProvider implements AuthProvider {
       }
 
       const challengeId = crypto.randomUUID()
-      const code = generateOtpCode(
-        this.config.otp?.length ?? DEFAULT_OTP_LENGTH,
-      )
       const expirySeconds = parseDuration(this.config.expiry ?? DEFAULT_EXPIRY)
-
-      await context.challengeStore.create({
+      const challenge = {
         id: challengeId,
         type: CHALLENGE_TYPE,
         identifier: phone,
-        hashedCode: await hashOtpCode(challengeId, code),
         maxAttempts: this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
         expiresAt: new Date(Date.now() + expirySeconds * MS_PER_SECOND),
-      })
+      }
 
-      const sent = await this.transport.sendMessage(
-        phone,
-        this.buildMessage(code),
-      )
+      if (isVerificationTransport(this.transport)) {
+        // The vendor owns the code, so it has to be asked first: its reference
+        // is part of the challenge we store.
+        const started = await this.transport.startVerification(phone)
+        if (!started.ok) {
+          return this.initiateFailure(
+            request,
+            AuthErrors.providerError(
+              started.message ?? "Failed to send the code",
+            ),
+          )
+        }
 
-      if (!sent) {
-        return this.initiateFailure(
-          request,
-          AuthErrors.providerError("Failed to send the code"),
+        await context.challengeStore.create({
+          ...challenge,
+          data: started.reference
+            ? { verificationReference: started.reference }
+            : undefined,
+        })
+      } else {
+        const code = generateOtpCode(
+          this.config.otp?.length ?? DEFAULT_OTP_LENGTH,
         )
+
+        await context.challengeStore.create({
+          ...challenge,
+          hashedCode: await hashOtpCode(challengeId, code),
+        })
+
+        const sent = await this.transport.sendMessage(
+          phone,
+          this.buildMessage(code),
+        )
+
+        if (!sent) {
+          return this.initiateFailure(
+            request,
+            AuthErrors.providerError("Failed to send the code"),
+          )
+        }
       }
 
       const challengeCookie = buildChallengeCookie(
@@ -172,12 +210,19 @@ export class SmsProvider implements AuthProvider {
         }
       }
 
-      const outcome = await verifyOtpChallenge(
-        context.challengeStore,
-        challengeId,
-        CHALLENGE_TYPE,
-        body.code,
-      )
+      const outcome = isVerificationTransport(this.transport)
+        ? await this.redeemVendorChallenge(
+            context.challengeStore,
+            challengeId,
+            body.code,
+            this.transport,
+          )
+        : await verifyOtpChallenge(
+            context.challengeStore,
+            challengeId,
+            CHALLENGE_TYPE,
+            body.code,
+          )
 
       if (!outcome.ok) {
         return { success: false, error: this.otpFailureError(outcome.reason) }
@@ -218,6 +263,55 @@ export class SmsProvider implements AuthProvider {
       { method: "POST", path: "/sms/initiate", handler: "initiate" },
       { method: "POST", path: "/sms/verify", handler: "verify" },
     ]
+  }
+
+  /**
+   * The VerificationTransport counterpart of verifyOtpChallenge: the vendor
+   * holds the code, so we enforce the parts that are ours — challenge type,
+   * expiry, attempt limit, single use — and delegate the comparison.
+   *
+   * Attempts are incremented before the vendor call so a guesser cannot make
+   * unbounded (billable) vendor calls against one challenge.
+   */
+  private async redeemVendorChallenge(
+    store: ChallengeStore,
+    challengeId: string,
+    code: string,
+    transport: VerificationTransport,
+  ): Promise<OtpChallengeResult> {
+    const challenge = await store.findById(challengeId)
+    if (!challenge || challenge.type !== CHALLENGE_TYPE) {
+      return { ok: false, reason: "not_found" }
+    }
+
+    if (challenge.expiresAt.getTime() < Date.now()) {
+      return { ok: false, reason: "expired" }
+    }
+
+    const attempts = await store.incrementAttempts(challenge.id)
+    if (attempts > challenge.maxAttempts) {
+      return { ok: false, reason: "rate_limited" }
+    }
+
+    const reference = challenge.data?.verificationReference
+    const result = await transport.checkVerification(
+      challenge.identifier,
+      typeof reference === "string" ? reference : undefined,
+      code.trim(),
+    )
+
+    if (result.status === "error") {
+      // Surfaced as a provider error by verify()'s catch, not as a wrong code
+      throw new Error(result.message ?? "Verification check failed")
+    }
+
+    if (result.status !== "approved") {
+      return { ok: false, reason: result.status }
+    }
+
+    // Single use: the challenge is consumed by successful verification
+    await store.delete(challenge.id)
+    return { ok: true, challenge }
   }
 
   /**

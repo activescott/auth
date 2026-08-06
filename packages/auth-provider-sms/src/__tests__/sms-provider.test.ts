@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { InMemoryChallengeStore } from "@activescott/auth"
 import type { AuthContext, Identity } from "@activescott/auth"
 import { SmsProvider, normalizePhoneNumber } from "../sms-provider.js"
-import type { SmsTransport } from "../types.js"
+import type {
+  SmsTransport,
+  VerificationCheck,
+  VerificationTransport,
+} from "../types.js"
 
 const TEST_BASE_URL = "https://example.com"
 const TEST_PHONE = "+14155550100"
@@ -422,5 +426,203 @@ describe("SmsProvider per-recipient throttling", () => {
     await provider.initiate(createInitiateRequest("+1 (415) 555-0100"), context)
 
     expect(checkIdentifier).toHaveBeenCalledWith("sms", "+14155550100")
+  })
+})
+
+const TEST_VERIFICATION_REFERENCE = "VE00000000000000000000000000000000"
+
+function createVerificationTransport(
+  check: VerificationCheck = { status: "approved" },
+): VerificationTransport {
+  return {
+    startVerification: vi
+      .fn()
+      .mockResolvedValue({ ok: true, reference: TEST_VERIFICATION_REFERENCE }),
+    checkVerification: vi.fn().mockResolvedValue(check),
+  }
+}
+
+/** Initiate against a hosted verification service and return its cookie pair */
+async function initiateVerification(
+  provider: SmsProvider,
+  context: AuthContext,
+): Promise<string> {
+  const result = await provider.initiate(createInitiateRequest(), context)
+  if (result instanceof Response) throw new Error("unexpected Response")
+  if (!result.success) throw new Error("initiate failed")
+
+  const cookiePair = result.setCookies?.[0]?.split(";")[0]
+  if (!cookiePair) throw new Error("no challenge cookie set")
+  return cookiePair
+}
+
+describe("SmsProvider with a VerificationTransport", () => {
+  let challengeStore: InMemoryChallengeStore
+  let context: AuthContext
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    challengeStore = new InMemoryChallengeStore()
+    context = createMockContext(challengeStore)
+  })
+
+  afterEach(() => {
+    challengeStore.destroy()
+  })
+
+  it("should delegate sending and store no code", async () => {
+    const transport = createVerificationTransport()
+    const provider = new SmsProvider({ appName: "Test App" }, transport)
+
+    const cookie = await initiateVerification(provider, context)
+
+    expect(transport.startVerification).toHaveBeenCalledWith(TEST_PHONE)
+
+    const challenge = await challengeStore.findById(cookie.split("=")[1] ?? "")
+    expect(challenge?.type).toBe("sms")
+    expect(challenge?.identifier).toBe(TEST_PHONE)
+    expect(challenge?.hashedCode).toBeUndefined()
+    expect(challenge?.data).toEqual({
+      verificationReference: TEST_VERIFICATION_REFERENCE,
+    })
+  })
+
+  it("should fail initiate when the vendor will not send", async () => {
+    const transport = createVerificationTransport()
+    vi.mocked(transport.startVerification).mockResolvedValue({
+      ok: false,
+      message: "nope",
+    })
+    const provider = new SmsProvider({}, transport)
+
+    const result = await provider.initiate(createInitiateRequest(), context)
+
+    expect(result instanceof Response).toBe(false)
+    if (result instanceof Response || result.success) {
+      throw new Error("expected an initiate failure")
+    }
+    expect(result.error.code).toBe("PROVIDER_ERROR")
+  })
+
+  it("should not call the vendor when the number is throttled", async () => {
+    const transport = createVerificationTransport()
+    const provider = new SmsProvider({}, transport)
+    const throttled = createMockContext(challengeStore, {
+      abuse: {
+        checkIdentifier: vi.fn().mockResolvedValue({
+          allowed: false,
+          event: {
+            reason: "identifier_rate_limited",
+            providerId: "sms",
+            ip: null,
+            identifier: TEST_PHONE,
+            at: new Date(),
+          },
+        }),
+      },
+    })
+
+    await provider.initiate(createInitiateRequest(), throttled)
+
+    expect(transport.startVerification).not.toHaveBeenCalled()
+  })
+
+  it("should authenticate on approval and consume the challenge", async () => {
+    const transport = createVerificationTransport()
+    const provider = new SmsProvider({}, transport)
+    const cookie = await initiateVerification(provider, context)
+
+    const result = await verifyCode(provider, context, "123456", cookie)
+
+    expect(transport.checkVerification).toHaveBeenCalledWith(
+      TEST_PHONE,
+      TEST_VERIFICATION_REFERENCE,
+      "123456",
+    )
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.setCookies?.[0]).toContain("auth_sms_challenge=;")
+
+    const replay = await verifyCode(provider, context, "123456", cookie)
+    expect(replay.success).toBe(false)
+  })
+
+  it.each([
+    ["invalid_code", "INVALID_CREDENTIALS"],
+    ["expired", "EXPIRED_TOKEN"],
+    ["rate_limited", "RATE_LIMITED"],
+  ] as const)("should map %s to %s", async (status, expectedCode) => {
+    const transport = createVerificationTransport({ status })
+    const provider = new SmsProvider({}, transport)
+    const cookie = await initiateVerification(provider, context)
+
+    const result = await verifyCode(provider, context, "123456", cookie)
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe(expectedCode)
+  })
+
+  it("should report a vendor outage as a provider error, not a wrong code", async () => {
+    const transport = createVerificationTransport({
+      status: "error",
+      message: "Twilio down",
+    })
+    const provider = new SmsProvider({}, transport)
+    const cookie = await initiateVerification(provider, context)
+
+    const result = await verifyCode(provider, context, "123456", cookie)
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("PROVIDER_ERROR")
+  })
+
+  it("should stop calling the vendor once attempts are exhausted", async () => {
+    const transport = createVerificationTransport({ status: "invalid_code" })
+    const provider = new SmsProvider(
+      { otp: { maxAttempts: OTP_MAX_ATTEMPTS } },
+      transport,
+    )
+    const cookie = await initiateVerification(provider, context)
+
+    for (let attempt = 0; attempt < OTP_MAX_ATTEMPTS; attempt++) {
+      await verifyCode(provider, context, "000000", cookie)
+    }
+    expect(transport.checkVerification).toHaveBeenCalledTimes(OTP_MAX_ATTEMPTS)
+
+    const result = await verifyCode(provider, context, "000000", cookie)
+
+    expect(transport.checkVerification).toHaveBeenCalledTimes(OTP_MAX_ATTEMPTS)
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("RATE_LIMITED")
+  })
+
+  it("should reject an expired challenge without calling the vendor", async () => {
+    const transport = createVerificationTransport()
+    const provider = new SmsProvider({}, transport)
+    const cookie = await initiateVerification(provider, context)
+
+    const challenge = await challengeStore.findById(cookie.split("=")[1] ?? "")
+    if (challenge) challenge.expiresAt = new Date(Date.now() - 1000)
+
+    const result = await verifyCode(provider, context, "123456", cookie)
+
+    expect(transport.checkVerification).not.toHaveBeenCalled()
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("EXPIRED_TOKEN")
+  })
+
+  it("should reject when no challenge cookie is present", async () => {
+    const transport = createVerificationTransport()
+    const provider = new SmsProvider({}, transport)
+    await initiateVerification(provider, context)
+
+    const result = await verifyCode(provider, context, "123456")
+
+    expect(transport.checkVerification).not.toHaveBeenCalled()
+    expect(result.success).toBe(false)
   })
 })
