@@ -10,6 +10,7 @@ export default {
         "auth-provider-sms",
         "auth-provider-passkey",
         "auth-sms-twilio",
+        "auth-botcheck-turnstile",
         "auth-adapter-react-router",
         "examples",
       ],
