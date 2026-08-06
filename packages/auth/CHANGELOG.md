@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.1.0](https://github.com/activescott/auth/compare/auth@3.0.1...auth@3.1.0) (2026-08-06)
+
+### Features
+
+* abuse protection on the initiate endpoints ([534c67f](https://github.com/activescott/auth/commit/534c67f5ee03f7fd254ae57516974313f8f5c5fd)), closes [#56](https://github.com/activescott/auth/issues/56)
+
 ## [3.0.1](https://github.com/activescott/auth/compare/auth@3.0.0...auth@3.0.1) (2026-08-02)
 
 ### Bug Fixes

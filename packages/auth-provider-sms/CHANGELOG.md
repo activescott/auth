@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.1.3](https://github.com/activescott/auth/compare/auth-provider-sms@0.1.2...auth-provider-sms@0.1.3) (2026-08-06)
+
+### Bug Fixes
+
+* throttle sends per recipient number ([7e0ce5e](https://github.com/activescott/auth/commit/7e0ce5e556423640026bf30718f4c95d95572397)), closes [#56](https://github.com/activescott/auth/issues/56)
+
 ## [0.1.2](https://github.com/activescott/auth/compare/auth-provider-sms@0.1.1...auth-provider-sms@0.1.2) (2026-08-02)
 
 ### Bug Fixes
