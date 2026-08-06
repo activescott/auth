@@ -14,9 +14,14 @@ import {
 import {
   SmsProvider,
   ConsoleTransport,
+  isVerificationTransport,
   type SmsTransport,
+  type VerificationTransport,
 } from "@activescott/auth-provider-sms"
-import { TwilioTransport } from "@activescott/auth-sms-twilio"
+import {
+  TwilioTransport,
+  TwilioVerifyTransport,
+} from "@activescott/auth-sms-twilio"
 import {
   PasskeyProvider,
   parsePasskeyCredentialMetadata,
@@ -135,6 +140,19 @@ export async function listPasskeys(userId: string): Promise<
 }
 
 /**
+ * Wrap a message-sending transport in the e2e capture wrapper, leaving a
+ * hosted verification transport alone — with Twilio Verify the code lives at
+ * the vendor, so no code passes through this process to capture.
+ */
+function wrapForE2eReadback(
+  transport: SmsTransport | VerificationTransport,
+): SmsTransport | VerificationTransport {
+  return isVerificationTransport(transport)
+    ? transport
+    : new CaptureSmsTransport(transport)
+}
+
+/**
  * SMTP is considered configured when SMTP_HOST is set (see .env.example).
  * Configured → real emails are sent. Not configured → dev mode: emails are
  * logged to the server console instead.
@@ -148,8 +166,13 @@ const smtpConfigured = Boolean(process.env.SMTP_HOST)
  * console transport (codes printed to the server console), with a log
  * line naming exactly what's missing — so a subtle misconfiguration
  * (one env var absent in prod) is diagnosable instead of silent.
+ *
+ * Setting TWILIO_VERIFY_SERVICE_SID instead of a sender picks Twilio Verify,
+ * where Twilio generates, texts, and checks the code from senders it already
+ * registered — no US A2P 10DLC registration, no number to own, ~4-6x the
+ * per-sign-in cost.
  */
-function createSmsTransport(): SmsTransport {
+function createSmsTransport(): SmsTransport | VerificationTransport {
   // E2e must never text real messages, even if Twilio env vars leak in
   // from the shell environment.
   if (process.env.E2E_TEST_MODE === "true") {
@@ -160,6 +183,20 @@ function createSmsTransport(): SmsTransport {
   const authToken = process.env.TWILIO_AUTH_TOKEN
   const from = process.env.TWILIO_FROM
   const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
+  const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID
+
+  if (accountSid && authToken && verifyServiceSid) {
+    console.log(
+      "SMS via Twilio Verify. Codes are generated and checked by Twilio; " +
+        "per-attempt outcomes are in the Verify log: " +
+        "https://console.twilio.com/us1/monitor/logs/verify",
+    )
+    return new TwilioVerifyTransport({
+      accountSid,
+      authToken,
+      serviceSid: verifyServiceSid,
+    })
+  }
 
   if (accountSid && authToken && (from || messagingServiceSid)) {
     console.log(
@@ -181,7 +218,7 @@ function createSmsTransport(): SmsTransport {
     !authToken && "TWILIO_AUTH_TOKEN",
     !from &&
       !messagingServiceSid &&
-      "TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID",
+      "TWILIO_FROM, TWILIO_MESSAGING_SERVICE_SID, or TWILIO_VERIFY_SERVICE_SID",
   ].filter((name): name is string => typeof name === "string")
 
   if (missing.length < 3) {
@@ -267,8 +304,10 @@ export const auth = new Auth({
         // webOtpDomain: "example.com",
       },
       // The capture wrapper records the last code per phone number for
-      // the e2e readback route; it delegates to the real transport.
-      new CaptureSmsTransport(createSmsTransport()),
+      // the e2e readback route; it delegates to the real transport. Twilio
+      // Verify never hands us the code, so there is nothing to capture and
+      // that transport is passed straight through.
+      wrapForE2eReadback(createSmsTransport()),
     ),
     new PasskeyProvider({
       rpName: "RR Auth Example",

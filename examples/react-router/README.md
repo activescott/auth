@@ -48,6 +48,10 @@ The script is plain TypeScript run directly by Node ([type stripping](https://no
 
 If a text never arrives, check Twilio's [per-message delivery log](https://console.twilio.com/us1/monitor/logs/sms) — carriers can filter messages the API accepted (e.g. error 30034, an unregistered A2P 10DLC number), and that log is the only place the failure shows. More troubleshooting in the [`auth-sms-twilio` README](../../packages/auth-sms-twilio#provisioning-step-by-step).
 
+### Skip A2P 10DLC with Twilio Verify
+
+That 30034 failure — and the weeks of brand and campaign registration behind it — is what Twilio Verify avoids. Create a Verify service (Console → Verify → Services), set `TWILIO_VERIFY_SERVICE_SID` in `.env`, and the example uses it in place of a sender: Twilio generates, texts, and checks the code from senders it already registered. Nothing else about the login page or the routes changes; see [`createSmsTransport`](./app/lib/auth.server.ts). It costs $0.05 per successful verification plus the channel fee, versus roughly a penny for a raw SMS.
+
 ### WebOTP one-tap autofill
 
 Set `webOtpDomain` in `app/lib/auth.server.ts` to your app's domain to append the WebOTP line (`@domain #code`) to each text — Android/Chrome then offer one-tap autofill. iOS autofills from the message text without it (the input already has `autoComplete="one-time-code"`).
