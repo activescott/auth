@@ -334,3 +334,96 @@ describe("EmailProvider", () => {
     })
   })
 })
+
+describe("EmailProvider per-recipient throttling", () => {
+  let challengeStore: InMemoryChallengeStore
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    challengeStore = new InMemoryChallengeStore()
+  })
+
+  afterEach(() => {
+    challengeStore.destroy()
+  })
+
+  it("sends nothing when the recipient is throttled", async () => {
+    const provider = createProvider()
+    const context = createMockContext(challengeStore, {
+      abuse: {
+        checkIdentifier: vi.fn().mockResolvedValue({
+          allowed: false,
+          event: {
+            reason: "identifier_rate_limited",
+            providerId: "email",
+            ip: null,
+            identifier: TEST_EMAIL,
+            at: new Date(),
+          },
+        }),
+      },
+    })
+
+    const result = await provider.initiate(createInitiateRequest(), context)
+
+    expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      success: true,
+      message: provider.initiateSentMessage,
+      setCookies: [],
+    })
+  })
+
+  it("answers a throttled browser form post exactly like a sent one", async () => {
+    const provider = createProvider()
+    const sentContext = createMockContext(challengeStore)
+    const throttledContext = createMockContext(challengeStore, {
+      abuse: {
+        checkIdentifier: vi.fn().mockResolvedValue({
+          allowed: false,
+          event: {
+            reason: "identifier_rate_limited",
+            providerId: "email",
+            ip: null,
+            identifier: TEST_EMAIL,
+            at: new Date(),
+          },
+        }),
+      },
+    })
+    const headers = { Accept: "text/html", Referer: `${TEST_BASE_URL}/login` }
+
+    const sent = await provider.initiate(
+      createInitiateRequest(TEST_EMAIL, headers),
+      sentContext,
+    )
+    const throttled = await provider.initiate(
+      createInitiateRequest(TEST_EMAIL, headers),
+      throttledContext,
+    )
+
+    expect(sent).toBeInstanceOf(Response)
+    expect(throttled).toBeInstanceOf(Response)
+    if (!(sent instanceof Response) || !(throttled instanceof Response)) return
+    expect(throttled.status).toBe(sent.status)
+    expect(throttled.headers.get("Location")).toBe(sent.headers.get("Location"))
+    // The one difference is invisible to the caller's eyes on the page: no
+    // challenge exists, so no challenge cookie is set
+    expect(throttled.headers.get("Set-Cookie")).toBeNull()
+  })
+
+  it("passes the normalized address to the abuse check", async () => {
+    const provider = createProvider()
+    const checkIdentifier = vi.fn().mockResolvedValue({ allowed: true })
+    const context = createMockContext(challengeStore, {
+      abuse: { checkIdentifier },
+    })
+
+    await provider.initiate(
+      createInitiateRequest("  USER@Example.com "),
+      context,
+    )
+
+    expect(checkIdentifier).toHaveBeenCalledWith("email", TEST_EMAIL)
+  })
+})
