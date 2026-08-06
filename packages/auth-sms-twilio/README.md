@@ -3,7 +3,10 @@
 [![npm version](https://img.shields.io/npm/v/@activescott/auth-sms-twilio.svg)](https://www.npmjs.com/package/@activescott/auth-sms-twilio)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Twilio transport for [`@activescott/auth-provider-sms`](https://www.npmjs.com/package/@activescott/auth-provider-sms). Sends through the Twilio Messages API with a raw `fetch` call — **zero dependencies**, runs on any WinterTC-compatible runtime (Node, Cloudflare Workers, Deno, Bun).
+Twilio transports for [`@activescott/auth-provider-sms`](https://www.npmjs.com/package/@activescott/auth-provider-sms), both raw `fetch` — **zero dependencies**, running on any WinterTC-compatible runtime (Node, Cloudflare Workers, Deno, Bun):
+
+- **`TwilioTransport`** — you own the number and the code; sends through the Twilio Messages API. Cheapest per message (~$0.011–0.013 all-in for US SMS), but US traffic needs your own [A2P 10DLC](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc) brand and campaign registration.
+- **`TwilioVerifyTransport`** — Twilio generates, sends, and checks the code through the [Verify API](https://www.twilio.com/docs/verify). No number to buy and **no 10DLC registration**: Verify "procures and manages short codes, long codes, toll free, and global alpha-sender IDs" on your behalf. Costs $0.05 per successful verification plus the channel fee (~4–6x a raw SMS), which at low sign-in volume is often less than 10DLC's fixed monthly fees.
 
 ## Usage
 
@@ -23,6 +26,22 @@ new SmsProvider(
 )
 ```
 
+Or with Verify, which replaces the sender configuration entirely:
+
+```ts
+import { SmsProvider } from "@activescott/auth-provider-sms"
+import { TwilioVerifyTransport } from "@activescott/auth-sms-twilio"
+
+new SmsProvider(
+  {}, // the message text, code length, and expiry are Twilio's here
+  new TwilioVerifyTransport({
+    accountSid: process.env.TWILIO_ACCOUNT_SID!,
+    authToken: process.env.TWILIO_AUTH_TOKEN!,
+    serviceSid: process.env.TWILIO_VERIFY_SERVICE_SID!, // starts with VA
+  }),
+)
+```
+
 ## Provisioning, step by step
 
 1. Create a Twilio account: https://www.twilio.com/try-twilio
@@ -35,6 +54,27 @@ Troubleshooting:
 
 - A 401 ([error 20003](https://www.twilio.com/docs/errors/20003)) with credentials copied straight from the console usually means a **suspended account** (e.g. out of funds) — Twilio returns the same error as for wrong credentials. The suspension notice may only appear on the [project summary page](https://www.twilio.com/console/projects/summary).
 - **Message "sent" but never arrives**: the API accepts messages that carriers later filter, so check the [per-message delivery log](https://console.twilio.com/us1/monitor/logs/sms) — the only place the failure shows. Error [30034](https://www.twilio.com/docs/api/errors/30034) means the number isn't A2P 10DLC registered (step 4 above).
+
+## Verify, step by step
+
+Steps 3 and 4 above are what Verify removes:
+
+1. Create a Twilio account and grab the **Account SID** and **Auth Token** (steps 1–2 above).
+2. Console → **Verify → Services → Create new**. The friendly name you give the service is what appears in the message ("Your _MyApp_ verification code is …"), so name it after your app.
+3. Copy the service SID (starts with `VA`) into `serviceSid`. That's it — no number, no campaign registration, nothing to wait on.
+
+Options:
+
+| Option        | Default    | Description                                                                                                                                                                   |
+| ------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `channel`     | `"sms"`    | `"sms"`, `"call"`, `"whatsapp"`, or `"email"`                                                                                                                                 |
+| `locale`      | (Twilio's) | Message language, e.g. `"es"`                                                                                                                                                 |
+| `appHash`     | (off)      | Android [SMS Retriever](https://developers.google.com/identity/sms-retriever/overview) hash — Verify's equivalent of the provider's `webOtpDomain`, which does not apply here |
+| `templateSid` | (off)      | A message template (starts with `HJ`) configured in the Verify service                                                                                                        |
+
+Verification outcomes are in the [Verify log](https://console.twilio.com/us1/monitor/logs/verify), not the SMS delivery log. Twilio's own rate limits and fraud guards (SMS pumping protection) are configured per service in that console section.
+
+Cost note: you're billed $0.05 on **successful** verification, so failed and abandoned attempts cost only the channel fee. The provider counts attempts before calling Twilio, so a guesser can trigger at most `otp.maxAttempts` checks per challenge.
 
 ## RCS (branded, richer messages)
 
@@ -56,4 +96,12 @@ For unit tests, the constructor accepts an injectable `fetch` (this package's ow
 
 ```ts
 new TwilioTransport({ accountSid, authToken, from, fetch: fetchMock })
+new TwilioVerifyTransport({
+  accountSid,
+  authToken,
+  serviceSid,
+  fetch: fetchMock,
+})
 ```
+
+Level 1 is the same for Verify: develop against `ConsoleTransport` and swap the transport at the edge of your app, since a Verify integration cannot be exercised end to end without billable verifications.
