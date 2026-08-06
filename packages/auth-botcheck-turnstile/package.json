@@ -1,0 +1,49 @@
+{
+  "name": "@activescott/auth-botcheck-turnstile",
+  "version": "0.0.0",
+  "description": "Cloudflare Turnstile bot check for @activescott/auth",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "authentication",
+    "turnstile",
+    "cloudflare",
+    "captcha",
+    "bot",
+    "abuse"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-botcheck-turnstile"
+  },
+  "peerDependencies": {
+    "@activescott/auth": ">=3.1.0"
+  },
+  "devDependencies": {
+    "@activescott/auth": "*",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.16"
+  }
+}
