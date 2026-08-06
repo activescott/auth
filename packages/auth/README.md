@@ -33,6 +33,7 @@ Passkeys push the same idea further: phishing-resistant, no shared secret, and s
 - ✅ **Edge-ready, [WinterTC-compatible](https://wintertc.org/faq) core** — standard Fetch `Request`/`Response`, WebCrypto, and [`jose`](https://github.com/panva/jose) for session JWTs; no Node-only APIs, so it runs on Cloudflare Workers, Deno, Bun, and any WinterTC-aligned runtime.
 - ✅ **React Router v8 adapter** — `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.
 - ✅ **SMS one-time codes** — vendor-neutral provider with a Twilio transport (RCS-ready), [WebOTP](https://developer.mozilla.org/docs/Web/API/WebOTP_API) autofill support, and an interactive provisioning script.
+- ✅ **Abuse protection, on by default** — per-IP and per-recipient rate limits, a minimum-form-fill-time check, blocked attempts logged, and a blocked caller gets the same response a successful send would produce. Optional packages add hosted bot checks ([Turnstile](https://www.npmjs.com/package/@activescott/auth-botcheck-turnstile)).
 - ✅ **Passkeys (WebAuthn)** — add a passkey while signed in, then sign in usernameless with Touch ID, Face ID, Windows Hello, 1Password, iCloud Keychain, or a security key; conditional UI (passkey autofill) supported. Verification via [`@simplewebauthn/server`](https://simplewebauthn.dev/); zero-dependency browser client included.
 
 The provider interface (`AuthProvider`) is the extension point. Implementing a new provider does not require changes to this core package.
@@ -60,6 +61,8 @@ npm install @activescott/auth
 | `AuthProvider`                                                    | Interface every provider implements (`initiate`, `verify`, `canHandle`, optional `handleAction` for extra endpoints). |
 | `IdentityStore`, `UserStore`                                      | Interfaces you implement to plug in your database.                                                                    |
 | `ChallengeStore`, `InMemoryChallengeStore`                        | Storage for short-lived, single-use challenges (see below).                                                           |
+| `AbuseConfig`, `RateLimitStore`, `InMemoryRateLimitStore`         | Abuse protection for the initiate endpoints — on by default (see below).                                              |
+| `BotCheckProvider`, `createFormToken`, `FORM_TOKEN_FIELD`         | Bot-check interface and the login form's anti-bot fields.                                                             |
 | `generateOtpCode`, `hashOtpCode`, `verifyOtpCode`                 | One-time-code utilities used by OTP-capable providers.                                                                |
 | `AuthUser`, `Identity`, `Session`, `AuthResult`, `AuthInitResult` | Core data types.                                                                                                      |
 | `AuthErrors`, `getAuthErrorMessage`, `AUTH_ERROR_CODES`           | Structured error helpers.                                                                                             |
@@ -115,6 +118,82 @@ CREATE TABLE challenges (
 ```
 
 with `incrementAttempts` as `UPDATE challenges SET attempts = attempts + 1 WHERE id = $1 RETURNING attempts` (the increment must be atomic — it enforces the guess limit), and a periodic `DELETE ... WHERE expires_at < now()`.
+
+## Abuse protection
+
+The `initiate` endpoints send mail and texts to whatever address a caller submits, which makes them an attractive way to mail-bomb a third party or burn your sending reputation on bounces. Protection is **on by default** — you do not have to configure or implement anything:
+
+| Layer                  | Default                                                    |
+| ---------------------- | ---------------------------------------------------------- |
+| Per client IP          | 3 per minute, then 10 per hour                             |
+| Per recipient          | 3 per hour, then 10 per day                                |
+| Minimum form-fill time | 2 seconds (only enforced if the form posts a token, below) |
+| Counter storage        | `InMemoryRateLimitStore`                                   |
+| Blocked response       | identical to a successful send                             |
+
+Blocked attempts are always logged (`console.warn`) with the reason, provider, IP, requested identifier, and rule, so an abuse burst is visible:
+
+```
+[auth] blocked initiate: reason=identifier_rate_limited provider=email ip=203.0.113.7 identifier=victim@example.com rule=3/3600s retryAfter=2841s
+```
+
+### A blocked caller sees a success
+
+By design a throttled or bot-flagged request gets exactly the response a real send would produce — the same 302 back to `?sent=1`, or the same `{success: true, message}` — minus the challenge cookie. Nothing is sent and nothing is stored. This is what keeps a bot from mapping which addresses or IPs are throttled. If you would rather return `429 RATE_LIMITED` (reasonable for an API-only deployment), set `abuse.respondWith: "rateLimited"`.
+
+### Tuning
+
+```ts
+const auth = new Auth({
+  // ...
+  abuse: {
+    perIp: [
+      { windowSeconds: 60, max: 3 },
+      { windowSeconds: 3600, max: 10 },
+    ],
+    perIdentifier: [{ windowSeconds: 3600, max: 3 }],
+    store: myRedisRateLimitStore, // multi-instance: share the counters
+    onBlocked: (event) => logger.warn(event, "auth abuse blocked"),
+  },
+})
+```
+
+`abuse: { enabled: false }` turns everything off.
+
+`InMemoryRateLimitStore` counts per process, so a multi-instance deployment effectively multiplies every limit by the instance count. Implement the one-method `RateLimitStore` interface against Redis (`INCR` + `EXPIRE`) or your database to share counters.
+
+Client IPs come from `cf-connecting-ip`, then `x-forwarded-for` (rightmost hop; set `abuse.clientIp.trustedProxyHops` if more than one proxy appends), then `x-real-ip`. These headers are spoofable unless a proxy in front of your app rewrites them — supply `abuse.clientIp.getClientIp` when your runtime exposes the peer address. When no IP can be determined, per-IP limits are skipped and per-recipient limits still apply.
+
+### Form token
+
+The minimum-form-fill-time check needs one hidden field in your login form:
+
+```tsx
+import { createFormToken, FORM_TOKEN_FIELD } from "@activescott/auth"
+
+// in the route/loader that renders the form:
+const formToken = await createFormToken(process.env.JWT_SECRET!)
+```
+
+```html
+<input type="hidden" name="authFormToken" value="{formToken}" />
+```
+
+The token is a signed render timestamp; the server rejects submissions that arrive faster than `minFormFillSeconds`. It must be signed — an unsigned timestamp is just another field to forge. A submission with **no** token is allowed, so adding the field is optional and can be rolled out later. A token older than a day is also allowed rather than rejected — a login page left open in a tab is a human.
+
+### Hosted bot checks
+
+Cloudflare Turnstile, hCaptcha, and friends live in their own packages, so you only install the vendor you use:
+
+```ts
+import { TurnstileBotCheck } from "@activescott/auth-botcheck-turnstile"
+
+abuse: {
+  botChecks: [new TurnstileBotCheck({ secretKey: process.env.TURNSTILE_SECRET_KEY! })],
+}
+```
+
+Implement `BotCheckProvider` (`{ id, verify({ request, body, ip, providerId }) }`) to add your own.
 
 ## License
 

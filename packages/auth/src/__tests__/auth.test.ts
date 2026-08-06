@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import { SignJWT } from "jose"
 import { Auth } from "../auth.js"
+import { createFormToken } from "../abuse/bot-check.js"
 import { SessionManager } from "../session/session-manager.js"
 import type {
   AuthConfig,
@@ -575,5 +576,198 @@ describe("SessionManager", () => {
   it("should return cookie name", () => {
     const manager = new SessionManager(sessionConfig)
     expect(manager.getCookieName()).toBe("auth_session")
+  })
+})
+
+describe("Auth abuse protection", () => {
+  let auth: Auth
+
+  afterEach(() => {
+    auth?.destroy()
+    vi.restoreAllMocks()
+  })
+
+  /** A form post from one IP, the shape a login form submits */
+  function initiateRequest(
+    body: Record<string, string>,
+    ip = "203.0.113.7",
+  ): Request {
+    return new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "x-forwarded-for": ip,
+      },
+      body: new URLSearchParams(body).toString(),
+    })
+  }
+
+  it("blocks per-IP bursts and answers exactly like a successful send", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    const provider = createMockProvider({
+      initiateSentMessage: "Magic link sent. Please check your email.",
+      initiate: vi.fn().mockResolvedValue({
+        success: true,
+        message: "Magic link sent. Please check your email.",
+      }),
+    })
+    auth = new Auth(
+      createAuthConfig({
+        providers: [provider],
+        abuse: { perIp: [{ windowSeconds: 60, max: 1 }] },
+      }),
+    )
+
+    const allowed = await auth.handleRequest(
+      initiateRequest({ email: "user@example.com" }),
+    )
+    const blocked = await auth.handleRequest(
+      initiateRequest({ email: "user@example.com" }),
+    )
+
+    expect(provider.initiate).toHaveBeenCalledTimes(1)
+    expect(blocked.status).toBe(allowed.status)
+    expect(await blocked.text()).toBe(await allowed.text())
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("reason=ip_rate_limited"),
+    )
+  })
+
+  it("logs the blocked ip and calls onBlocked", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    const onBlocked = vi.fn()
+    auth = new Auth(
+      createAuthConfig({
+        abuse: { perIp: [{ windowSeconds: 60, max: 1 }], onBlocked },
+      }),
+    )
+
+    await auth.handleRequest(initiateRequest({ email: "user@example.com" }))
+    await auth.handleRequest(initiateRequest({ email: "user@example.com" }))
+
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("ip=203.0.113.7"),
+    )
+    expect(onBlocked).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "ip_rate_limited",
+        providerId: "email",
+      }),
+    )
+  })
+
+  it("counts each IP separately", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    const provider = createMockProvider()
+    auth = new Auth(
+      createAuthConfig({
+        providers: [provider],
+        abuse: { perIp: [{ windowSeconds: 60, max: 1 }] },
+      }),
+    )
+
+    await auth.handleRequest(initiateRequest({ email: "a@example.com" }))
+    await auth.handleRequest(
+      initiateRequest({ email: "b@example.com" }, "198.51.100.4"),
+    )
+
+    expect(provider.initiate).toHaveBeenCalledTimes(2)
+  })
+
+  it("blocks a submission faster than a human could fill the form", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    const provider = createMockProvider()
+    auth = new Auth(createAuthConfig({ providers: [provider] }))
+    const formToken = await createFormToken(TEST_SECRET)
+
+    const response = await auth.handleRequest(
+      initiateRequest({
+        email: "user@example.com",
+        authFormToken: formToken,
+      }),
+    )
+
+    expect(provider.initiate).not.toHaveBeenCalled()
+    expect(response.status).toBe(200)
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("detail=form-token:too_fast"),
+    )
+  })
+
+  it("returns 429 with Retry-After when respondWith is rateLimited", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    auth = new Auth(
+      createAuthConfig({
+        abuse: {
+          perIp: [{ windowSeconds: 60, max: 1 }],
+          respondWith: "rateLimited",
+        },
+      }),
+    )
+
+    await auth.handleRequest(initiateRequest({ email: "user@example.com" }))
+    const blocked = await auth.handleRequest(
+      initiateRequest({ email: "user@example.com" }),
+    )
+
+    expect(blocked.status).toBe(429)
+    expect(blocked.headers.get("Retry-After")).toBeTruthy()
+  })
+
+  it("does nothing when disabled", async () => {
+    const provider = createMockProvider()
+    auth = new Auth(
+      createAuthConfig({
+        providers: [provider],
+        abuse: { enabled: false, perIp: [{ windowSeconds: 60, max: 1 }] },
+      }),
+    )
+
+    await auth.handleRequest(initiateRequest({ email: "user@example.com" }))
+    await auth.handleRequest(initiateRequest({ email: "user@example.com" }))
+
+    expect(provider.initiate).toHaveBeenCalledTimes(2)
+  })
+
+  it("leaves the request body readable by the provider", async () => {
+    let seen: string | null = null
+    const provider = createMockProvider({
+      initiate: vi.fn(async (request: Request) => {
+        seen = await request.text()
+        return { success: true, message: "Sent" }
+      }),
+    })
+    auth = new Auth(createAuthConfig({ providers: [provider] }))
+
+    await auth.handleRequest(initiateRequest({ email: "user@example.com" }))
+
+    expect(seen).toBe("email=user%40example.com")
+  })
+
+  it("exposes per-identifier checks to providers", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    auth = new Auth(
+      createAuthConfig({
+        abuse: { perIdentifier: [{ windowSeconds: 3600, max: 1 }] },
+      }),
+    )
+    const context = auth.createContext(
+      initiateRequest({ email: "user@example.com" }),
+    )
+
+    const first = await context.abuse?.checkIdentifier(
+      "email",
+      "User@Example.com",
+    )
+    const second = await context.abuse?.checkIdentifier(
+      "email",
+      "user@example.com",
+    )
+
+    expect(first?.allowed).toBe(true)
+    expect(second?.allowed).toBe(false)
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("identifier=user@example.com"),
+    )
   })
 })

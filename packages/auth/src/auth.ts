@@ -11,6 +11,8 @@ import type {
 } from "./types.js"
 import { SessionManager } from "./session/session-manager.js"
 import { AuthErrors } from "./errors.js"
+import { AbuseGuard } from "./abuse/abuse-guard.js"
+import { initiateAccepted } from "./provider-util.js"
 
 // Time constants
 const MS_PER_SECOND = 1000
@@ -23,6 +25,10 @@ const CACHE_CLEANUP_INTERVAL_MINUTES = 5
 // Regex capture group indices for auth route parsing
 const PROVIDER_ID_GROUP = 1
 const ACTION_GROUP = 2
+
+/** Sent-message fallback for providers that declare none */
+const DEFAULT_SENT_MESSAGE =
+  "If that account exists, a sign-in message has been sent."
 
 /**
  * In-memory cache for session verification to reduce DB queries
@@ -87,11 +93,13 @@ export class Auth {
   private providers = new Map<string, AuthProvider>()
   private sessionManager: SessionManager
   private sessionCache: SessionCache
+  private abuseGuard: AbuseGuard
   private cleanupInterval: ReturnType<typeof setInterval> | null = null
 
   public constructor(private readonly config: AuthConfig) {
     this.sessionManager = new SessionManager(config.session)
     this.sessionCache = new SessionCache()
+    this.abuseGuard = new AbuseGuard(config.abuse, config.session.secret)
 
     // Register providers
     for (const provider of config.providers) {
@@ -113,6 +121,7 @@ export class Auth {
       clearInterval(this.cleanupInterval)
       this.cleanupInterval = null
     }
+    this.abuseGuard.destroy()
   }
 
   /**
@@ -174,6 +183,13 @@ export class Auth {
 
     try {
       if (action === "initiate" || action === "send") {
+        const decision = await this.abuseGuard.checkInitiate(
+          request,
+          providerId,
+        )
+        if (!decision.allowed) {
+          return this.blockedInitiateResponse(request, provider, decision)
+        }
         const result = await provider.initiate(request, context)
         if (result instanceof Response) return result
         return this.initResultToResponse(result)
@@ -295,7 +311,42 @@ export class Auth {
         this.sessionManager.createSessionCookie(user, identity),
       challengeStore: this.config.challengeStore,
       getSession: (sessionRequest) => this.verifySession(sessionRequest),
+      abuse: this.abuseGuard.contextFor(request),
     }
+  }
+
+  /**
+   * Answer a blocked initiate. By default this is byte-identical to what the
+   * provider would have returned on success (minus the challenge cookie),
+   * so bots get no feedback about which addresses or IPs are throttled;
+   * `abuse.respondWith: "rateLimited"` opts into an explicit 429 instead.
+   */
+  private blockedInitiateResponse(
+    request: Request,
+    provider: AuthProvider,
+    decision: { retryAfterSeconds?: number },
+  ): Response {
+    if (this.abuseGuard.respondWith === "rateLimited") {
+      const response = this.errorToResponse(
+        AuthErrors.rateLimited(
+          decision.retryAfterSeconds
+            ? { retryAfterSeconds: decision.retryAfterSeconds }
+            : undefined,
+        ),
+      )
+      if (decision.retryAfterSeconds) {
+        response.headers.set("Retry-After", String(decision.retryAfterSeconds))
+      }
+      return response
+    }
+
+    const accepted = initiateAccepted(
+      request,
+      provider.initiateSentMessage ?? DEFAULT_SENT_MESSAGE,
+    )
+    return accepted instanceof Response
+      ? accepted
+      : this.initResultToResponse(accepted)
   }
 
   /**

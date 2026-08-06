@@ -1,4 +1,4 @@
-import type { AuthContext, AuthResult } from "./types.js"
+import type { AuthContext, AuthInitResult, AuthResult } from "./types.js"
 import { AuthErrors } from "./errors.js"
 
 // Time unit multipliers in seconds
@@ -72,6 +72,34 @@ export function buildReturnUrl(
     url.searchParams.set(name, value)
   }
   return url.toString()
+}
+
+/**
+ * The "we've sent it" answer to an initiate request: a redirect back to the
+ * submitting page with ?sent=1 for browser form posts, the AuthInitResult for
+ * everyone else.
+ *
+ * Shared by the providers' success paths and by the silent block that abuse
+ * protection returns, so a caller cannot distinguish a message that was sent
+ * from one that was suppressed. Pass no cookies for the suppressed case —
+ * there is no challenge to bind.
+ */
+export function initiateAccepted(
+  request: Request,
+  message: string,
+  setCookies: string[] = [],
+): AuthInitResult | Response {
+  if (isBrowserFormPost(request)) {
+    const headers = new Headers({
+      Location: buildReturnUrl(request, { sent: "1" }),
+    })
+    for (const cookie of setCookies) {
+      headers.append("Set-Cookie", cookie)
+    }
+    return new Response(null, { status: 302, headers })
+  }
+
+  return { success: true, message, setCookies }
 }
 
 /**

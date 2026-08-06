@@ -37,6 +37,36 @@ export {
 export type { OtpVerifyFailure, OtpChallengeResult } from "./otp.js"
 export { InMemoryChallengeStore } from "./stores/in-memory-challenge-store.js"
 
+// Abuse protection
+export type {
+  AbuseConfig,
+  AbuseContext,
+  AbuseDecision,
+  AbuseEvent,
+  AbuseReason,
+} from "./abuse/abuse-guard.js"
+export { AbuseGuard } from "./abuse/abuse-guard.js"
+export type { RateLimitRule, RateLimitVerdict } from "./abuse/rate-limiter.js"
+export { RateLimiter } from "./abuse/rate-limiter.js"
+export type { RateLimitHit, RateLimitStore } from "./abuse/rate-limit-store.js"
+export { InMemoryRateLimitStore } from "./stores/in-memory-rate-limit-store.js"
+export type { ClientIpOptions } from "./abuse/client-ip.js"
+export { getClientIp } from "./abuse/client-ip.js"
+export type {
+  BotCheckInput,
+  BotCheckProvider,
+  BotCheckResult,
+  FormTokenFailure,
+  FormTokenResult,
+} from "./abuse/bot-check.js"
+export {
+  createFormToken,
+  verifyFormToken,
+  FormTokenBotCheck,
+  DEFAULT_MIN_FORM_FILL_SECONDS,
+  FORM_TOKEN_FIELD,
+} from "./abuse/bot-check.js"
+
 // Utilities for provider authors
 export {
   parseRequestBody,
@@ -47,6 +77,7 @@ export {
   readCookie,
   parseDuration,
   authenticateWithIdentifier,
+  initiateAccepted,
 } from "./provider-util.js"
 
 // Errors
