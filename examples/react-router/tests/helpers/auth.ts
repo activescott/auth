@@ -9,6 +9,18 @@ import { type Page, expect } from "@playwright/test"
 const E2E_SECRET =
   process.env.E2E_MAGIC_LINK_SECRET ?? "e2e_test_magic_link_secret"
 
+/**
+ * The app rejects sign-in requests submitted faster than a human could fill
+ * the form (abuse protection; `abuse.minFormFillSeconds` in auth.server.ts).
+ * A blocked request looks exactly like a sent one, so a test that skips this
+ * wait fails later, at the missing code — wait it out before submitting.
+ */
+export async function waitForMinimumFormFill(page: Page): Promise<void> {
+  await page.waitForTimeout(MIN_FORM_FILL_MS)
+}
+
+const MIN_FORM_FILL_MS = 1200
+
 interface CapturedEmail {
   magicLink: string
   code?: string
@@ -24,6 +36,7 @@ export async function requestSignInEmail(
 ): Promise<CapturedEmail> {
   await page.goto("/login")
   await page.getByLabel(/email/i).fill(email)
+  await waitForMinimumFormFill(page)
   await page.getByRole("button", { name: /send magic link/i }).click()
   await expect(page.getByLabel(/enter the code/i)).toBeVisible()
 
@@ -68,6 +81,7 @@ export async function requestSignInCode(
   const nationalNumber = phone.replace(/^\+1/, "")
   await page.goto("/login?via=sms")
   await page.getByLabel(/mobile phone number/i).fill(nationalNumber)
+  await waitForMinimumFormFill(page)
   await page.getByRole("button", { name: /text me a code/i }).click()
   await expect(page.getByLabel(/enter the code/i)).toBeVisible()
 

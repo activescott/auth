@@ -12,6 +12,7 @@
   "dependencies": {
     "@activescott/auth": "*",
     "@activescott/auth-adapter-react-router": "*",
+    "@activescott/auth-botcheck-turnstile": "*",
     "@activescott/auth-provider-email": "*",
     "@activescott/auth-provider-passkey": "*",
     "@activescott/auth-provider-sms": "*",

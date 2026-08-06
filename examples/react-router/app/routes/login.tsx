@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import { Form, redirect } from "react-router"
 import { getAuthErrorMessage } from "@activescott/auth"
-import { getSession } from "~/lib/auth.server"
+import { createLoginFormFields, getSession } from "~/lib/auth.server"
+import { AntiBotFields } from "~/components/anti-bot-fields"
 import { CodeForm } from "~/components/code-form"
 import { TabLink } from "~/components/tab-link"
 import { usePreservedInput } from "~/hooks/use-preserved-input"
@@ -13,7 +14,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const url = new URL(request.url)
   const errorCode = url.searchParams.get("error")
+  // Minted per render: the abuse checks compare this against submit time
+  const antiBot = await createLoginFormFields()
   return {
+    antiBot,
     // Which provider's form to show. The provider redirects back to the
     // page the form was posted from (via Referer), so ?via=sms survives
     // the round trip: /login?via=sms → initiate → /login?via=sms&sent=1.
@@ -24,7 +28,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function Login({ loaderData }: Route.ComponentProps) {
-  const { via, sent, error } = loaderData
+  const { via, sent, error, antiBot } = loaderData
 
   return (
     <main className="container mx-auto p-8 max-w-sm">
@@ -39,7 +43,11 @@ export default function Login({ loaderData }: Route.ComponentProps) {
         </TabLink>
       </nav>
 
-      {via === "email" ? <EmailLogin sent={sent} /> : <SmsLogin sent={sent} />}
+      {via === "email" ? (
+        <EmailLogin sent={sent} antiBot={antiBot} />
+      ) : (
+        <SmsLogin sent={sent} antiBot={antiBot} />
+      )}
 
       {error && <p className="text-red-700 mt-3">Error: {error}</p>}
 
@@ -54,6 +62,11 @@ export default function Login({ loaderData }: Route.ComponentProps) {
       </p>
     </main>
   )
+}
+
+interface LoginFormProps {
+  sent: boolean
+  antiBot: { formToken: string; turnstileSiteKey: string | null }
 }
 
 function PasskeyLogin() {
@@ -139,7 +152,7 @@ function PasskeyLogin() {
   )
 }
 
-function EmailLogin({ sent }: { sent: boolean }) {
+function EmailLogin({ sent, antiBot }: LoginFormProps) {
   const [email, setEmail, saveEmail] = usePreservedInput("login.email")
 
   return (
@@ -154,6 +167,7 @@ function EmailLogin({ sent }: { sent: boolean }) {
         className="flex flex-col gap-3"
         onSubmit={saveEmail}
       >
+        <AntiBotFields {...antiBot} />
         <label htmlFor="email">Email</label>
         <input
           id="email"
@@ -200,7 +214,7 @@ function EmailLogin({ sent }: { sent: boolean }) {
   )
 }
 
-function SmsLogin({ sent }: { sent: boolean }) {
+function SmsLogin({ sent, antiBot }: LoginFormProps) {
   // The visible input takes the national number; the hidden field submits
   // the full E.164 value the provider expects. This example is wired for
   // US/Canada numbers (fixed +1) — adapt the prefix for your market.
@@ -219,6 +233,7 @@ function SmsLogin({ sent }: { sent: boolean }) {
         className="flex flex-col gap-3"
         onSubmit={savePhone}
       >
+        <AntiBotFields {...antiBot} />
         <label htmlFor="phone">Mobile phone number</label>
         <div className="flex rounded border focus-within:ring-2 focus-within:ring-blue-600">
           <span className="flex items-center px-3 bg-gray-100 text-gray-600 border-r rounded-l select-none">

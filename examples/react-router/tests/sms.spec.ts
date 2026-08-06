@@ -1,5 +1,9 @@
 import { test, expect } from "@playwright/test"
-import { requestSignInCode, loginWithSms } from "./helpers/auth"
+import {
+  requestSignInCode,
+  loginWithSms,
+  waitForMinimumFormFill,
+} from "./helpers/auth"
 
 test.describe("sms auth", () => {
   test("the phone tab renders the phone form with the +1 prefix", async ({
@@ -19,6 +23,7 @@ test.describe("sms auth", () => {
   }) => {
     await page.goto("/login?via=sms")
     await page.getByLabel(/mobile phone number/i).fill("4155550111")
+    await waitForMinimumFormFill(page)
     await page.getByRole("button", { name: /text me a code/i }).click()
     await expect(page).toHaveURL(/via=sms/)
     await expect(page.getByText(/we texted you a sign-in code/i)).toBeVisible()
@@ -27,6 +32,7 @@ test.describe("sms auth", () => {
   test("an invalid phone number shows an error", async ({ page }) => {
     await page.goto("/login?via=sms")
     await page.getByLabel(/mobile phone number/i).fill("notaphone")
+    await waitForMinimumFormFill(page)
     await page.getByRole("button", { name: /text me a code/i }).click()
     await expect(page).toHaveURL(/error=/)
     await expect(page.getByText(/error:/i)).toBeVisible()
@@ -82,6 +88,7 @@ test.describe("sms auth", () => {
     // form (not the E.164 helpers) because messy input is the point.
     await page.goto("/login?via=sms")
     await page.getByLabel(/mobile phone number/i).fill("(415) 555-0204")
+    await waitForMinimumFormFill(page)
     await page.getByRole("button", { name: /text me a code/i }).click()
     await expect(page.getByLabel(/enter the code/i)).toBeVisible()
 
