@@ -84,10 +84,28 @@ The last line is the [origin-bound one-time code format](https://wicg.github.io/
 
 Input is normalized (spaces, dashes, dots, parentheses stripped; leading `00` → `+`) and must then be valid [E.164](https://en.wikipedia.org/wiki/E.164) (`+` and country code required) — the provider never guesses a default country. `normalizePhoneNumber` is exported if you want the same normalization client-side.
 
+## Testing pattern: capture transport
+
+In e2e tests, wrap your `SmsTransport` in `CaptureSmsTransport` and read the code back through a test-only route (gated on a test-mode env var **and** a shared-secret header) instead of needing a phone — or paying for the text.
+
+```typescript
+import { CaptureSmsTransport } from "@activescott/auth-provider-sms/testing"
+
+export const smsTransport =
+  process.env.E2E_TEST_MODE === "true"
+    ? new CaptureSmsTransport(new TwilioTransport({ ... }))
+    : new TwilioTransport({ ... })
+
+// in your gated readback route:
+const captured = smsTransport.getCapturedSms(phone) // { message, code }
+```
+
+The code is parsed out of the default message template; pass a second argument to `CaptureSmsTransport` when you configure a custom `messageTemplate`. It lives at the `/testing` subpath rather than the package root so it stays out of your application's default import graph.
+
 ## Security model
 
 Same challenge model as the email provider: one server-side challenge per send, code stored only as a salted SHA-256 hash, attempts counted **before** each comparison (capped at `maxAttempts`), constant-time compare, single-use (deleted on success), and the challenge is bound to the initiating browser by an HttpOnly cookie — a code alone is useless without it.
 
-Delivery-level protections (per-number send throttling, fraud/pumping protection) belong at the app and vendor level; both Twilio and AWS offer built-in fraud guards.
+Per-number and per-IP send throttling ships in `@activescott/auth` and is on by default (see its [abuse protection](../auth/README.md#abuse-protection) section); vendor-level fraud/pumping guards (Twilio, AWS) are still worth enabling on top.
 
 If you think any of this should work differently — protections that belong in this library, a weakness in the model — please [open an issue or PR](https://github.com/activescott/auth/issues) to discuss.
