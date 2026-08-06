@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.5](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.0.4...auth-adapter-react-router@1.0.5) (2026-08-06)
+
+### Bug Fixes
+
+* accept react-router 7 or 8 ([5b8cf22](https://github.com/activescott/auth/commit/5b8cf22c4f7a1ac7b4e6df5bbfaa3f4006f53e77))
+
 ## [1.0.4](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.0.3...auth-adapter-react-router@1.0.4) (2026-08-02)
 
 ### Bug Fixes
