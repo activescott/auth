@@ -18,6 +18,7 @@ import {
   readCookie,
   parseDuration,
   authenticateWithIdentifier,
+  initiateAccepted,
 } from "@activescott/auth"
 import type { SmsProviderConfig, SmsTransport } from "./types.js"
 
@@ -45,6 +46,7 @@ const E164_PATTERN = /^\+[1-9]\d{1,14}$/
 export class SmsProvider implements AuthProvider {
   public readonly id = "sms"
   public readonly name = "SMS"
+  public readonly initiateSentMessage = "Code sent. Check your phone."
 
   public constructor(
     private readonly config: SmsProviderConfig,
@@ -86,6 +88,13 @@ export class SmsProvider implements AuthProvider {
         )
       }
 
+      // Cap how many texts one number receives regardless of source IP.
+      // A throttled request gets the same answer as a sent one.
+      const decision = await context.abuse?.checkIdentifier(this.id, phone)
+      if (decision?.allowed === false) {
+        return initiateAccepted(request, this.initiateSentMessage)
+      }
+
       const challengeId = crypto.randomUUID()
       const code = generateOtpCode(
         this.config.otp?.length ?? DEFAULT_OTP_LENGTH,
@@ -120,21 +129,9 @@ export class SmsProvider implements AuthProvider {
         context.baseUrl,
       )
 
-      if (isBrowserFormPost(request)) {
-        return new Response(null, {
-          status: 302,
-          headers: {
-            Location: buildReturnUrl(request, { sent: "1" }),
-            "Set-Cookie": challengeCookie,
-          },
-        })
-      }
-
-      return {
-        success: true,
-        message: "Code sent. Check your phone.",
-        setCookies: [challengeCookie],
-      }
+      return initiateAccepted(request, this.initiateSentMessage, [
+        challengeCookie,
+      ])
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Error in sms provider initiate:", error)
