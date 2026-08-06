@@ -1,6 +1,7 @@
 /**
  * Core types for @activescott/auth
  */
+import type { AbuseConfig, AbuseContext } from "./abuse/abuse-guard.js"
 
 /**
  * Minimal user representation for authentication.
@@ -280,6 +281,11 @@ export interface AuthConfig {
    * single-instance deployments; back it with shared storage when running
    * multiple instances. */
   challengeStore: ChallengeStore
+  /** Abuse protection for the initiate endpoints. Protection is on by
+   * default with sensible limits and an in-memory counter store, so this is
+   * only needed to tune limits, supply shared storage, add a hosted bot check,
+   * or turn it off. */
+  abuse?: AbuseConfig
   /** Callback URLs configuration */
   callbacks?: {
     /** URL to redirect to after successful authentication */
@@ -310,6 +316,10 @@ export interface AuthContext {
   getSession?: (
     request: Request,
   ) => Promise<{ user: AuthUser; identity: Identity } | null>
+  /** Per-recipient abuse checks. Providers call `checkIdentifier` once they
+   * have parsed and normalized the recipient (email address, phone number)
+   * and before sending anything to it. */
+  abuse?: AbuseContext
 }
 
 /**
@@ -334,6 +344,13 @@ export interface AuthProvider {
 
   /** Human-readable name */
   readonly name: string
+
+  /**
+   * Message returned when an initiate succeeds (e.g. "Magic link sent. Please
+   * check your email."). Auth reuses it verbatim when it silently blocks an
+   * abusive initiate, so a blocked caller cannot tell the two apart.
+   */
+  readonly initiateSentMessage?: string
 
   /**
    * Initialize authentication flow.

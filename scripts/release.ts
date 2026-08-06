@@ -76,6 +76,10 @@ try {
       name: "@activescott/auth-sms-twilio",
       dir: "packages/auth-sms-twilio",
     },
+    "auth-botcheck-turnstile": {
+      name: "@activescott/auth-botcheck-turnstile",
+      dir: "packages/auth-botcheck-turnstile",
+    },
     "auth-adapter-react-router": {
       name: "@activescott/auth-adapter-react-router",
       dir: "packages/auth-adapter-react-router",

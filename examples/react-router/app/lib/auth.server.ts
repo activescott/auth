@@ -1,6 +1,7 @@
 import {
   Auth,
   InMemoryChallengeStore,
+  createFormToken,
   type AuthUser,
   type Identity,
   type IdentityStore,
@@ -22,7 +23,11 @@ import {
 } from "@activescott/auth-provider-passkey"
 import { CaptureEmailTransport } from "./capture-email-transport.server"
 import { CaptureSmsTransport } from "./capture-sms-transport.server"
+import { TurnstileBotCheck } from "@activescott/auth-botcheck-turnstile"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
+
+/** Set TURNSTILE_SECRET_KEY (and TURNSTILE_SITE_KEY) to turn Turnstile on */
+const turnstileSecretKey = process.env.TURNSTILE_SECRET_KEY
 
 /**
  * In-memory stores — fine for an example, but data evaporates on restart.
@@ -211,6 +216,30 @@ export const auth = new Auth({
   // hashed) between "send" and "verify". In-memory works for one server
   // process; use a DB/Redis-backed implementation for multiple instances.
   challengeStore: new InMemoryChallengeStore(),
+  // Abuse protection is on with no configuration at all: per-IP and
+  // per-recipient rate limits backed by an in-memory counter store, plus the
+  // form-token check the login form below feeds. Everything
+  // here is optional tuning.
+  abuse: {
+    // Submissions faster than this are treated as bots. The library default
+    // is 2 seconds; this example lowers it to 1 so its Playwright suite does
+    // not pause two seconds before every sign-in. Keep the default (or
+    // higher) in a real app.
+    minFormFillSeconds: 1,
+    // Where blocked attempts go beyond the library's own warn-level log.
+    // A real app forwards these to its logger/metrics so an abuse burst is
+    // visible: `logger.warn({ ...event }, "auth abuse blocked")`.
+    onBlocked: (event) => {
+      // eslint-disable-next-line no-console -- the example has no logger
+      console.warn("abuse blocked:", event)
+    },
+    // Hosted bot checks live in their own packages so you only install the
+    // vendor you use. Turnstile stays off unless a secret key is present, so
+    // the example runs with no Cloudflare account.
+    botChecks: turnstileSecretKey
+      ? [new TurnstileBotCheck({ secretKey: turnstileSecretKey })]
+      : [],
+  },
   providers: [
     new EmailProvider(
       {
@@ -259,3 +288,18 @@ const handlers = createAuthHandlers(auth, {
 
 export const { handleAuth, getSession, requireAuth, optionalAuth, logout } =
   handlers
+
+/**
+ * Anti-bot form fields for the login page, minted per render: a signed
+ * timestamp the form-token check reads to reject submissions faster than a
+ * human could type, plus the Turnstile site key when Turnstile is configured.
+ */
+export async function createLoginFormFields(): Promise<{
+  formToken: string
+  turnstileSiteKey: string | null
+}> {
+  return {
+    formToken: await createFormToken(SESSION_SECRET),
+    turnstileSiteKey: process.env.TURNSTILE_SITE_KEY ?? null,
+  }
+}

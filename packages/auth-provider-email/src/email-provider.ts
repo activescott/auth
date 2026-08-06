@@ -20,6 +20,7 @@ import {
   readCookie,
   parseDuration,
   authenticateWithIdentifier,
+  initiateAccepted,
 } from "@activescott/auth"
 import type { EmailProviderConfig, EmailTransport } from "./types.js"
 import { NodemailerTransport } from "./transports/nodemailer.js"
@@ -47,6 +48,8 @@ const LINK_KEY_BYTES = 32
 export class EmailProvider implements AuthProvider {
   public readonly id = "email"
   public readonly name = "Email"
+  public readonly initiateSentMessage =
+    "Magic link sent. Please check your email."
 
   private transport: EmailTransport
 
@@ -88,6 +91,14 @@ export class EmailProvider implements AuthProvider {
           request,
           AuthErrors.invalidCredentials({ reason: "Invalid email format" }),
         )
+      }
+
+      // Cap how much mail one address receives regardless of source IP. A
+      // throttled request gets the same answer as a sent one, so a caller
+      // spraying addresses learns nothing.
+      const decision = await context.abuse?.checkIdentifier(this.id, email)
+      if (decision?.allowed === false) {
+        return initiateAccepted(request, this.initiateSentMessage)
       }
 
       const redirectTo =
@@ -139,22 +150,9 @@ export class EmailProvider implements AuthProvider {
         context.baseUrl,
       )
 
-      if (isBrowserFormPost(request)) {
-        const returnUrl = buildReturnUrl(request, { sent: "1" })
-        return new Response(null, {
-          status: 302,
-          headers: {
-            Location: returnUrl,
-            "Set-Cookie": challengeCookie,
-          },
-        })
-      }
-
-      return {
-        success: true,
-        message: "Magic link sent. Please check your email.",
-        setCookies: [challengeCookie],
-      }
+      return initiateAccepted(request, this.initiateSentMessage, [
+        challengeCookie,
+      ])
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Error in email provider initiate:", error)

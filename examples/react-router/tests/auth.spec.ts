@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test"
-import { loginAs } from "./helpers/auth"
+import { loginAs, waitForMinimumFormFill } from "./helpers/auth"
 
 test.describe("auth", () => {
   test("login page renders the email form", async ({ page }) => {
@@ -14,6 +14,7 @@ test.describe("auth", () => {
   test("submitting the form returns a success message", async ({ page }) => {
     await page.goto("/login")
     await page.getByLabel(/email/i).fill("alice@example.com")
+    await waitForMinimumFormFill(page)
     await page.getByRole("button", { name: /send magic link/i }).click()
     await expect(page.getByText(/check your email/i)).toBeVisible()
   })
@@ -60,6 +61,7 @@ test.describe("input preservation", () => {
   }) => {
     await page.goto("/login")
     await page.getByLabel(/email/i).fill("keep-me@example.com")
+    await waitForMinimumFormFill(page)
     await page.getByRole("button", { name: /send magic link/i }).click()
     await expect(page.getByText(/check your email/i)).toBeVisible()
     await expect(page.getByLabel("Email", { exact: true })).toHaveValue(
@@ -70,6 +72,7 @@ test.describe("input preservation", () => {
   test("the phone number survives an error round trip", async ({ page }) => {
     await page.goto("/login?via=sms")
     await page.getByLabel(/mobile phone number/i).fill("notaphone")
+    await waitForMinimumFormFill(page)
     await page.getByRole("button", { name: /text me a code/i }).click()
     await expect(page).toHaveURL(/error=/)
     await expect(page.getByLabel(/mobile phone number/i)).toHaveValue(

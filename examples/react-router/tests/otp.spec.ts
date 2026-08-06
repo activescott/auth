@@ -4,6 +4,7 @@ import {
   type Page,
   type APIRequestContext,
 } from "@playwright/test"
+import { waitForMinimumFormFill } from "./helpers/auth"
 
 const E2E_SECRET =
   process.env.E2E_MAGIC_LINK_SECRET ?? "e2e_test_magic_link_secret"
@@ -11,6 +12,7 @@ const E2E_SECRET =
 async function requestCode(page: Page, email: string): Promise<void> {
   await page.goto("/login")
   await page.getByLabel(/email/i).fill(email)
+  await waitForMinimumFormFill(page)
   await page.getByRole("button", { name: /send magic link/i }).click()
   await expect(page.getByLabel(/enter the code/i)).toBeVisible()
 }

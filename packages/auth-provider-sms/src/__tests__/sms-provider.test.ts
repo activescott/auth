@@ -372,3 +372,55 @@ describe("SmsProvider", () => {
     })
   })
 })
+
+describe("SmsProvider per-recipient throttling", () => {
+  let challengeStore: InMemoryChallengeStore
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    challengeStore = new InMemoryChallengeStore()
+  })
+
+  afterEach(() => {
+    challengeStore.destroy()
+  })
+
+  it("texts nothing when the number is throttled", async () => {
+    const provider = createProvider()
+    const context = createMockContext(challengeStore, {
+      abuse: {
+        checkIdentifier: vi.fn().mockResolvedValue({
+          allowed: false,
+          event: {
+            reason: "identifier_rate_limited",
+            providerId: "sms",
+            ip: null,
+            identifier: TEST_PHONE,
+            at: new Date(),
+          },
+        }),
+      },
+    })
+
+    const result = await provider.initiate(createInitiateRequest(), context)
+
+    expect(mockTransport.sendMessage).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      success: true,
+      message: provider.initiateSentMessage,
+      setCookies: [],
+    })
+  })
+
+  it("passes the E.164 number to the abuse check", async () => {
+    const provider = createProvider()
+    const checkIdentifier = vi.fn().mockResolvedValue({ allowed: true })
+    const context = createMockContext(challengeStore, {
+      abuse: { checkIdentifier },
+    })
+
+    await provider.initiate(createInitiateRequest("+1 (415) 555-0100"), context)
+
+    expect(checkIdentifier).toHaveBeenCalledWith("sms", "+14155550100")
+  })
+})

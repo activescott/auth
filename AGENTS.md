@@ -44,6 +44,8 @@ Source map for what lives where (not in README):
 - `packages/auth-provider-email/src/email-provider.ts` — email magic link + code provider; `src/transports/` holds `EmailTransport` implementations (Nodemailer SMTP).
 - `packages/auth-provider-sms/src/sms-provider.ts` — SMS one-time-code provider (vendor-neutral; `SmsTransport` interface, `ConsoleTransport` for dev).
 - `packages/auth-sms-twilio/src/twilio-transport.ts` — Twilio `SmsTransport` (raw fetch, zero deps).
+- `packages/auth/src/abuse/` — abuse protection for the initiate endpoints, active by default: `abuse-guard.ts` (orchestration, `AbuseConfig`, block logging), `rate-limiter.ts` + `rate-limit-store.ts` (fixed-window rules), `client-ip.ts`, `bot-check.ts` (`BotCheckProvider`, signed form token); `src/stores/in-memory-rate-limit-store.ts` is the default store.
+- `packages/auth-botcheck-turnstile/src/turnstile-bot-check.ts` — Cloudflare Turnstile `BotCheckProvider` (raw fetch, zero deps). Hosted bot checks each get their own package so consumers don't install vendors they don't use.
 - `packages/auth-adapter-react-router/src/handlers.ts` — `createAuthHandlers` and friends.
 - `examples/react-router/` — runnable example app (email + SMS sign-in on tabbed login page); its Playwright e2e suite is nested workspace `examples/react-router/tests`.
 - `infra/twilio/setup-twilio.mts` — interactive Twilio provisioning script (runs directly under node via type stripping).
