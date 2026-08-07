@@ -1,6 +1,7 @@
 import {
   Auth,
   InMemoryChallengeStore,
+  buildReturnUrl,
   createFormToken,
   type AuthUser,
   type Identity,
@@ -14,9 +15,14 @@ import {
 import {
   SmsProvider,
   ConsoleTransport,
+  isVerificationTransport,
   type SmsTransport,
+  type VerificationTransport,
 } from "@activescott/auth-provider-sms"
-import { TwilioTransport } from "@activescott/auth-sms-twilio"
+import {
+  TwilioMessagingTransport,
+  TwilioVerifyTransport,
+} from "@activescott/auth-sms-twilio"
 import {
   PasskeyProvider,
   parsePasskeyCredentialMetadata,
@@ -143,13 +149,19 @@ const smtpConfigured = Boolean(process.env.SMTP_HOST)
 
 /**
  * Twilio is considered configured when its env vars are all set (see
- * .env.example): account SID, auth token, and a sender (from number or
- * Messaging Service SID). Fully configured → real texts. Anything less →
- * console transport (codes printed to the server console), with a log
- * line naming exactly what's missing — so a subtle misconfiguration
- * (one env var absent in prod) is diagnosable instead of silent.
+ * .env.example): account SID, auth token, and either a Verify service or a
+ * sender. Fully configured → real texts. Anything less → console transport
+ * (codes printed to the server console), with a log line naming exactly
+ * what's missing — so a subtle misconfiguration (one env var absent in
+ * prod) is diagnosable instead of silent.
+ *
+ * TWILIO_VERIFY_SERVICE_SID picks Twilio Verify, where Twilio generates,
+ * texts, and checks the code from senders it already registered — no US A2P
+ * 10DLC registration, no number to own, ~4-6x the per-sign-in cost. The
+ * TWILIO_SMS_* sender vars pick raw SMS instead, which is cheaper per
+ * message but leaves 10DLC registration to the app.
  */
-function createSmsTransport(): SmsTransport {
+function createSmsTransport(): SmsTransport | VerificationTransport {
   // E2e must never text real messages, even if Twilio env vars leak in
   // from the shell environment.
   if (process.env.E2E_TEST_MODE === "true") {
@@ -158,8 +170,22 @@ function createSmsTransport(): SmsTransport {
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken = process.env.TWILIO_AUTH_TOKEN
-  const from = process.env.TWILIO_FROM
-  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
+  const from = process.env.TWILIO_SMS_FROM
+  const messagingServiceSid = process.env.TWILIO_SMS_MESSAGING_SERVICE_SID
+  const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID
+
+  if (accountSid && authToken && verifyServiceSid) {
+    console.log(
+      "SMS via Twilio Verify. Codes are generated and checked by Twilio; " +
+        "per-attempt outcomes are in the Verify log: " +
+        "https://console.twilio.com/us1/monitor/logs/verify-logs",
+    )
+    return new TwilioVerifyTransport({
+      accountSid,
+      authToken,
+      serviceSid: verifyServiceSid,
+    })
+  }
 
   if (accountSid && authToken && (from || messagingServiceSid)) {
     console.log(
@@ -168,7 +194,7 @@ function createSmsTransport(): SmsTransport {
         "for unregistered A2P 10DLC numbers): " +
         "https://console.twilio.com/us1/monitor/logs/sms",
     )
-    return new TwilioTransport({
+    return new TwilioMessagingTransport({
       accountSid,
       authToken,
       from,
@@ -181,7 +207,7 @@ function createSmsTransport(): SmsTransport {
     !authToken && "TWILIO_AUTH_TOKEN",
     !from &&
       !messagingServiceSid &&
-      "TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID",
+      "TWILIO_VERIFY_SERVICE_SID, TWILIO_SMS_MESSAGING_SERVICE_SID, or TWILIO_SMS_FROM",
   ].filter((name): name is string => typeof name === "string")
 
   if (missing.length < 3) {
@@ -192,8 +218,7 @@ function createSmsTransport(): SmsTransport {
   } else {
     console.log(
       "SMS: no Twilio configuration found — sign-in codes will be printed " +
-        "to this console. Run ./infra/twilio/setup-twilio.mts to configure " +
-        "real texting.",
+        "to this console. See .env.example to configure real texting.",
     )
   }
   return new ConsoleTransport()
@@ -210,7 +235,18 @@ function createSmsTransport(): SmsTransport {
 const captureEmailTransport = new CaptureEmailTransport(
   new NodemailerTransport(!smtpConfigured),
 )
-const captureSmsTransport = new CaptureSmsTransport(createSmsTransport())
+const smsTransport = createSmsTransport()
+
+/**
+ * Capturing only makes sense for a transport that sends a message this
+ * process composed. With Twilio Verify the code is generated, sent, and
+ * checked by the vendor and never reaches us, so there is nothing to capture
+ * — hence null, and the readback route answers 404 for phone lookups. E2e
+ * forces the console transport, so its readback is unaffected.
+ */
+const captureSmsTransport = isVerificationTransport(smsTransport)
+  ? null
+  : new CaptureSmsTransport(smsTransport)
 
 export { captureEmailTransport, captureSmsTransport }
 
@@ -282,8 +318,10 @@ export const auth = new Auth({
         // webOtpDomain: "example.com",
       },
       // The capture wrapper records the last code per phone number for
-      // the e2e readback route; it delegates to the real transport.
-      captureSmsTransport,
+      // the e2e readback route; it delegates to the real transport. Twilio
+      // Verify never hands us the code, so there is nothing to wrap and the
+      // transport is used directly.
+      captureSmsTransport ?? smsTransport,
     ),
     new PasskeyProvider({
       rpName: "RR Auth Example",
@@ -297,7 +335,13 @@ export const auth = new Auth({
 
 const handlers = createAuthHandlers(auth, {
   successRedirect: "/dashboard",
-  errorRedirect: "/login",
+  // Back to the page the form was posted from, with ?error= added, instead of
+  // a bare "/login". The login page keeps the chosen provider in the query
+  // (?via=sms), so a plain path would answer a failed phone code on the email
+  // tab. buildReturnUrl reads the Referer and preserves everything already
+  // there.
+  errorRedirect: (error, request) =>
+    buildReturnUrl(request, { error: error.code }),
   loginUrl: "/login",
 })
 

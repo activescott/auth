@@ -7,8 +7,15 @@ import type { Auth, AuthUser, Identity, AuthError } from "@activescott/auth"
 export interface CreateAuthHandlersOptions<TUser = AuthUser> {
   /** URL to redirect to after successful authentication */
   successRedirect?: string | ((user: AuthUser, identity: Identity) => string)
-  /** URL to redirect to on authentication error */
-  errorRedirect?: string | ((error: AuthError) => string)
+  /**
+   * URL to redirect to on authentication error. The string form appends
+   * `?error=<code>` to a fixed path, which drops any query the form was
+   * submitted from (a `?tab=` or `?via=` selection, for example). The
+   * function form receives the failing request, so pass core's
+   * `buildReturnUrl(request, { error: error.code })` to send the browser back
+   * to the exact page it posted from.
+   */
+  errorRedirect?: string | ((error: AuthError, request: Request) => string)
   /** URL to redirect unauthenticated users to */
   loginUrl?: string
   /**
@@ -130,7 +137,7 @@ export function createAuthHandlers<TUser = AuthUser>(
       if (!result.success) {
         const errorUrl =
           typeof errorRedirect === "function"
-            ? errorRedirect(result.error)
+            ? errorRedirect(result.error, request)
             : `${errorRedirect}?error=${encodeURIComponent(result.error.code)}`
         return redirect(errorUrl)
       }

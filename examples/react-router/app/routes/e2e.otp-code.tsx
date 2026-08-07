@@ -32,6 +32,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   if (phone) {
+    if (!captureSmsTransport) {
+      // Configured for a hosted verification service (Twilio Verify): the
+      // code lives at the vendor, so this process never sees one to hand back
+      throw new Response("SMS codes are not captured in this configuration", {
+        status: 404,
+      })
+    }
     const captured = captureSmsTransport.getCapturedSms(phone)
     if (!captured) {
       throw new Response("No SMS captured for that number", { status: 404 })

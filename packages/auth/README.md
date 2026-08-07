@@ -8,7 +8,7 @@ Framework-agnostic direct authentication, deliberately small: single-use magic l
 This package is the core: the `Auth` class, JWT-cookie session management, and the provider/store interfaces. It does not handle any specific authentication method by itself — pair it with one or more provider packages and (optionally) a framework adapter:
 
 - [`@activescott/auth-provider-email`](https://www.npmjs.com/package/@activescott/auth-provider-email) — email magic links + one-time codes
-- [`@activescott/auth-provider-sms`](https://www.npmjs.com/package/@activescott/auth-provider-sms) — SMS one-time codes ([`@activescott/auth-sms-twilio`](https://www.npmjs.com/package/@activescott/auth-sms-twilio) is the Twilio transport)
+- [`@activescott/auth-provider-sms`](https://www.npmjs.com/package/@activescott/auth-provider-sms) — SMS one-time codes ([`@activescott/auth-sms-twilio`](https://www.npmjs.com/package/@activescott/auth-sms-twilio) provides both Twilio transports: Messaging and Verify)
 - [`@activescott/auth-provider-passkey`](https://www.npmjs.com/package/@activescott/auth-provider-passkey) — passkeys (WebAuthn)
 - [`@activescott/auth-adapter-react-router`](https://www.npmjs.com/package/@activescott/auth-adapter-react-router) — React Router v8 adapter
 
@@ -32,7 +32,8 @@ Passkeys push the same idea further: phishing-resistant, no shared secret, and s
 - ✅ **Bring your own database** — three small store interfaces (`IdentityStore`, `UserStore`, `ChallengeStore`); implement them with Prisma, Drizzle, raw SQL, Redis, whatever you use.
 - ✅ **Edge-ready, [WinterTC-compatible](https://wintertc.org/faq) core** — standard Fetch `Request`/`Response`, WebCrypto, and [`jose`](https://github.com/panva/jose) for session JWTs; no Node-only APIs, so it runs on Cloudflare Workers, Deno, Bun, and any WinterTC-aligned runtime.
 - ✅ **React Router v8 adapter** — `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.
-- ✅ **SMS one-time codes** — vendor-neutral provider with a Twilio transport (RCS-ready), [WebOTP](https://developer.mozilla.org/docs/Web/API/WebOTP_API) autofill support, and an interactive provisioning script.
+- ✅ **SMS one-time codes** — vendor-neutral provider with a Twilio Messaging transport (RCS-ready) and [WebOTP](https://developer.mozilla.org/docs/Web/API/WebOTP_API) autofill support.
+- ✅ **Hosted verification (no US A2P 10DLC)** — the same SMS provider accepts a `VerificationTransport` where the vendor generates, sends, and checks the code. `TwilioVerifyTransport` ships in the Twilio package: no number to buy, no brand or campaign registration — at the cost of ~4–6x per sign-in.
 - ✅ **Abuse protection, on by default** — per-IP and per-recipient rate limits, a minimum-form-fill-time check, blocked attempts logged, and a blocked caller gets the same response a successful send would produce. Optional packages add hosted bot checks ([Turnstile](https://www.npmjs.com/package/@activescott/auth-botcheck-turnstile)).
 - ✅ **Passkeys (WebAuthn)** — add a passkey while signed in, then sign in usernameless with Touch ID, Face ID, Windows Hello, 1Password, iCloud Keychain, or a security key; conditional UI (passkey autofill) supported. Verification via [`@simplewebauthn/server`](https://simplewebauthn.dev/); zero-dependency browser client included.
 
