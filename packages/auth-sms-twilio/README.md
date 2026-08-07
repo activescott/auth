@@ -62,7 +62,7 @@ Troubleshooting:
 Steps 3 and 4 above are what Verify removes:
 
 1. Create a Twilio account and grab the **Account SID** and **Auth Token** (steps 1–2 above).
-2. Console → **Verify → Services → Create new**. The friendly name you give the service is what appears in the message ("Your _MyApp_ verification code is …"), so name it after your app.
+2. Console → **Develop → Verify → [Services](https://console.twilio.com/us1/develop/verify/services) → Create new**. The friendly name you give the service is what appears in the message ("Your _MyApp_ verification code is …"), so name it after your app.
 3. Copy the service SID (starts with `VA`) into `serviceSid`. That's it — no number, no campaign registration, nothing to wait on.
 
 Options:

@@ -57,13 +57,18 @@ Whichever you pick, nothing else about the login page or the routes changes — 
 
 ### SMS via Twilio Verify (quick setup, cheaper at low volume)
 
-Create a Verify service (Console → Verify → Services), then set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID`. Twilio generates, texts, and checks the code from senders it already registered, so there is no number to buy and no A2P 10DLC registration to wait out. Name the Verify service after your app — the friendly name is what appears in the text.
+Two values come from the [Twilio console](https://console.twilio.com) and one is created there:
+
+- `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` — the [console home page](https://console.twilio.com), under **Account Info**.
+- `TWILIO_VERIFY_SERVICE_SID` — **Develop → Verify → [Services](https://console.twilio.com/us1/develop/verify/services) → Create new**, then copy the SID (starts with `VA`). Name the service after your app: the friendly name is what appears in the text the user receives.
+
+That's the whole setup. Twilio generates, texts, and checks the code from senders it already registered, so there is no number to buy and no A2P 10DLC registration to wait out.
 
 Per-attempt outcomes are in the [Verify log](https://console.twilio.com/us1/monitor/logs/verify), not the SMS delivery log.
 
 ### SMS via Twilio Messaging (slow setup, cheaper at high volume)
 
-Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and either `TWILIO_SMS_MESSAGING_SERVICE_SID` or `TWILIO_SMS_FROM`. You own the number and this app owns the code. For US traffic this also means registering an A2P 10DLC brand and campaign — a one-time fee, monthly fees, and days to weeks of waiting. Until it clears, carriers filter the messages while the API still reports success.
+Set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` from the [console home page](https://console.twilio.com), plus a sender: `TWILIO_SMS_MESSAGING_SERVICE_SID` (**Develop → Messaging → Services**) or `TWILIO_SMS_FROM` (**Develop → Phone Numbers**). You own the number and this app owns the code. For US traffic this also means registering an A2P 10DLC brand and campaign — a one-time fee, monthly fees, and days to weeks of waiting. Until it clears, carriers filter the messages while the API still reports success.
 
 If a text never arrives, check Twilio's [per-message delivery log](https://console.twilio.com/us1/monitor/logs/sms) — that log is the only place the failure shows, and error 30034 there means the number isn't registered yet. More troubleshooting in the [`auth-sms-twilio` README](../../packages/auth-sms-twilio#provisioning-step-by-step).
 
