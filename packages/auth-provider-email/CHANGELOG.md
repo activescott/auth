@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.0](https://github.com/activescott/auth/compare/auth-provider-email@1.0.3...auth-provider-email@1.1.0) (2026-08-07)
+
+### Features
+
+* ship CaptureEmailTransport for e2e tests ([451169b](https://github.com/activescott/auth/commit/451169b8d49fe550378600e123360c8a192ddd2d))
+
 ## [1.0.3](https://github.com/activescott/auth/compare/auth-provider-email@1.0.2...auth-provider-email@1.0.3) (2026-08-06)
 
 ### Bug Fixes
