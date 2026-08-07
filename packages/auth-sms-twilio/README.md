@@ -6,7 +6,7 @@
 Twilio transports for [`@activescott/auth-provider-sms`](https://www.npmjs.com/package/@activescott/auth-provider-sms), both raw `fetch` — **zero dependencies**, running on any WinterTC-compatible runtime (Node, Cloudflare Workers, Deno, Bun):
 
 - **`TwilioVerifyTransport`** (Twilio Verify) — **quick setup, cheaper at low volume.** Twilio generates, sends, and checks the code through the [Verify API](https://www.twilio.com/docs/verify). No number to buy and **no 10DLC registration**: Verify "procures and manages short codes, long codes, toll free, and global alpha-sender IDs" on your behalf. Costs $0.05 per successful verification plus the channel fee (~4–6x a raw SMS), which at low sign-in volume is often less than 10DLC's fixed monthly fees.
-- **`TwilioTransport`** (Twilio Messaging) — **slow setup, cheaper at high volume.** You own the number and the code; sends through the Twilio Messages API. Cheapest per message (~$0.011–0.013 all-in for US SMS), but US traffic first needs your own [A2P 10DLC](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc) brand and campaign registration — days to weeks, plus monthly fees per campaign and per number. Also the only path to RCS and custom message copy.
+- **`TwilioMessagingTransport`** (Twilio Messaging) — **slow setup, cheaper at high volume.** You own the number and the code; sends through the Twilio Messages API. Cheapest per message (~$0.011–0.013 all-in for US SMS), but US traffic first needs your own [A2P 10DLC](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc) brand and campaign registration — days to weeks, plus monthly fees per campaign and per number. Also the only path to RCS and custom message copy.
 
 Same texted-code experience either way; the difference is who owns the code and what it takes to start.
 
@@ -14,11 +14,11 @@ Same texted-code experience either way; the difference is who owns the code and 
 
 ```ts
 import { SmsProvider } from "@activescott/auth-provider-sms"
-import { TwilioTransport } from "@activescott/auth-sms-twilio"
+import { TwilioMessagingTransport } from "@activescott/auth-sms-twilio"
 
 new SmsProvider(
   { appName: "MyApp" },
-  new TwilioTransport({
+  new TwilioMessagingTransport({
     accountSid: process.env.TWILIO_ACCOUNT_SID!,
     authToken: process.env.TWILIO_AUTH_TOKEN!,
     // one of:
@@ -99,7 +99,7 @@ Three levels, cheapest first:
 For unit tests, the constructor accepts an injectable `fetch` (this package's own tests use it; apps usually don't need it):
 
 ```ts
-new TwilioTransport({ accountSid, authToken, from, fetch: fetchMock })
+new TwilioMessagingTransport({ accountSid, authToken, from, fetch: fetchMock })
 new TwilioVerifyTransport({
   accountSid,
   authToken,

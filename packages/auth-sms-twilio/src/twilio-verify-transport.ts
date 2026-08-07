@@ -51,7 +51,7 @@ export const TWILIO_VERIFY_LOG_URL =
  * sign-in volume.
  *
  * Raw fetch, no Twilio SDK dependency, works on any WinterTC-compatible
- * runtime. Pass it to SmsProvider in place of TwilioTransport; nothing else
+ * runtime. Pass it to SmsProvider in place of TwilioMessagingTransport; nothing else
  * about the SMS provider changes.
  */
 export class TwilioVerifyTransport implements VerificationTransport {

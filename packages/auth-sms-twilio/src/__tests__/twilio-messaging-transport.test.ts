@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { TwilioTransport } from "../twilio-transport.js"
+import { TwilioMessagingTransport } from "../twilio-messaging-transport.js"
 
 const TEST_SID = "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 const TEST_TOKEN = "test-auth-token"
@@ -9,17 +9,20 @@ function createFetchMock(status = 201, body = "{}"): typeof fetch {
   return vi.fn().mockResolvedValue(new Response(body, { status }))
 }
 
-describe("TwilioTransport", () => {
+describe("TwilioMessagingTransport", () => {
   it("should require a sender", () => {
     expect(
       () =>
-        new TwilioTransport({ accountSid: TEST_SID, authToken: TEST_TOKEN }),
+        new TwilioMessagingTransport({
+          accountSid: TEST_SID,
+          authToken: TEST_TOKEN,
+        }),
     ).toThrow(/from.*messagingServiceSid/)
   })
 
   it("should POST to the Messages API with Basic auth and From", async () => {
     const fetchMock = createFetchMock()
-    const transport = new TwilioTransport({
+    const transport = new TwilioMessagingTransport({
       accountSid: TEST_SID,
       authToken: TEST_TOKEN,
       from: "+15005550006",
@@ -49,7 +52,7 @@ describe("TwilioTransport", () => {
 
   it("should prefer MessagingServiceSid over From", async () => {
     const fetchMock = createFetchMock()
-    const transport = new TwilioTransport({
+    const transport = new TwilioMessagingTransport({
       accountSid: TEST_SID,
       authToken: TEST_TOKEN,
       from: "+15005550006",
@@ -68,7 +71,7 @@ describe("TwilioTransport", () => {
   })
 
   it("should return false on an API error response", async () => {
-    const transport = new TwilioTransport({
+    const transport = new TwilioMessagingTransport({
       accountSid: TEST_SID,
       authToken: TEST_TOKEN,
       from: "+15005550006",
@@ -79,7 +82,7 @@ describe("TwilioTransport", () => {
   })
 
   it("should return false when fetch rejects", async () => {
-    const transport = new TwilioTransport({
+    const transport = new TwilioMessagingTransport({
       accountSid: TEST_SID,
       authToken: TEST_TOKEN,
       from: "+15005550006",

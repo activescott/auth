@@ -1,6 +1,6 @@
 import type { SmsTransport } from "@activescott/auth-provider-sms"
 
-export interface TwilioTransportConfig {
+export interface TwilioMessagingTransportConfig {
   /** Twilio Account SID (starts with AC) */
   accountSid: string
   /** Twilio Auth Token */
@@ -32,16 +32,21 @@ export const TWILIO_DELIVERY_LOG_URL =
   "https://console.twilio.com/us1/monitor/logs/sms"
 
 /**
- * Sends messages through the Twilio Messages API with a raw fetch call —
- * no Twilio SDK dependency, works on any WinterTC-compatible runtime.
+ * Sends messages through the Twilio Messaging API (Programmable Messaging)
+ * with a raw fetch call — no Twilio SDK dependency, works on any
+ * WinterTC-compatible runtime.
+ *
+ * This app owns the code and the sending number, which is the cheaper path per
+ * message but leaves US A2P 10DLC brand and campaign registration to you. See
+ * TwilioVerifyTransport for the path with no registration.
  */
-export class TwilioTransport implements SmsTransport {
+export class TwilioMessagingTransport implements SmsTransport {
   private readonly fetchImpl: typeof fetch
 
-  public constructor(private readonly config: TwilioTransportConfig) {
+  public constructor(private readonly config: TwilioMessagingTransportConfig) {
     if (!config.from && !config.messagingServiceSid) {
       throw new Error(
-        "TwilioTransport requires either `from` or `messagingServiceSid`",
+        "TwilioMessagingTransport requires either `from` or `messagingServiceSid`",
       )
     }
     this.fetchImpl = config.fetch ?? globalThis.fetch
