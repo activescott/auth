@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [0.3.0](https://github.com/activescott/auth/compare/auth-provider-sms@0.2.0...auth-provider-sms@0.3.0) (2026-08-07)
+
+### Features
+
+* accept a hosted VerificationTransport ([adb60b2](https://github.com/activescott/auth/commit/adb60b226fbf90fcc19987f9e11023d841155d30))
+
 ## [0.2.0](https://github.com/activescott/auth/compare/auth-provider-sms@0.1.3...auth-provider-sms@0.2.0) (2026-08-07)
 
 ### Features

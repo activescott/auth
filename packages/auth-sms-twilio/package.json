@@ -1,6 +1,6 @@
 {
   "name": "@activescott/auth-sms-twilio",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "description": "Twilio SMS/RCS transport for @activescott/auth-provider-sms",
   "type": "module",
   "main": "./dist/index.js",
