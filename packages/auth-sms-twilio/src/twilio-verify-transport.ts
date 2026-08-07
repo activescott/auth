@@ -111,8 +111,19 @@ export class TwilioVerifyTransport implements VerificationTransport {
       const response = await this.post("VerificationChecks", body)
 
       // Twilio returns 404 once a verification is consumed, canceled, or aged
-      // out, which the user experiences as an expired code rather than an error
+      // out, which the user experiences as an expired code rather than an
+      // error. A wrong service SID produces the same status, so log the body:
+      // the alternative is an unexplained "expired" on a code just texted.
       if (response.status === HTTP_NOT_FOUND) {
+        const text = await response.text()
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Twilio Verify check returned 404 — treating the code as expired. ` +
+            `This is normal for a code that was already used or has aged out; ` +
+            `if it happens on a freshly texted code, check that serviceSid is ` +
+            `the same Verify service the code was sent from. Response: ` +
+            `${text.slice(0, MAX_LOGGED_BODY_LENGTH)}\nVerify log: ${TWILIO_VERIFY_LOG_URL}`,
+        )
         return { status: "expired" }
       }
 
@@ -124,7 +135,15 @@ export class TwilioVerifyTransport implements VerificationTransport {
         }
       }
 
-      return mapCheckStatus(readStringField(await response.json(), "status"))
+      const status = readStringField(await response.json(), "status")
+      if (status !== "approved") {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Twilio Verify check returned status "${status}". Per-attempt ` +
+            `outcomes: ${TWILIO_VERIFY_LOG_URL}`,
+        )
+      }
+      return mapCheckStatus(status)
     } catch (error) {
       return {
         status: "error",
