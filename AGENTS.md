@@ -61,6 +61,21 @@ Follow best practices for best-in-class, easy-to-understand JS/TS open-source pr
 - Resolve messy input at boundary where it enters (e.g. login form composes full E.164 number before submit) so everything downstream handles one canonical form.
 - Zero runtime deps in core and provider packages; deps live only in vendor adapter packages.
 
+## Specs
+
+Plans, specs, and post-implementation summaries live in `docs/specs/<name>/`
+(`plan.md`, `spec.md`, `summary.md`) and **are committed** with the work they
+describe.
+
+This is a public repository, so scrub a spec before committing it:
+
+- no local filesystem paths (`/Users/...`, `~/src/...`) — reference repo-relative paths or name the other repository
+- no deployment details of any live site that runs this library (instance counts, hostnames, database/cache topology) — describe the constraint generically ("single instance, no shared cache")
+- nothing about credentials being exposed, leaked, or awaiting rotation; handle that out of band
+- no third parties' email addresses, keys, tokens, or internal URLs
+
+Working notes are fine; treat the spec as something a stranger will read.
+
 ## Commits and releases
 
 Commit format drives automated per-package releases — full rules, bump table, rationale in README's [Release process](./README.md#release-process). Parts agent must not get wrong:

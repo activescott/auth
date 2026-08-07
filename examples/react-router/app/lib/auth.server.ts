@@ -27,8 +27,8 @@ import {
   PasskeyProvider,
   parsePasskeyCredentialMetadata,
 } from "@activescott/auth-provider-passkey"
-import { CaptureEmailTransport } from "./capture-email-transport.server"
-import { CaptureSmsTransport } from "./capture-sms-transport.server"
+import { CaptureEmailTransport } from "@activescott/auth-provider-email/testing"
+import { CaptureSmsTransport } from "@activescott/auth-provider-sms/testing"
 import { TurnstileBotCheck } from "@activescott/auth-botcheck-turnstile"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
 
@@ -141,19 +141,6 @@ export async function listPasskeys(userId: string): Promise<
 }
 
 /**
- * Wrap a message-sending transport in the e2e capture wrapper, leaving a
- * hosted verification transport alone — with Twilio Verify the code lives at
- * the vendor, so no code passes through this process to capture.
- */
-function wrapForE2eReadback(
-  transport: SmsTransport | VerificationTransport,
-): SmsTransport | VerificationTransport {
-  return isVerificationTransport(transport)
-    ? transport
-    : new CaptureSmsTransport(transport)
-}
-
-/**
  * SMTP is considered configured when SMTP_HOST is set (see .env.example).
  * Configured → real emails are sent. Not configured → dev mode: emails are
  * logged to the server console instead.
@@ -237,6 +224,32 @@ function createSmsTransport(): SmsTransport | VerificationTransport {
   return new ConsoleTransport()
 }
 
+/**
+ * The capture transports record the last message per recipient so the e2e
+ * readback route can hand tests the code without an inbox or a phone. They
+ * come from each provider's `/testing` subpath — test support, not part of
+ * the package's normal surface. A real app installs them only under a
+ * test-mode flag; this example always does because it has no other way to
+ * show you the code.
+ */
+const captureEmailTransport = new CaptureEmailTransport(
+  new NodemailerTransport(!smtpConfigured),
+)
+const smsTransport = createSmsTransport()
+
+/**
+ * Capturing only makes sense for a transport that sends a message this
+ * process composed. With Twilio Verify the code is generated, sent, and
+ * checked by the vendor and never reaches us, so there is nothing to capture
+ * — hence null, and the readback route answers 404 for phone lookups. E2e
+ * forces the console transport, so its readback is unaffected.
+ */
+const captureSmsTransport = isVerificationTransport(smsTransport)
+  ? null
+  : new CaptureSmsTransport(smsTransport)
+
+export { captureEmailTransport, captureSmsTransport }
+
 export const auth = new Auth({
   session: {
     secret: SESSION_SECRET,
@@ -295,7 +308,7 @@ export const auth = new Auth({
       // Dev mode (no SMTP configured) → emails are logged to the server
       // console instead of sent. Set SMTP_HOST (see .env.example) to send
       // real email.
-      new CaptureEmailTransport(new NodemailerTransport(!smtpConfigured)),
+      captureEmailTransport,
     ),
     new SmsProvider(
       {
@@ -306,9 +319,9 @@ export const auth = new Auth({
       },
       // The capture wrapper records the last code per phone number for
       // the e2e readback route; it delegates to the real transport. Twilio
-      // Verify never hands us the code, so there is nothing to capture and
-      // that transport is passed straight through.
-      wrapForE2eReadback(createSmsTransport()),
+      // Verify never hands us the code, so there is nothing to wrap and the
+      // transport is used directly.
+      captureSmsTransport ?? smsTransport,
     ),
     new PasskeyProvider({
       rpName: "RR Auth Example",

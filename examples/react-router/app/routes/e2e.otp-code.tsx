@@ -1,5 +1,4 @@
-import { getCapturedEmail } from "~/lib/capture-email-transport.server"
-import { getCapturedSms } from "~/lib/capture-sms-transport.server"
+import { captureEmailTransport, captureSmsTransport } from "~/lib/auth.server"
 import type { Route } from "./+types/e2e.otp-code"
 
 /**
@@ -25,7 +24,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const phone = url.searchParams.get("phone")
 
   if (email) {
-    const captured = getCapturedEmail(email)
+    const captured = captureEmailTransport.getCapturedEmail(email)
     if (!captured) {
       throw new Response("No email captured for that address", { status: 404 })
     }
@@ -33,7 +32,14 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   if (phone) {
-    const captured = getCapturedSms(phone)
+    if (!captureSmsTransport) {
+      // Configured for a hosted verification service (Twilio Verify): the
+      // code lives at the vendor, so this process never sees one to hand back
+      throw new Response("SMS codes are not captured in this configuration", {
+        status: 404,
+      })
+    }
+    const captured = captureSmsTransport.getCapturedSms(phone)
     if (!captured) {
       throw new Response("No SMS captured for that number", { status: 404 })
     }
