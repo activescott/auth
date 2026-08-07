@@ -21,8 +21,8 @@ import {
   PasskeyProvider,
   parsePasskeyCredentialMetadata,
 } from "@activescott/auth-provider-passkey"
-import { CaptureEmailTransport } from "./capture-email-transport.server"
-import { CaptureSmsTransport } from "./capture-sms-transport.server"
+import { CaptureEmailTransport } from "@activescott/auth-provider-email/testing"
+import { CaptureSmsTransport } from "@activescott/auth-provider-sms/testing"
 import { TurnstileBotCheck } from "@activescott/auth-botcheck-turnstile"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
 
@@ -199,6 +199,21 @@ function createSmsTransport(): SmsTransport {
   return new ConsoleTransport()
 }
 
+/**
+ * The capture transports record the last message per recipient so the e2e
+ * readback route can hand tests the code without an inbox or a phone. They
+ * come from each provider's `/testing` subpath — test support, not part of
+ * the package's normal surface. A real app installs them only under a
+ * test-mode flag; this example always does because it has no other way to
+ * show you the code.
+ */
+const captureEmailTransport = new CaptureEmailTransport(
+  new NodemailerTransport(!smtpConfigured),
+)
+const captureSmsTransport = new CaptureSmsTransport(createSmsTransport())
+
+export { captureEmailTransport, captureSmsTransport }
+
 export const auth = new Auth({
   session: {
     secret: SESSION_SECRET,
@@ -257,7 +272,7 @@ export const auth = new Auth({
       // Dev mode (no SMTP configured) → emails are logged to the server
       // console instead of sent. Set SMTP_HOST (see .env.example) to send
       // real email.
-      new CaptureEmailTransport(new NodemailerTransport(!smtpConfigured)),
+      captureEmailTransport,
     ),
     new SmsProvider(
       {
@@ -268,7 +283,7 @@ export const auth = new Auth({
       },
       // The capture wrapper records the last code per phone number for
       // the e2e readback route; it delegates to the real transport.
-      new CaptureSmsTransport(createSmsTransport()),
+      captureSmsTransport,
     ),
     new PasskeyProvider({
       rpName: "RR Auth Example",

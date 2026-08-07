@@ -177,7 +177,7 @@ Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) c
 
 The example demonstrates the recommended e2e pattern:
 
-1. Wrap your `EmailTransport` in a capture transport that records the last magic link + code per recipient (see [`examples/react-router/app/lib/capture-transport.server.ts`](./examples/react-router/app/lib/capture-transport.server.ts)).
+1. Wrap your transport in the capture transport each provider ships for exactly this: `CaptureEmailTransport` from [`@activescott/auth-provider-email/testing`](./packages/auth-provider-email) (or `CaptureSmsTransport` from `@activescott/auth-provider-sms/testing`). It records the last magic link + code per recipient and delegates to the real transport. Install it only under your test-mode flag.
 2. Expose a test-only readback route gated on a test-mode env var plus a shared-secret header (see [`examples/react-router/app/routes/e2e.otp-code.tsx`](./examples/react-router/app/routes/e2e.otp-code.tsx)).
 3. In your test helper, submit the login form, fetch the captured link/code from the readback route, and drive the real confirm-page or code-entry flow.
 
