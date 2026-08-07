@@ -20,7 +20,7 @@ import {
   type VerificationTransport,
 } from "@activescott/auth-provider-sms"
 import {
-  TwilioTransport,
+  TwilioMessagingTransport,
   TwilioVerifyTransport,
 } from "@activescott/auth-sms-twilio"
 import {
@@ -207,7 +207,7 @@ function createSmsTransport(): SmsTransport | VerificationTransport {
         "for unregistered A2P 10DLC numbers): " +
         "https://console.twilio.com/us1/monitor/logs/sms",
     )
-    return new TwilioTransport({
+    return new TwilioMessagingTransport({
       accountSid,
       authToken,
       from,
