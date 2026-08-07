@@ -31,6 +31,15 @@ export const { handleAuth, getSession, requireAuth, optionalAuth, logout } =
   })
 ```
 
+`errorRedirect` as a string appends `?error=<code>` to that path, which discards whatever query the form was submitted from. If your login page keeps state in the query — a `?via=sms` tab selection, say — a failed code would be answered on the wrong tab. The function form receives the failing request, so core's `buildReturnUrl` can send the browser back to the exact page it posted from:
+
+```ts
+import { buildReturnUrl } from "@activescott/auth"
+
+errorRedirect: (error, request) =>
+  buildReturnUrl(request, { error: error.code })
+```
+
 Then add a single catch-all route at `app/routes/auth.$provider.$action.tsx` that handles every provider's HTTP endpoints:
 
 ```tsx
