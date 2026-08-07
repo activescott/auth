@@ -1,6 +1,7 @@
 # Summary — issue #55 hosted verification (Twilio Verify)
 
-Status: implemented and verified on branch `worktree-55-twilio-verify`.
+Status: implemented, and verified end to end against a live Twilio Verify
+service — a texted code signs in through the example app.
 
 ## Resume commands
 
@@ -75,9 +76,10 @@ recommended.
 - `npm run lint` — prettier clean.
 - `npm run e2e -w examples/react-router/tests` — 24 passed. E2e forces
   `ConsoleTransport`, so the Verify path is not exercised there by design.
-- **Not** verified against a live Twilio Verify service — no billable
-  verification was ever sent. The request/response shapes come from Twilio's
-  API docs. Someone should run one real verification before relying on it.
+- **Live run against a real Twilio Verify service** — a texted code signs in
+  through the example app. This is what caught the three defects in "Found
+  only by running it live" below; every one of them survived a green unit
+  suite.
 
 ## Gotchas found
 
@@ -91,11 +93,54 @@ recommended.
 - The worktree needs its own `npm install`; it does not share the main
   checkout's `node_modules`.
 
+## Found only by running it live
+
+Three defects shipped through a green unit suite, all of the same kind: the
+tests asserted what the implementation did, and the implementation was built
+from a reading of Twilio's docs. A mock cannot disagree with you about what a
+vendor's API looks like.
+
+1. **The check endpoint was wrong.** The REST resource is
+   `POST /v2/Services/{ServiceSid}/VerificationCheck` — singular. The plural
+   `VerificationChecks` is the _helper library_ method name
+   (`verificationChecks.create()`). Over raw HTTP the plural path returns 404
+   with error 20404, and the transport mapped 404 to `expired`, so **every
+   correct code was rejected as expired**. The 11 transport tests all passed,
+   because they asserted the URL the implementation built.
+2. **The Verify console log URL 404s.** It is
+   `/us1/monitor/logs/verify-logs`, not `/us1/monitor/logs/verify`. That URL
+   is printed on every failure, so the one link offered for diagnosis was
+   itself broken.
+3. **A 404 from the check was swallowed.** Mapping it straight to `expired`
+   with nothing logged made a correct code look like an aged-out one, and hid
+   both a wrong `serviceSid` and defect 1. Both non-approved paths now log.
+
+Worth repeating for the next vendor transport: verify the REST path against
+the vendor's HTTP reference, not its SDK surface, and never map an HTTP error
+to a user-facing status without logging the body.
+
+Also live-only, in the example app rather than the transport:
+
+- A failed verification answered on the email tab even when submitted from
+  the phone tab. The adapter built `"/login?error=<code>"` from scratch,
+  discarding `?via=sms`. `errorRedirect` now takes `(error, request)` so the
+  app can return `buildReturnUrl(request, ...)`.
+- The code form now submits itself on the last digit, which is what makes
+  Safari's autofill from Messages finish the sign-in. Digit count is a prop
+  defaulting to 6: Verify's `code_length` (4-10) lives on the Verify service
+  and is **not** in the start response, so it cannot be read at runtime
+  without a separate `GET /v2/Services/{sid}`.
+- The conditional-UI passkey request on page load reads as an unsolicited
+  prompt, because password manager extensions answer it with their own dialog
+  instead of the silent autofill the spec intends. Off by default now.
+
 ## Follow-ups
 
-- A live smoke test against a real Verify service.
 - A second `VerificationTransport` (Vonage Verify v2 is the closest fit) to
   prove the interface is genuinely vendor-neutral.
+- Nothing exercises the Verify path in CI. A contract test against Twilio's
+  API (or a recorded fixture taken from a live call) would have caught the
+  endpoint defect; hand-written mocks structurally cannot.
 
 ## Changed during review
 

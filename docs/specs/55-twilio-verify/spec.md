@@ -131,14 +131,26 @@ SID and Auth Token — the same credentials `TwilioTransport` already uses.
 - Start: `POST /Verifications` with `To` and `Channel=sms`. Response `sid` is
   kept as the reference (Twilio checks by `To`, so it is diagnostic rather than
   required).
-- Check: `POST /VerificationCheck` (singular — the plural path 404s) with `To` and `Code`. `status: "approved"`
+- Check: `POST /VerificationCheck` with `To` and `Code`. `status: "approved"`
   → approved. `max_attempts_reached` → rate_limited. `expired`/`canceled` →
   expired. Anything else pending/failed → invalid_code.
 - Twilio returns HTTP 404 from `VerificationCheck` once a verification is
   consumed or has aged out; that maps to expired rather than a hard error.
+  Log the body anyway — a wrong `serviceSid` and a wrong path produce the
+  same 404, and silently calling either one "expired" is undiagnosable.
+
+**The check resource is singular.** `POST .../VerificationCheck`, not
+`VerificationChecks`. The plural is how the Twilio helper libraries name the
+method (`verificationChecks.create()`); over raw HTTP it 404s with error 20404. Any vendor transport written from SDK docs rather than the HTTP
+reference is exposed to this class of mistake, and unit tests written
+alongside the implementation cannot catch it.
 
 `channel` is configurable (`sms` default; `call` and `whatsapp` are the useful
 others) and `locale`/`templateSid`/`appHash` are passed through when set.
+
+Code length is a property of the Verify service (`code_length`, 4-10, default
+6), not of the API call, and the start response does not return it. An app
+that needs it for its UI must be told, or fetch `GET /v2/Services/{sid}`.
 
 ## Security notes
 
