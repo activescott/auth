@@ -17,7 +17,7 @@ verification service (Twilio Verify first).
    an exported type guard. Routes, cookie binding, abuse checks, and the login
    form stay identical.
 5. Add `TwilioVerifyTransport` to `@activescott/auth-sms-twilio` (raw fetch,
-   zero deps, same shape as the existing `TwilioTransport`).
+   zero deps, same shape as the existing `TwilioMessagingTransport`).
 6. Tests: provider-side verification flow (initiate/verify, failure mapping,
    attempt cap, cookie binding) and transport-side fetch shape/status mapping.
 7. Wire the example app so `TWILIO_VERIFY_SERVICE_SID` selects the Verify path;

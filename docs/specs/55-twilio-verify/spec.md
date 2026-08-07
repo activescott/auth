@@ -8,7 +8,7 @@ through The Campaign Registry, which costs a one-time campaign fee plus monthly
 fees per campaign and per number, and takes days to weeks. Until that clears,
 carriers filter the messages — Twilio error 30034 — so the API accepts the send
 and the code never arrives. That failure only shows up in the delivery log,
-which is exactly the confusing experience the existing `TwilioTransport` docs
+which is exactly the confusing experience the existing `TwilioMessagingTransport` docs
 warn about.
 
 A hosted verification service sidesteps registration entirely: the vendor sends
@@ -126,7 +126,7 @@ message templates, not `webOtpDomain`.
 ## Twilio Verify transport
 
 `https://verify.twilio.com/v2/Services/{ServiceSid}`, Basic auth with Account
-SID and Auth Token — the same credentials `TwilioTransport` already uses.
+SID and Auth Token — the same credentials `TwilioMessagingTransport` already uses.
 
 - Start: `POST /Verifications` with `To` and `Channel=sms`. Response `sid` is
   kept as the reference (Twilio checks by `To`, so it is diagnostic rather than

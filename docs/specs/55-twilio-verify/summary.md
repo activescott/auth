@@ -159,6 +159,12 @@ Also live-only, in the example app rather than the transport:
   the script promised a speed it could not deliver. Its `writeEnv` also
   stripped every `TWILIO_*` line from an existing `.env` before rewriting,
   which would have silently deleted a user's `TWILIO_VERIFY_SERVICE_SID`.
+- `TwilioTransport` was renamed `TwilioMessagingTransport` (and
+  `twilio-transport.ts` → `twilio-messaging-transport.ts`). Twilio sells two
+  products that both text a code; once the docs started calling them "Twilio
+  Verify" and "Twilio Messaging", a class named for neither was the odd one
+  out. Breaking for `@activescott/auth-sms-twilio` consumers — published at
+  0.1.1, so no deprecated alias was left behind.
 - The SMS-only env vars were namespaced: `TWILIO_FROM` →
   `TWILIO_SMS_FROM`, `TWILIO_MESSAGING_SERVICE_SID` →
   `TWILIO_SMS_MESSAGING_SERVICE_SID`. `TWILIO_ACCOUNT_SID` and

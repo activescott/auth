@@ -7,7 +7,7 @@ SMS one-time-code provider for [`@activescott/auth`](https://www.npmjs.com/packa
 
 This package has **no vendor dependencies** — delivery is injected as a transport. Use a vendor package or write your own:
 
-- [`@activescott/auth-sms-twilio`](https://www.npmjs.com/package/@activescott/auth-sms-twilio) — Twilio: `TwilioTransport` (SMS, or RCS via a Messaging Service) and `TwilioVerifyTransport` (Twilio Verify)
+- [`@activescott/auth-sms-twilio`](https://www.npmjs.com/package/@activescott/auth-sms-twilio) — Twilio: `TwilioMessagingTransport` (SMS, or RCS via a Messaging Service) and `TwilioVerifyTransport` (Twilio Verify)
 - `ConsoleTransport` (included) — prints codes to the server console for development
 - Custom: implement `SmsTransport { sendMessage(to, message): Promise<boolean> }`. An AWS End User Messaging transport is drafted in [PR #37](https://github.com/activescott/auth/pull/37) — implemented and unit-tested but unverified against a live AWS account; if you want AWS and can test it end to end, feel free to take over that PR ([#36](https://github.com/activescott/auth/issues/36) has the checklist).
 
@@ -34,7 +34,7 @@ Pick `VerificationTransport` when 10DLC registration is the thing standing betwe
 ```ts
 import { Auth, InMemoryChallengeStore } from "@activescott/auth"
 import { SmsProvider, ConsoleTransport } from "@activescott/auth-provider-sms"
-import { TwilioTransport } from "@activescott/auth-sms-twilio"
+import { TwilioMessagingTransport } from "@activescott/auth-sms-twilio"
 
 const auth = new Auth({
   session: { secret: process.env.JWT_SECRET! /* ... */ },
@@ -45,7 +45,7 @@ const auth = new Auth({
     new SmsProvider(
       { appName: "MyApp", webOtpDomain: "myapp.example" },
       process.env.NODE_ENV === "production"
-        ? new TwilioTransport({
+        ? new TwilioMessagingTransport({
             accountSid: process.env.TWILIO_ACCOUNT_SID!,
             authToken: process.env.TWILIO_AUTH_TOKEN!,
             messagingServiceSid: process.env.TWILIO_SMS_MESSAGING_SERVICE_SID,
