@@ -48,7 +48,7 @@ cp examples/react-router/.env.example.mailpit examples/react-router/.env
 
 Restart the dev server; emails land in the Mailpit inbox at http://localhost:8025.
 
-The same app also demonstrates **SMS sign-in** — open the Phone tab (http://localhost:5173/login?via=sms). Codes are printed to the console by default; to text them for real, configure Twilio — quickest via [Twilio Verify](./examples/react-router#twilio-verify-quickest), which needs no phone number and no A2P 10DLC registration. See the [example README](./examples/react-router#send-real-texts).
+The same app also demonstrates **SMS sign-in** — open the Phone tab (http://localhost:5173/login?via=sms). Codes are printed to the console by default; to text them for real, configure Twilio. Two products can do it: **Twilio Verify** (a service SID and you're texting — cheaper at low volume) or **Twilio Messaging** (your own number and A2P 10DLC registration — cheaper at high volume). The [example README](./examples/react-router#send-real-texts) compares them and lists the env vars for each.
 
 It also demonstrates **passkeys** — sign in (email or phone), click "Add a passkey" on the dashboard, log out, and use "Sign in with a passkey" on the login page.
 

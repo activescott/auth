@@ -38,17 +38,36 @@ cp .env.example.smtp .env      # send real email via an SMTP provider
 
 ## Send real texts
 
-Set the Twilio env vars in `.env` (see [`.env.example`](./.env.example)) — when they're all present the app texts real messages; when any are missing it falls back to the console transport and logs which vars are absent. There are two paths, and which one you configure is the only difference:
+Set the Twilio env vars in `.env` (see [`.env.example`](./.env.example)) — when they're all present the app texts real messages; when any are missing it falls back to the console transport and logs which vars are absent.
 
-### Twilio Verify (quickest)
+Twilio sells two products that both text a sign-in code, and the choice between them is the only decision here. They are indistinguishable to the person receiving the text:
 
-Create a Verify service (Console → Verify → Services), then set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID`. Twilio generates, texts, and checks the code from senders it already registered, so there is no number to buy and no A2P 10DLC registration to wait out. Nothing else about the login page or the routes changes; see [`createSmsTransport`](./app/lib/auth.server.ts). It costs $0.05 per successful verification plus the channel fee, versus roughly a penny for a raw SMS.
+|                    | **Twilio Verify**                                    | **Twilio Messaging**                                            |
+| ------------------ | ---------------------------------------------------- | --------------------------------------------------------------- |
+| Setup              | Create a service in the console; done                | Buy a number, then A2P 10DLC brand + campaign registration      |
+| Time to first text | Minutes                                              | Days to weeks (US), waiting on carrier approval                 |
+| Who owns the code  | Twilio generates, texts, and checks it               | This app generates and checks it; Twilio only delivers the text |
+| Price              | $0.05 per successful verification + channel fee      | ~$0.011–0.013 per US SMS + monthly fees per campaign and number |
+| Cheaper when       | Volume is low                                        | Volume is high enough to amortize the fixed monthly fees        |
+| Also gets you      | Voice/WhatsApp/email channels, Twilio's fraud guards | RCS, and full control of the message text                       |
 
-### Raw SMS (cheaper per message)
+Those fixed monthly 10DLC fees are what flips the answer: at a few hundred sign-ins a month or fewer they usually exceed the entire Verify bill. Start with Verify; move to Messaging when volume justifies the setup, or when you need RCS or custom message copy.
 
-Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and either `TWILIO_SMS_MESSAGING_SERVICE_SID` or `TWILIO_SMS_FROM`. You own the number and the code. For US traffic this also means registering an A2P 10DLC brand and campaign — a one-time fee, monthly fees, and days to weeks of waiting. Until it clears, carriers filter the messages while the API still reports success.
+Whichever you pick, nothing else about the login page or the routes changes — only which transport [`createSmsTransport`](./app/lib/auth.server.ts) constructs.
+
+### SMS via Twilio Verify (quick setup, cheaper at low volume)
+
+Create a Verify service (Console → Verify → Services), then set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID`. Twilio generates, texts, and checks the code from senders it already registered, so there is no number to buy and no A2P 10DLC registration to wait out. Name the Verify service after your app — the friendly name is what appears in the text.
+
+Per-attempt outcomes are in the [Verify log](https://console.twilio.com/us1/monitor/logs/verify), not the SMS delivery log.
+
+### SMS via Twilio Messaging (slow setup, cheaper at high volume)
+
+Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and either `TWILIO_SMS_MESSAGING_SERVICE_SID` or `TWILIO_SMS_FROM`. You own the number and this app owns the code. For US traffic this also means registering an A2P 10DLC brand and campaign — a one-time fee, monthly fees, and days to weeks of waiting. Until it clears, carriers filter the messages while the API still reports success.
 
 If a text never arrives, check Twilio's [per-message delivery log](https://console.twilio.com/us1/monitor/logs/sms) — that log is the only place the failure shows, and error 30034 there means the number isn't registered yet. More troubleshooting in the [`auth-sms-twilio` README](../../packages/auth-sms-twilio#provisioning-step-by-step).
+
+Verify takes precedence if you configure both.
 
 ### WebOTP one-tap autofill
 
