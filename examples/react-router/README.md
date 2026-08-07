@@ -64,7 +64,7 @@ Two values come from the [Twilio console](https://console.twilio.com) and one is
 
 That's the whole setup. Twilio generates, texts, and checks the code from senders it already registered, so there is no number to buy and no A2P 10DLC registration to wait out.
 
-Per-attempt outcomes are in the [Verify log](https://console.twilio.com/us1/monitor/logs/verify), not the SMS delivery log.
+Per-attempt outcomes are in the [Verify log](https://console.twilio.com/us1/monitor/logs/verify-logs), not the SMS delivery log.
 
 ### SMS via Twilio Messaging (slow setup, cheaper at high volume)
 

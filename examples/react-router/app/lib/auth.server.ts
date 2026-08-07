@@ -190,7 +190,7 @@ function createSmsTransport(): SmsTransport | VerificationTransport {
     console.log(
       "SMS via Twilio Verify. Codes are generated and checked by Twilio; " +
         "per-attempt outcomes are in the Verify log: " +
-        "https://console.twilio.com/us1/monitor/logs/verify",
+        "https://console.twilio.com/us1/monitor/logs/verify-logs",
     )
     return new TwilioVerifyTransport({
       accountSid,
