@@ -48,7 +48,7 @@ const auth = new Auth({
         ? new TwilioTransport({
             accountSid: process.env.TWILIO_ACCOUNT_SID!,
             authToken: process.env.TWILIO_AUTH_TOKEN!,
-            messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+            messagingServiceSid: process.env.TWILIO_SMS_MESSAGING_SERVICE_SID,
           })
         : new ConsoleTransport(),
     ),

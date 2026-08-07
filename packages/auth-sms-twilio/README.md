@@ -20,8 +20,8 @@ new SmsProvider(
     accountSid: process.env.TWILIO_ACCOUNT_SID!,
     authToken: process.env.TWILIO_AUTH_TOKEN!,
     // one of:
-    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID, // preferred
-    from: process.env.TWILIO_FROM, // an E.164 number you own in Twilio
+    messagingServiceSid: process.env.TWILIO_SMS_MESSAGING_SERVICE_SID, // preferred
+    from: process.env.TWILIO_SMS_FROM, // an E.164 number you own in Twilio
   }),
 )
 ```
@@ -46,7 +46,7 @@ new SmsProvider(
 
 1. Create a Twilio account: https://www.twilio.com/try-twilio
 2. Grab the **Account SID** and **Auth Token** from https://console.twilio.com
-3. Buy an SMS-capable number (Console → Phone Numbers → Buy a Number), or run the repo's interactive script which verifies steps 1–2 and does the purchase for you: [`./infra/twilio/setup-twilio.mts`](https://github.com/activescott/auth/tree/main/infra/twilio)
+3. Buy an SMS-capable number (Console → Phone Numbers → Buy a Number).
 4. **US traffic**: register for [A2P 10DLC](https://www.twilio.com/docs/messaging/compliance/a2p-10dlc) or complete toll-free verification — unregistered numbers get filtered by carriers. Console → Regulatory Compliance.
 5. Set the env vars above; done.
 

@@ -161,16 +161,17 @@ const smtpConfigured = Boolean(process.env.SMTP_HOST)
 
 /**
  * Twilio is considered configured when its env vars are all set (see
- * .env.example): account SID, auth token, and a sender (from number or
- * Messaging Service SID). Fully configured → real texts. Anything less →
- * console transport (codes printed to the server console), with a log
- * line naming exactly what's missing — so a subtle misconfiguration
- * (one env var absent in prod) is diagnosable instead of silent.
+ * .env.example): account SID, auth token, and either a Verify service or a
+ * sender. Fully configured → real texts. Anything less → console transport
+ * (codes printed to the server console), with a log line naming exactly
+ * what's missing — so a subtle misconfiguration (one env var absent in
+ * prod) is diagnosable instead of silent.
  *
- * Setting TWILIO_VERIFY_SERVICE_SID instead of a sender picks Twilio Verify,
- * where Twilio generates, texts, and checks the code from senders it already
- * registered — no US A2P 10DLC registration, no number to own, ~4-6x the
- * per-sign-in cost.
+ * TWILIO_VERIFY_SERVICE_SID picks Twilio Verify, where Twilio generates,
+ * texts, and checks the code from senders it already registered — no US A2P
+ * 10DLC registration, no number to own, ~4-6x the per-sign-in cost. The
+ * TWILIO_SMS_* sender vars pick raw SMS instead, which is cheaper per
+ * message but leaves 10DLC registration to the app.
  */
 function createSmsTransport(): SmsTransport | VerificationTransport {
   // E2e must never text real messages, even if Twilio env vars leak in
@@ -181,8 +182,8 @@ function createSmsTransport(): SmsTransport | VerificationTransport {
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken = process.env.TWILIO_AUTH_TOKEN
-  const from = process.env.TWILIO_FROM
-  const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID
+  const from = process.env.TWILIO_SMS_FROM
+  const messagingServiceSid = process.env.TWILIO_SMS_MESSAGING_SERVICE_SID
   const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID
 
   if (accountSid && authToken && verifyServiceSid) {
@@ -218,7 +219,7 @@ function createSmsTransport(): SmsTransport | VerificationTransport {
     !authToken && "TWILIO_AUTH_TOKEN",
     !from &&
       !messagingServiceSid &&
-      "TWILIO_FROM, TWILIO_MESSAGING_SERVICE_SID, or TWILIO_VERIFY_SERVICE_SID",
+      "TWILIO_VERIFY_SERVICE_SID, TWILIO_SMS_MESSAGING_SERVICE_SID, or TWILIO_SMS_FROM",
   ].filter((name): name is string => typeof name === "string")
 
   if (missing.length < 3) {
@@ -229,8 +230,7 @@ function createSmsTransport(): SmsTransport | VerificationTransport {
   } else {
     console.log(
       "SMS: no Twilio configuration found — sign-in codes will be printed " +
-        "to this console. Run ./infra/twilio/setup-twilio.mts to configure " +
-        "real texting.",
+        "to this console. See .env.example to configure real texting.",
     )
   }
   return new ConsoleTransport()
