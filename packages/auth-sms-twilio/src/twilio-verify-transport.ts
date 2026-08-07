@@ -108,7 +108,10 @@ export class TwilioVerifyTransport implements VerificationTransport {
     const body = new URLSearchParams({ To: to, Code: code })
 
     try {
-      const response = await this.post("VerificationChecks", body)
+      // Singular: the REST resource is /VerificationCheck, even though the
+      // Twilio helper libraries expose it as `verificationChecks.create()`.
+      // The plural path 404s with error 20404.
+      const response = await this.post("VerificationCheck", body)
 
       // Twilio returns 404 once a verification is consumed, canceled, or aged
       // out, which the user experiences as an expired code rather than an

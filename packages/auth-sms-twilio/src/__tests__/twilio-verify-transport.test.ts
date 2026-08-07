@@ -108,7 +108,9 @@ describe("TwilioVerifyTransport", () => {
     expect(started.ok).toBe(false)
   })
 
-  it("should POST the code to VerificationChecks", async () => {
+  // The REST resource is singular; the plural path Twilio's helper libraries
+  // imply (verificationChecks) 404s with error 20404
+  it("should POST the code to the singular VerificationCheck resource", async () => {
     const fetchMock = createFetchMock(200, { status: "approved", valid: true })
     const transport = createTransport(fetchMock)
 
@@ -122,7 +124,7 @@ describe("TwilioVerifyTransport", () => {
 
     const { url, init } = lastCall(fetchMock)
     expect(url).toBe(
-      `https://verify.twilio.com/v2/Services/${TEST_SERVICE_SID}/VerificationChecks`,
+      `https://verify.twilio.com/v2/Services/${TEST_SERVICE_SID}/VerificationCheck`,
     )
     const body = new URLSearchParams(String(init?.body))
     expect(body.get("To")).toBe(TEST_PHONE)
