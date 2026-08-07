@@ -17,24 +17,32 @@ npm run install-browsers -w examples/react-router/tests   # once
 npm run e2e -w examples/react-router/tests
 ```
 
-## Commit layout (one per commitlint scope — do NOT squash-merge)
+## Commit layout (one scope per commit — do NOT squash-merge)
+
+Oldest first. The three `feat`/`fix` scopes are what drive releases; the
+`docs:`/`chore:`/`refactor:` commits carry no scope and publish nothing.
 
 1. `feat(auth-provider-sms): accept a hosted VerificationTransport`
-   - `packages/auth-provider-sms/src/{types,sms-provider,index}.ts`
-   - `packages/auth-provider-sms/src/__tests__/sms-provider.test.ts`
-   - `packages/auth-provider-sms/README.md`
 2. `feat(auth-sms-twilio): add a Twilio Verify transport`
-   - `packages/auth-sms-twilio/src/twilio-verify-transport.ts` (new)
-   - `packages/auth-sms-twilio/src/index.ts`
-   - `packages/auth-sms-twilio/src/__tests__/twilio-verify-transport.test.ts` (new)
-   - `packages/auth-sms-twilio/README.md`
 3. `docs(examples): wire Twilio Verify into the react-router example`
-   - `examples/react-router/app/lib/auth.server.ts`, `.env.example`, `README.md`
 4. `docs: document hosted verification` — root `README.md`, `AGENTS.md`
+5. `chore: remove the interactive Twilio provisioning script`
+6. `refactor: namespace the Twilio SMS-only env vars as TWILIO_SMS_*`
+7. `docs: present Twilio Verify and Twilio Messaging as two SMS setups`
+8. `docs: link the Twilio console pages the SMS env vars come from`
+9. `fix(auth-sms-twilio): correct the Verify log URL`
+10. `docs(examples): correct the Verify log URL`
+11. `fix(auth-sms-twilio): log why a Verify check was not approved`
+12. `fix(auth-sms-twilio): use the singular VerificationCheck endpoint`
+13. `docs: correct the Verify check endpoint in the spec`
+14. `feat(auth-adapter-react-router): pass the request to errorRedirect`
+15. `fix(examples): keep the tab on error, auto-submit codes, drop the load-time passkey prompt`
+16. `docs: record what the live Verify run found`
 
-Both packages get a minor bump from `feat`. The multi-package PR must be merged
-with a merge commit so each scope keeps its own commit, or neither package
-publishes correctly.
+Releases: `auth-provider-sms` and `auth-sms-twilio` take a minor bump from
+their `feat` commits, `auth-adapter-react-router` a minor from #14. The
+multi-package PR must be merged with a merge commit so each scope keeps its
+own commit, or the packages do not all publish.
 
 ## What was built
 

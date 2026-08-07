@@ -41,7 +41,7 @@ Conclusion: hosted verification is a commodity at roughly $0.05 across the
 established vendors, and the differentiator is API quality and onboarding
 friction, not price. Nothing found is both meaningfully cheaper and credibly
 documented. Twilio Verify is the right first implementation because the repo
-already carries Twilio credentials, a provisioning script, and an example
+already carries a Twilio transport, credentials handling, and an example
 wiring; a second vendor is a follow-up, not a blocker.
 
 The design consequence of the survey: Vonage checks a code against an opaque
