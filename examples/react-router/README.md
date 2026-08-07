@@ -65,11 +65,48 @@ Playwright's `webServer` block builds the app, starts it on `:3200` with stable 
 
 Sign-in emails and texts are backed by server-side challenges, so tests read the captured message instead of an inbox or a phone:
 
-1. `app/lib/capture-email-transport.server.ts` and `app/lib/capture-sms-transport.server.ts` wrap the real transports and record the last message per recipient.
+1. `CaptureEmailTransport` (from `@activescott/auth-provider-email/testing`) and `CaptureSmsTransport` (from `@activescott/auth-provider-sms/testing`) wrap the real transports and record the last message per recipient. They live at a `/testing` subpath rather than the package root because what they hold are live sign-in credentials — install them only under a test-mode flag.
 2. `app/routes/e2e.otp-code.tsx` returns them as JSON (`?email=` or `?phone=`) — only when `E2E_TEST_MODE=true` (set by `tests/playwright.config.ts`) and the `x-e2e-secret` header matches; 404 otherwise.
 3. `tests/helpers/auth.ts` submits the login form, fetches the captured link/code, and drives the real confirm-page or code-entry flow.
 
 No SMTP, no SMS gateway, full coverage of the challenge → confirm/code → cookie → `requireAuth` path. In a real app the shared secret comes from env / your secret store, not a hardcoded constant.
+
+## Turn on Cloudflare Turnstile
+
+Abuse protection is already on with no configuration: per-IP and per-recipient rate limits plus a signed form-token check that rejects submissions faster than a human could type. Turnstile is an optional extra layer, in its own package so apps that don't use it never install it.
+
+1. Create a widget at [Cloudflare → Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile). Add **`localhost`** to its hostname list, or the widget refuses to render in dev.
+2. Put both keys in `.env` (see `.env.example`):
+
+   ```bash
+   TURNSTILE_SITE_KEY=0x...      # public; rendered in the page
+   TURNSTILE_SECRET_KEY=0x...    # server-side only
+   ```
+
+3. Restart `npm run dev` — the keys are read at startup.
+
+The widget now renders in both sign-in forms (`app/components/anti-bot-fields.tsx`) and the server verifies the token before sending anything. With no keys set, Turnstile stays off and the example runs exactly as before.
+
+### Seeing each path
+
+Cloudflare publishes fixed test keys, so you can exercise both outcomes without touching your real widget:
+
+| Behavior      | Site key                   | Secret key                            |
+| ------------- | -------------------------- | ------------------------------------- |
+| always passes | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` |
+| always blocks | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AA` |
+
+With the always-blocks pair, submit the email form and watch the server console:
+
+```
+[auth] blocked initiate: reason=bot_check_failed detail=turnstile:invalid-input-response provider=email ip=...
+```
+
+The browser gets the same `?sent=1` page a real send produces — a blocked caller is told nothing — but no email is sent and no challenge is created. Deleting the widget's hidden input in devtools before submitting produces `detail=turnstile:missing_token` the same way.
+
+If Cloudflare is unreachable, `TurnstileBotCheck` fails **open** by default (logging `turnstile unavailable ...`) so an outage there can't lock everyone out of signing in; the rate limits still apply. Pass `failOpen: false` to fail closed instead.
+
+The e2e suite sets no Turnstile keys, so it is unaffected either way.
 
 ## One user, multiple sign-in methods
 
