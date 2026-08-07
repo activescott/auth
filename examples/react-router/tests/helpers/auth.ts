@@ -104,9 +104,8 @@ export async function loginWithSms(page: Page, phone: string): Promise<void> {
   const { code } = await requestSignInCode(page, phone)
   if (!code) throw new Error("no code captured")
 
+  // The code form submits itself once the last digit lands, so filling it is
+  // the whole interaction — no button click
   await page.getByLabel(/enter the code/i).fill(code)
-  await Promise.all([
-    page.waitForURL("**/dashboard"),
-    page.getByRole("button", { name: /sign in with code/i }).click(),
-  ])
+  await page.waitForURL("**/dashboard")
 }

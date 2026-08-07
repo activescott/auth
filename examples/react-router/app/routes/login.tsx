@@ -69,6 +69,9 @@ interface LoginFormProps {
   antiBot: { formToken: string; turnstileSiteKey: string | null }
 }
 
+/** Start a conditional (autofill) passkey request when the login page loads */
+const OFFER_PASSKEY_AUTOFILL = false
+
 function PasskeyLogin() {
   const [error, setError] = useState<string | null>(null)
 
@@ -76,7 +79,15 @@ function PasskeyLogin() {
   // email input (autoComplete="username webauthn"). The request stays
   // pending until the user picks a passkey there; clicking the passkey
   // button below aborts it and runs the modal flow instead.
+  //
+  // Off by default. The spec intends this to be silent — passkeys appear as
+  // autofill suggestions and nothing interrupts the page — but password
+  // manager extensions commonly answer the pending request with their own
+  // dialog the moment the page loads, which reads as an unsolicited prompt
+  // to sign in. Turn it on if your users' browsers handle it natively.
   useEffect(() => {
+    if (!OFFER_PASSKEY_AUTOFILL) return
+
     async function offerPasskeyAutofill() {
       const { signInWithPasskey, isConditionalUIAvailable } =
         await import("~/lib/passkey.client")

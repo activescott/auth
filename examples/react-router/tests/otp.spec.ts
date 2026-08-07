@@ -40,11 +40,10 @@ test.describe("email OTP code", () => {
     await requestCode(page, email)
 
     const code = await fetchEmailedCode(request, email)
+    // Entering the last digit submits the form; the button is for the cases
+    // autofill misses
     await page.getByLabel(/enter the code/i).fill(code)
-    await Promise.all([
-      page.waitForURL("**/dashboard"),
-      page.getByRole("button", { name: /sign in with code/i }).click(),
-    ])
+    await page.waitForURL("**/dashboard")
     await expect(page.getByText(email)).toBeVisible()
   })
 
@@ -59,9 +58,10 @@ test.describe("email OTP code", () => {
     const wrongCode = code === "000000" ? "111111" : "000000"
 
     await page.getByLabel(/enter the code/i).fill(wrongCode)
-    await page.getByRole("button", { name: /sign in with code/i }).click()
 
-    await expect(page).toHaveURL(/\/login\?error=/)
+    // Errors return to the page the code was submitted from, so the query it
+    // already carried (?sent=1) survives alongside ?error=
+    await expect(page).toHaveURL(/\/login\?.*error=/)
     await expect(page.getByText(/error:/i)).toBeVisible()
 
     await page.goto("/dashboard")

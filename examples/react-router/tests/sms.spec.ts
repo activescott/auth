@@ -53,10 +53,14 @@ test.describe("sms auth", () => {
     const wrongCode = code === "000000" ? "111111" : "000000"
 
     await page.getByLabel(/enter the code/i).fill(wrongCode)
-    await page.getByRole("button", { name: /sign in with code/i }).click()
 
     await expect(page).toHaveURL(/error=/)
     await expect(page.getByText(/error:/i)).toBeVisible()
+
+    // The error belongs to the phone tab, so the phone tab stays selected —
+    // the redirect returns to the submitting page rather than a bare /login
+    await expect(page).toHaveURL(/via=sms/)
+    await expect(page.getByLabel(/mobile phone number/i)).toBeVisible()
 
     await page.goto("/dashboard")
     await expect(page).toHaveURL(/\/login/)
@@ -69,16 +73,12 @@ test.describe("sms auth", () => {
     if (!code) throw new Error("no code captured")
 
     await page.getByLabel(/enter the code/i).fill(code)
-    await Promise.all([
-      page.waitForURL("**/dashboard"),
-      page.getByRole("button", { name: /sign in with code/i }).click(),
-    ])
+    await page.waitForURL("**/dashboard")
 
     // New browser state, same code: the challenge was consumed
     await page.context().clearCookies()
     await requestSignInCode(page, "+14155550203")
     await page.getByLabel(/enter the code/i).fill(code)
-    await page.getByRole("button", { name: /sign in with code/i }).click()
     await expect(page).toHaveURL(/error=/)
   })
 

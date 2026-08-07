@@ -1,6 +1,7 @@
 import {
   Auth,
   InMemoryChallengeStore,
+  buildReturnUrl,
   createFormToken,
   type AuthUser,
   type Identity,
@@ -321,7 +322,13 @@ export const auth = new Auth({
 
 const handlers = createAuthHandlers(auth, {
   successRedirect: "/dashboard",
-  errorRedirect: "/login",
+  // Back to the page the form was posted from, with ?error= added, instead of
+  // a bare "/login". The login page keeps the chosen provider in the query
+  // (?via=sms), so a plain path would answer a failed phone code on the email
+  // tab. buildReturnUrl reads the Referer and preserves everything already
+  // there.
+  errorRedirect: (error, request) =>
+    buildReturnUrl(request, { error: error.code }),
   loginUrl: "/login",
 })
 
