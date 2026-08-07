@@ -40,7 +40,7 @@ const MAX_LOGGED_BODY_LENGTH = 500
 
 /** Twilio's Verify log, where per-attempt delivery outcomes show up */
 export const TWILIO_VERIFY_LOG_URL =
-  "https://console.twilio.com/us1/monitor/logs/verify"
+  "https://console.twilio.com/us1/monitor/logs/verify-logs"
 
 /**
  * Twilio Verify transport: Twilio generates, delivers, and checks the code,

@@ -74,7 +74,9 @@ Options:
 | `appHash`     | (off)      | Android [SMS Retriever](https://developers.google.com/identity/sms-retriever/overview) hash — Verify's equivalent of the provider's `webOtpDomain`, which does not apply here |
 | `templateSid` | (off)      | A message template (starts with `HJ`) configured in the Verify service                                                                                                        |
 
-Verification outcomes are in the [Verify log](https://console.twilio.com/us1/monitor/logs/verify), not the SMS delivery log. Twilio's own rate limits and fraud guards (SMS pumping protection) are configured per service in that console section.
+Verification outcomes are in the [Verify log](https://console.twilio.com/us1/monitor/logs/verify-logs), not the SMS delivery log. Twilio's own rate limits and fraud guards (SMS pumping protection) are configured per service in that console section.
+
+Troubleshooting: a 401 carrying `"code": 20003` and a message like _"account AC… with status 4 is not active"_ means the **account** is suspended or closed (often unfunded or an expired trial), not that the credentials are wrong — Twilio returns 20003 for both. Check the [project summary page](https://www.twilio.com/console/projects/summary); no Verify request will succeed until the account is active.
 
 Cost note: you're billed $0.05 on **successful** verification, so failed and abandoned attempts cost only the channel fee. The provider counts attempts before calling Twilio, so a guesser can trigger at most `otp.maxAttempts` checks per challenge.
 
