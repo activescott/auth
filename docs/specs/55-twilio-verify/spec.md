@@ -131,10 +131,10 @@ SID and Auth Token — the same credentials `TwilioTransport` already uses.
 - Start: `POST /Verifications` with `To` and `Channel=sms`. Response `sid` is
   kept as the reference (Twilio checks by `To`, so it is diagnostic rather than
   required).
-- Check: `POST /VerificationChecks` with `To` and `Code`. `status: "approved"`
+- Check: `POST /VerificationCheck` (singular — the plural path 404s) with `To` and `Code`. `status: "approved"`
   → approved. `max_attempts_reached` → rate_limited. `expired`/`canceled` →
   expired. Anything else pending/failed → invalid_code.
-- Twilio returns HTTP 404 from `VerificationChecks` once a verification is
+- Twilio returns HTTP 404 from `VerificationCheck` once a verification is
   consumed or has aged out; that maps to expired rather than a hard error.
 
 `channel` is configurable (`sms` default; `call` and `whatsapp` are the useful
