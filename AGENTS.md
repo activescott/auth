@@ -48,7 +48,6 @@ Source map for what lives where (not in README):
 - `packages/auth-botcheck-turnstile/src/turnstile-bot-check.ts` — Cloudflare Turnstile `BotCheckProvider` (raw fetch, zero deps). Hosted bot checks each get their own package so consumers don't install vendors they don't use.
 - `packages/auth-adapter-react-router/src/handlers.ts` — `createAuthHandlers` and friends.
 - `examples/react-router/` — runnable example app (email + SMS sign-in on tabbed login page); its Playwright e2e suite is nested workspace `examples/react-router/tests`.
-- `infra/twilio/setup-twilio.mts` — interactive Twilio provisioning script (runs directly under node via type stripping).
 
 Everything speaks Fetch-API `Request`/`Response` (no Node-only APIs in core path) so packages run on Node and edge runtimes — preserve when changing core or providers.
 

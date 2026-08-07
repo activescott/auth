@@ -84,5 +84,6 @@ example login form needs no new error handling.
 
 - A second vendor implementation (Vonage/Prelude). The interface is designed to
   accept one; shipping one is a follow-up.
-- Extending `infra/twilio/setup-twilio.mts` to create a Verify service. Noted in
-  docs as a two-click console step instead.
+- Automating Verify service creation. It is a two-click console step, and the
+  `infra/twilio/setup-twilio.mts` provisioning script that might have hosted it
+  was deleted during review — see `summary.md`.

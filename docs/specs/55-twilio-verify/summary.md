@@ -96,5 +96,20 @@ recommended.
 - A live smoke test against a real Verify service.
 - A second `VerificationTransport` (Vonage Verify v2 is the closest fit) to
   prove the interface is genuinely vendor-neutral.
-- `infra/twilio/setup-twilio.mts` could create the Verify service
-  (`POST /v2/Services`) instead of leaving it as a console step.
+
+## Changed during review
+
+- `infra/twilio/setup-twilio.mts` (the whole `infra/` tree) was deleted. It
+  automated buying a number and writing `.env`, but the cost of the raw-SMS
+  path is A2P 10DLC registration — days to weeks of brand and campaign
+  approval that no script can shorten. Verify is the actual "quick start", so
+  the script promised a speed it could not deliver. Its `writeEnv` also
+  stripped every `TWILIO_*` line from an existing `.env` before rewriting,
+  which would have silently deleted a user's `TWILIO_VERIFY_SERVICE_SID`.
+- The SMS-only env vars were namespaced: `TWILIO_FROM` →
+  `TWILIO_SMS_FROM`, `TWILIO_MESSAGING_SERVICE_SID` →
+  `TWILIO_SMS_MESSAGING_SERVICE_SID`. `TWILIO_ACCOUNT_SID` and
+  `TWILIO_AUTH_TOKEN` stay unprefixed because both transports use them;
+  `TWILIO_VERIFY_SERVICE_SID` already followed the convention. The transport
+  constructor options (`from`, `messagingServiceSid`, `serviceSid`) are
+  unchanged — they are already scoped by which class you construct.
