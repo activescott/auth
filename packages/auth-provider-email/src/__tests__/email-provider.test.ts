@@ -427,3 +427,25 @@ describe("EmailProvider per-recipient throttling", () => {
     expect(checkIdentifier).toHaveBeenCalledWith("email", TEST_EMAIL)
   })
 })
+
+describe("describe", () => {
+  it("reports the non-secret settings with defaults resolved", () => {
+    const settings = createProvider().describe().settings
+
+    expect(settings.from).toBe("test@example.com")
+    expect(settings.expiry).toBe("15m")
+    expect(settings["otp.length"]).toBe(6)
+    expect(settings["otp.maxAttempts"]).toBe(5)
+    expect(settings["template.appName"]).toBe("Test App")
+    expect(settings["smtp.host"]).toBe("smtp.test.com")
+    expect(settings["smtp.port"]).toBe(587)
+  })
+
+  it("omits the SMTP credentials", () => {
+    const settings = createProvider().describe().settings
+
+    expect(Object.keys(settings)).not.toContain("smtp.pass")
+    expect(Object.keys(settings)).not.toContain("smtp.user")
+    expect(JSON.stringify(settings)).not.toContain("pass")
+  })
+})

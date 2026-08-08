@@ -1,6 +1,11 @@
 import { defineConfig, devices } from "@playwright/test"
 
-const PORT = 3200
+/**
+ * Override with E2E_PORT when something else already owns 3200 — otherwise
+ * Playwright's `reuseExistingServer` happily drives whatever is listening
+ * there, and the failures look like application bugs rather than a port clash.
+ */
+const PORT = Number(process.env.E2E_PORT) || 3200
 
 export default defineConfig({
   testDir: ".",
@@ -35,6 +40,12 @@ export default defineConfig({
       // transport so e2e never texts real messages even when Twilio env
       // vars are present in the shell environment.
       E2E_TEST_MODE: "true",
+      // Admin allowlist for admin.spec.ts. Empty by default in the app, so
+      // the spec has to opt addresses in to exercise both sides of the gate.
+      // One per test that signs in: the per-identifier abuse limit is 3/hour,
+      // so reusing a single address across tests would silently throttle them.
+      AUTH_ADMIN_IDENTIFIERS:
+        "admin-users@example.com, admin-config@example.com, admin-filter@example.com",
     },
   },
 })

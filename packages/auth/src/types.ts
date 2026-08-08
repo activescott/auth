@@ -1,7 +1,11 @@
 /**
  * Core types for @activescott/auth
  */
-import type { AbuseConfig, AbuseContext } from "./abuse/abuse-guard.js"
+import type {
+  AbuseConfig,
+  AbuseContext,
+  AbuseDescription,
+} from "./abuse/abuse-guard.js"
 
 /**
  * Minimal user representation for authentication.
@@ -158,6 +162,57 @@ export interface IdentityStore {
    * Delete an identity
    */
   delete?(id: string): Promise<void>
+
+  /**
+   * Find all identities for several users in one round trip.
+   * Optional: the admin dashboard uses it to render a page of users without
+   * one query per user. When absent, callers fall back to looping
+   * `findByUserId`.
+   */
+  findByUserIds?(userIds: string[]): Promise<Identity[]>
+}
+
+/**
+ * Arguments for {@link UserStore.listUsers}.
+ */
+export interface ListUsersOptions {
+  /** Maximum number of users to return */
+  limit: number
+  /** Number of users to skip */
+  offset: number
+  /**
+   * Field to sort by. Opaque to this library — the store decides which
+   * values it accepts and what an unrecognized value falls back to.
+   */
+  sortBy?: string
+  /** Sort direction; stores should default to "desc" */
+  sortOrder?: "asc" | "desc"
+  /**
+   * Narrowing criteria, opaque to this library in the same way `sortBy` is:
+   * the store decides which keys it understands and ignores the rest.
+   *
+   * This is what makes a filtered view correct rather than cosmetic — the
+   * store turns these into a `WHERE`, so `total` counts the filtered set and
+   * pagination pages through it. Filtering an already-fetched page in the
+   * browser could not do either.
+   *
+   * @example
+   * ```ts
+   * // ?filter.approvalStatus=PENDING reaches the store as:
+   * { filter: { approvalStatus: "PENDING" } }
+   * ```
+   */
+  filter?: Record<string, string>
+}
+
+/**
+ * Result of {@link UserStore.listUsers}.
+ */
+export interface ListUsersResult {
+  /** The requested page of users */
+  users: AuthUser[]
+  /** Total number of users matching the query, ignoring limit/offset */
+  total: number
 }
 
 /**
@@ -183,6 +238,18 @@ export interface UserStore {
    * Optionally update user on login
    */
   onLogin?(user: AuthUser): Promise<void>
+
+  /**
+   * Return a page of users, newest or otherwise ordered per `sortBy`.
+   * Optional: only the admin dashboard needs it, and enumerating users is a
+   * capability many stores would rather not expose. The dashboard reports a
+   * clear error when it is missing.
+   *
+   * Put anything the dashboard should show beyond identities — a display
+   * name, a plan, a row count — in each user's `metadata`; the dashboard
+   * renders configured metadata keys as columns.
+   */
+  listUsers?(options: ListUsersOptions): Promise<ListUsersResult>
 }
 
 /**
@@ -296,6 +363,72 @@ export interface AuthConfig {
 }
 
 /**
+ * Placeholder rendered wherever a secret would otherwise appear. The secret
+ * itself never leaves `AuthConfig`.
+ */
+export const REDACTED = "<redacted>"
+
+/**
+ * Session settings safe to display. Mirrors {@link SessionConfig} minus the
+ * signing material.
+ */
+export interface SessionConfigDescription {
+  cookieName: string
+  maxAge: string
+  issuer?: string
+  audience?: string
+  cookie: SessionConfig["cookie"]
+  /** Always {@link REDACTED}; present so the page can show the field is set */
+  secret: string
+  /** How many `additionalSecrets` are configured; their values never appear */
+  additionalSecretCount: number
+}
+
+/**
+ * One registered provider as shown on the config page: its identity, the
+ * routes it claims, and whatever its own `describe()` chose to reveal.
+ */
+export interface ProviderConfigDescription {
+  id: string
+  name: string
+  initiateSentMessage?: string
+  routes: ProviderRoute[]
+  settings: Record<string, string | number | boolean | null>
+}
+
+/**
+ * Which store implementations are wired up and which optional methods they
+ * provide. Constructor names are best-effort: stores are commonly plain object
+ * literals, which report as "(object literal)".
+ */
+export interface StoresDescription {
+  userStore: string
+  identityStore: string
+  challengeStore: string
+  /** Optional store methods the admin dashboard depends on */
+  capabilities: {
+    /** Without this the dashboard cannot render a users page at all */
+    listUsers: boolean
+    /** Without this the dashboard falls back to one query per user */
+    findByUserIds: boolean
+    deleteIdentity: boolean
+  }
+}
+
+/**
+ * A redacted, serializable snapshot of how `Auth` is configured, for the admin
+ * dashboard's config page. Safe to send to any client that is already allowed
+ * to see the dashboard: it contains no secrets, and each provider redacts its
+ * own settings.
+ */
+export interface AuthConfigDescription {
+  session: SessionConfigDescription
+  providers: ProviderConfigDescription[]
+  abuse: AbuseDescription
+  stores: StoresDescription
+}
+
+/**
  * Context passed to providers during authentication
  */
 export interface AuthContext {
@@ -332,6 +465,20 @@ export interface ProviderRoute {
   path: string
   /** Handler type */
   handler: "initiate" | "verify"
+}
+
+/**
+ * A provider's own account of how it is configured, for display on the admin
+ * dashboard. The provider decides what to include — it is the only code that
+ * knows which of its settings are secret.
+ */
+export interface ProviderDescription {
+  /**
+   * Non-secret settings to display, in whatever order the object is built.
+   * Never include API keys, passwords, tokens, or signing secrets: a value
+   * here is rendered verbatim to anyone who can reach the dashboard.
+   */
+  settings: Record<string, string | number | boolean | null>
 }
 
 /**
@@ -399,4 +546,14 @@ export interface AuthProvider {
    * Get the routes this provider needs registered.
    */
   getRoutes(): ProviderRoute[]
+
+  /**
+   * Report this provider's non-secret configuration for the admin dashboard.
+   * Return `{ settings: {} }` if there is nothing worth showing.
+   *
+   * Only the provider knows which of its settings are secret, so redaction is
+   * its responsibility: omit API keys, passwords, tokens, and signing secrets
+   * rather than masking them.
+   */
+  describe(): ProviderDescription
 }

@@ -31,6 +31,7 @@ import { CaptureEmailTransport } from "@activescott/auth-provider-email/testing"
 import { CaptureSmsTransport } from "@activescott/auth-provider-sms/testing"
 import { TurnstileBotCheck } from "@activescott/auth-botcheck-turnstile"
 import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
+import { createAdminHandlers } from "@activescott/auth-adapter-react-router/admin"
 
 /** Set TURNSTILE_SECRET_KEY (and TURNSTILE_SITE_KEY) to turn Turnstile on */
 const turnstileSecretKey = process.env.TURNSTILE_SECRET_KEY
@@ -49,15 +50,49 @@ const userStore: UserStore = {
   async findById(id) {
     return users.get(id) ?? null
   },
-  async create({ identifier }) {
+  async create({ provider, identifier }) {
     // identifier is an email or a phone number depending on which
     // provider signed the user up
     const user: AuthUser = {
       id: crypto.randomUUID(),
-      metadata: { identifier },
+      // Anything the admin users page should show as a column goes in
+      // metadata — that is the extension point, so the store interface does
+      // not need to know about application-specific fields.
+      metadata: {
+        identifier,
+        signedUpWith: provider,
+        signedUpAt: new Date().toISOString(),
+      },
     }
     users.set(user.id, user)
     return user
+  },
+  /**
+   * Optional, and only the admin dashboard uses it. A real app pushes the
+   * sorting and paging into the database; here the whole map is small enough
+   * to sort in memory.
+   */
+  async listUsers({ limit, offset, sortBy, sortOrder, filter }) {
+    let all = [...users.values()]
+
+    // Filtering belongs here, not in the page: `total` has to count the
+    // filtered set for the pager to be right. A real app turns this into a
+    // WHERE clause. Keys this store does not recognize are ignored, the same
+    // way an unknown `sortBy` is.
+    const wantedProvider = filter?.signedUpWith
+    if (wantedProvider) {
+      all = all.filter((user) => user.metadata?.signedUpWith === wantedProvider)
+    }
+
+    const direction = sortOrder === "asc" ? 1 : -1
+    if (sortBy) {
+      all.sort((left, right) => {
+        const a = String(left.metadata?.[sortBy] ?? "")
+        const b = String(right.metadata?.[sortBy] ?? "")
+        return a.localeCompare(b) * direction
+      })
+    }
+    return { users: all.slice(offset, offset + limit), total: all.length }
   },
 }
 
@@ -76,6 +111,15 @@ const identityStore: IdentityStore = {
   },
   async findByUserId(userId) {
     return [...identities.values()].filter((index) => index.userId === userId)
+  },
+  /**
+   * Optional. Without it the admin users page still works, but issues one
+   * query per row; a real app implements this as a single `WHERE user_id IN
+   * (...)`.
+   */
+  async findByUserIds(userIds) {
+    const wanted = new Set(userIds)
+    return [...identities.values()].filter((index) => wanted.has(index.userId))
   },
   async create(data) {
     const identity: Identity = {
@@ -347,6 +391,24 @@ const handlers = createAuthHandlers(auth, {
 
 export const { handleAuth, getSession, requireAuth, optionalAuth, logout } =
   handlers
+
+/**
+ * The read-only admin dashboard at /admin. Who gets in is an allowlist of
+ * identifiers (email addresses and/or E.164 phone numbers) in
+ * AUTH_ADMIN_IDENTIFIERS — see .env.example. The list is empty by default, and
+ * an empty list admits nobody, so the pages stay shut until you opt in.
+ *
+ * A signed-in visitor who is not on the list gets a 404 rather than a 403, so
+ * the admin area does not announce itself.
+ */
+export const { requireAdmin, adminUsersLoader, adminConfigLoader } =
+  createAdminHandlers(auth, {
+    requireAuth,
+    admins: process.env.AUTH_ADMIN_IDENTIFIERS,
+    // Newest sign-ups first, which is what you usually want when you open the
+    // page. The key is a metadata key, handled by `userStore.listUsers` above.
+    defaultSort: { sortBy: "signedUpAt", sortOrder: "desc" },
+  })
 
 /**
  * Anti-bot form fields for the login page, minted per render: a signed

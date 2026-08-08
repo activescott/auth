@@ -756,3 +756,34 @@ describe("PasskeyProvider", () => {
     })
   })
 })
+
+describe("describe", () => {
+  it("reports the non-secret settings with defaults resolved", () => {
+    const { provider } = createProvider({
+      rpID: "example.com",
+      expectedOrigin: BASE_URL,
+    })
+
+    const settings = provider.describe().settings
+
+    expect(settings.rpName).toBe("Test App")
+    expect(settings.rpID).toBe("example.com")
+    expect(settings.expectedOrigin).toBe(BASE_URL)
+    expect(settings.challengeExpiry).toBe("5m")
+    expect(settings.challengeCookieName).toBe(COOKIE_NAME)
+  })
+
+  it("reports null for the request-derived settings when they are unset", () => {
+    const settings = createProvider().provider.describe().settings
+
+    expect(settings.rpID).toBeNull()
+    expect(settings.expectedOrigin).toBeNull()
+  })
+
+  it("omits the challenge secret", () => {
+    const settings = createProvider().provider.describe().settings
+
+    expect(Object.keys(settings)).not.toContain("challengeSecret")
+    expect(JSON.stringify(settings)).not.toContain(CHALLENGE_SECRET)
+  })
+})

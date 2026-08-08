@@ -28,6 +28,7 @@ Passkeys push the same idea further: phishing-resistant, no shared secret, and s
 - ✅ **SMS one-time codes** — vendor-neutral provider with a Twilio Messaging transport (RCS-ready) and [WebOTP](https://developer.mozilla.org/docs/Web/API/WebOTP_API) autofill support. An AWS transport is drafted in [#37](https://github.com/activescott/auth/pull/37) awaiting a tester.
 - ✅ **Hosted verification (no US A2P 10DLC)** — the same SMS provider accepts a `VerificationTransport` where the vendor generates, sends, and checks the code. `TwilioVerifyTransport` ships in the Twilio package: no number to buy, no brand or campaign registration, no waiting weeks on The Campaign Registry — at the cost of ~4–6x per sign-in.
 - ✅ **Passkeys (WebAuthn)** — add a passkey while signed in, then sign in usernameless with Touch ID, Face ID, Windows Hello, 1Password, iCloud Keychain, or a security key; conditional UI (passkey autofill) supported. Verification via [`@simplewebauthn/server`](https://simplewebauthn.dev/); zero-dependency browser client included.
+- ✅ **Admin dashboard** — a read-only users page (every user, the identities they sign in with, when each was last used) and a configuration page that shows how auth is actually set up with secrets removed. Two route files of about ten lines each; access is an allowlist of email addresses and phone numbers. See [Admin dashboard](#admin-dashboard).
 
 The provider interface (`AuthProvider` in `@activescott/auth`) is the extension point. Implementing a new provider does not require changes to the core package.
 
@@ -141,6 +142,119 @@ Use `optionalAuth(request)` instead if the route should render for both signed-i
 
 For a richer pattern — extending `AuthUser` with your own user fields and getting a typed `requireAuth<TUser>` via `mapUser` — see the production usage in ramblefeed (referenced in [`examples/react-router/README.md`](./examples/react-router/README.md)).
 
+## Admin dashboard
+
+Two read-only pages for whoever runs the site:
+
+- **Users** — every user, the identities they can sign in with (email, phone, passkey), when each identity was created and last used, plus any columns your own application supplies.
+- **Configuration** — how auth is actually configured: session cookie, each provider's settings, abuse limits with defaults resolved, and which stores are wired up. Secrets are removed before they reach the page.
+
+### Step 1 — Let your `UserStore` list users
+
+The library never enumerates your database on its own, so add the optional `listUsers` (and, to avoid one query per row, `IdentityStore.findByUserIds`):
+
+```ts
+const userStore: UserStore = {
+  // ...findById, create
+  async listUsers({ limit, offset, sortBy, sortOrder }) {
+    const [rows, total] = await Promise.all([
+      db.user.findMany({
+        take: limit,
+        skip: offset,
+        orderBy: orderFor(sortBy, sortOrder),
+      }),
+      db.user.count(),
+    ])
+    // Anything you want as a column goes in metadata
+    return {
+      total,
+      users: rows.map((row) => ({
+        id: row.id,
+        metadata: { handle: row.handle, plan: row.plan, posts: row.postCount },
+      })),
+    }
+  },
+}
+```
+
+`sortBy` and `filter` are passed through from the URL untouched — your store decides which keys it accepts, and what an unrecognized one falls back to. `?filter.approvalStatus=PENDING` arrives as `{ filter: { approvalStatus: "PENDING" } }`, so a filtered view is a `WHERE` in your query: `total` counts the filtered set and pagination pages through it, which trimming an already-fetched page could not do.
+
+### Step 2 — Create the admin handlers
+
+```ts
+export const { adminUsersLoader, adminConfigLoader } = createAdminHandlers(
+  auth,
+  {
+    requireAuth, // from createAuthHandlers, so signed-out visitors land on your login page
+    admins: process.env.AUTH_ADMIN_IDENTIFIERS,
+    defaultSort: { sortBy: "createdAt", sortOrder: "desc" },
+  },
+)
+```
+
+`admins` is a comma- or whitespace-separated allowlist of email addresses and E.164 phone numbers, matched against **every** identity a user owns — so an address on the list still gets in after signing in by SMS. It defaults to `process.env.AUTH_ADMIN_IDENTIFIERS`, and an empty or missing list admits nobody: forgetting to set it locks the dashboard rather than opening it. A predicate works too, if membership lives in your database. A signed-in visitor who is not an admin gets a **404**, not a 403, so the admin area does not announce its own existence (`onForbidden: "forbidden"` opts into 403).
+
+### Step 3 — Add the routes
+
+```tsx
+// app/routes/admin.users.tsx
+import { Link } from "react-router"
+import { AdminUsersPage } from "@activescott/auth-adapter-react-router/admin"
+import { adminUsersLoader } from "~/lib/auth.server"
+import { adminColumns } from "~/lib/admin-columns"
+
+export const loader = ({ request }: Route.LoaderArgs) =>
+  adminUsersLoader({ request })
+
+export default function AdminUsers({ loaderData }: Route.ComponentProps) {
+  return (
+    <AdminUsersPage
+      data={loaderData}
+      metadataColumns={adminColumns}
+      linkComponent={Link}
+    />
+  )
+}
+```
+
+`admin.config.tsx` is the same shape with `adminConfigLoader` and `AdminConfigPage`. Register both in `routes.ts`; the loaders gate themselves, so there is nothing else to guard. Column configuration must live outside your `.server` module — the page component reads it in the browser too.
+
+### Making it yours
+
+The page stays read-only — the library never writes — but it does not have to stay inert. Three presentation slots let your app own the rest:
+
+| Slot                      | For                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `rowActions={(row) => …}` | A trailing actions column. Put a `<Form method="post">` here; the mutation is your route's action, your validation, your audit trail. |
+| `renderCell` on a column  | Any cell the `render` shorthands don't cover; takes precedence over `render`.                                                         |
+| `navExtra={…}`            | Extra nav content — filter tabs, a link back to your own admin area.                                                                  |
+
+```tsx
+<AdminUsersPage
+  data={loaderData}
+  metadataColumns={adminColumns}
+  navExtra={
+    <Link to="/admin/users?filter.approvalStatus=PENDING">Pending</Link>
+  }
+  rowActions={(row) => (
+    <Form method="post">
+      <input type="hidden" name="userId" value={row.id} />
+      <button name="intent" value="approve">
+        Approve
+      </button>
+    </Form>
+  )}
+/>
+```
+
+Sort and pagination links start from the request's own query string and change only what they own, so your `?filter.*` and any other parameter survive a click. `loaderData.filter` tells you which filter is active, for marking the current tab.
+
+One caveat on `requireAdmin`: the allowlist check reads the session through `Auth.verifySession`, which caches for two minutes, so removing someone from the allowlist can take that long to take effect. Anything needing immediate revocation should enforce it in the `requireAuth` you pass in — that runs first and is yours to make uncached.
+
+The pages look presentable with no configuration, and there is no stylesheet to import: the built-in look is a set of `CSSProperties` applied as `style={...}`, using the CSS system palette (`Canvas`, `CanvasText`, `LinkText`) plus `color-scheme: light dark`, so the pages follow the reader's theme on their own. To dress them in your own design system, pass a `classNames` map — a slot you name gets your class **and no inline style**, so your Bootstrap or Tailwind rules are not competing with an inline style they could never outrank. `includeDefaultStyles={false}` drops the built-in look everywhere. `linkComponent` is optional: without it, sorting and paging use plain anchors and still work.
+
+Runnable version: [`examples/react-router/app/routes/admin.users.tsx`](./examples/react-router/app/routes/admin.users.tsx).
+
 ## Architecture
 
 ```mermaid
@@ -170,7 +284,7 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 | [`@activescott/auth-provider-passkey`](./packages/auth-provider-passkey)         | Passkey (WebAuthn) provider. Credentials are ordinary identity rows (no extra storage interface); zero-dependency browser client at the `/browser` subpath.                   |
 | [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transports: Messages API (SMS, or RCS via a Messaging Service) and Twilio Verify (no A2P 10DLC registration). Raw fetch, zero dependencies.                            |
 | [`@activescott/auth-botcheck-turnstile`](./packages/auth-botcheck-turnstile)     | Cloudflare Turnstile bot check for the initiate endpoints. Optional — the core's rate limits and form-token check need no third party. Raw fetch, zero dependencies.          |
-| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v8 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`.                                                                |
+| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v8 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`, and the admin dashboard at the `/admin` subpath.               |
 
 Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
 
@@ -215,7 +329,9 @@ This is an npm workspaces monorepo.
 
 Implement the [`AuthProvider`](./packages/auth/src/types.ts) interface from `@activescott/auth` and pass an instance into `new Auth({ providers: [...] })`.
 
-The cleanest reference is the email provider itself: [`packages/auth-provider-email/src/email-provider.ts`](./packages/auth-provider-email/src/email-provider.ts) — a complete, production implementation showing how `initiate` / `verify` / `canHandle` / `getRoutes` fit together, how to use the `AuthContext` to look up or create the user via the stores, and how to surface errors with `AuthErrors`.
+The cleanest reference is the email provider itself: [`packages/auth-provider-email/src/email-provider.ts`](./packages/auth-provider-email/src/email-provider.ts) — a complete, production implementation showing how `initiate` / `verify` / `canHandle` / `getRoutes` / `describe` fit together, how to use the `AuthContext` to look up or create the user via the stores, and how to surface errors with `AuthErrors`.
+
+`describe()` is what the [admin dashboard](#admin-dashboard)'s configuration page displays for your provider. Only your provider knows which of its settings are secret, so redaction is its job: omit API keys, passwords, tokens, and signing secrets rather than masking them. Return `{ settings: {} }` if there is nothing worth showing.
 
 ## Release process
 

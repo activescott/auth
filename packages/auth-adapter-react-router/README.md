@@ -5,7 +5,7 @@
 
 React Router adapter (v7 and v8) for [`@activescott/auth`](https://www.npmjs.com/package/@activescott/auth). Wraps the framework-agnostic `Auth` class in handlers that read/write standard `Request` and `Response` objects — exactly what React Router loaders and actions return.
 
-The adapter imports nothing from `react-router`; it only speaks Fetch `Request`/`Response`, so the same build works on both major versions.
+The adapter imports nothing from `react-router`; it only speaks Fetch `Request`/`Response`, so the same build works on both major versions. That holds for the admin pages too — they are React components that emit plain anchors unless you hand them your router's `Link`.
 
 Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbot.com](https://tinkerbellbot.com).
 
@@ -65,13 +65,47 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 ## API
 
-| Export               | Purpose                                                                                        |
-| -------------------- | ---------------------------------------------------------------------------------------------- |
-| `createAuthHandlers` | Returns `{ handleAuth, getSession, requireAuth, optionalAuth, refreshSessionCookie, logout }`. |
+| Export                                 | Purpose                                                                                        |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `createAuthHandlers`                   | Returns `{ handleAuth, getSession, requireAuth, optionalAuth, refreshSessionCookie, logout }`. |
+| `createAdminHandlers` (from `./admin`) | Returns `{ requireAdmin, adminUsersLoader, adminConfigLoader }`.                               |
+| `AdminUsersPage`, `AdminConfigPage`    | The admin pages, from `./admin`.                                                               |
 
 Login pages need no action of their own: post the email form directly to `/auth/email/initiate` (the provider redirects back with `?sent=1`) and the code form to `/auth/email/verify`.
 
 `createAuthHandlers<TUser>` is generic over your application's user type. Pass a `mapUser` to get a typed `requireAuth<TUser>` / `optionalAuth<TUser>` instead of the bare `AuthUser`.
+
+## Admin dashboard
+
+A read-only users page and configuration page, at the `./admin` subpath so apps that do not use them never load React:
+
+```tsx
+// app/lib/auth.server.ts
+import { createAdminHandlers } from "@activescott/auth-adapter-react-router/admin"
+
+export const { adminUsersLoader, adminConfigLoader } = createAdminHandlers(
+  auth,
+  {
+    requireAuth,
+    admins: process.env.AUTH_ADMIN_IDENTIFIERS,
+  },
+)
+
+// app/routes/admin.users.tsx
+import { Link } from "react-router"
+import { AdminUsersPage } from "@activescott/auth-adapter-react-router/admin"
+
+export const loader = ({ request }: Route.LoaderArgs) =>
+  adminUsersLoader({ request })
+
+export default function AdminUsers({ loaderData }: Route.ComponentProps) {
+  return <AdminUsersPage data={loaderData} linkComponent={Link} />
+}
+```
+
+The users page needs `UserStore.listUsers`, which is optional and which your application implements; put anything you want as an extra column into each user's `metadata` and describe it with `metadataColumns`. Access is an allowlist of email addresses and phone numbers (`AUTH_ADMIN_IDENTIFIERS` by default) that admits nobody when unset; non-admins get a 404.
+
+Full walkthrough: [Admin dashboard](https://github.com/activescott/auth#admin-dashboard).
 
 ## Documentation & example
 
