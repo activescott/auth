@@ -45,7 +45,7 @@ export default defineConfig({
       // One per test that signs in: the per-identifier abuse limit is 3/hour,
       // so reusing a single address across tests would silently throttle them.
       AUTH_ADMIN_IDENTIFIERS:
-        "admin-users@example.com, admin-config@example.com",
+        "admin-users@example.com, admin-config@example.com, admin-filter@example.com",
     },
   },
 })

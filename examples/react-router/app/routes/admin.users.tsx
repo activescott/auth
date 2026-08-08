@@ -1,10 +1,13 @@
 /**
  * The admin users page, in full. Everything visible — the table, sorting,
- * paging, the identity column — comes from the adapter; this file only wires
- * the loader to the component.
+ * paging, the identity column — comes from the adapter; this file wires the
+ * loader to the component and adds two app-owned touches:
  *
- * `Link` is passed through so sort and pagination links navigate client-side.
- * Leave it out and the page still works, using plain anchors.
+ * - tabs that filter by sign-in method, using `?filter.signedUpWith=`. The
+ *   library passes that straight to `userStore.listUsers`, so the count and
+ *   the pager describe the filtered set rather than one fetched page.
+ * - `Link` as `linkComponent`, so sort and pagination links navigate
+ *   client-side. Leave it out and the page still works with plain anchors.
  */
 import { Link } from "react-router"
 import { adminUsersLoader } from "~/lib/auth.server"
@@ -23,12 +26,33 @@ export function loader({ request }: Route.LoaderArgs) {
   return adminUsersLoader({ request })
 }
 
+const TABS = [
+  { label: "All", provider: undefined },
+  { label: "Email", provider: "email" },
+  { label: "SMS", provider: "sms" },
+]
+
 export default function AdminUsers({ loaderData }: Route.ComponentProps) {
+  const active = loaderData.filter.signedUpWith
+
   return (
     <AdminUsersPage
       data={loaderData}
       metadataColumns={adminMetadataColumns}
       linkComponent={Link}
+      navExtra={TABS.map((tab) => (
+        <Link
+          key={tab.label}
+          to={
+            tab.provider
+              ? `/admin/users?filter.signedUpWith=${tab.provider}`
+              : "/admin/users"
+          }
+          style={{ fontWeight: active === tab.provider ? 700 : 400 }}
+        >
+          {tab.label}
+        </Link>
+      ))}
     />
   )
 }

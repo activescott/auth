@@ -8,6 +8,7 @@ import { loginAs } from "./helpers/auth"
  */
 const USERS_ADMIN = "admin-users@example.com"
 const CONFIG_ADMIN = "admin-config@example.com"
+const FILTER_ADMIN = "admin-filter@example.com"
 const NON_ADMIN = "notanadmin@example.com"
 
 /** The dev-only session secret the example falls back to when JWT_SECRET is unset */
@@ -56,6 +57,34 @@ test.describe("admin dashboard", () => {
     // Clicking the active column flips the direction
     await page.getByRole("link", { name: /^Signed up as/ }).click()
     await expect(page).toHaveURL(/sortBy=identifier&sortOrder=asc/)
+  })
+
+  test("filters server-side and keeps the filter across a sort click", async ({
+    page,
+  }) => {
+    await loginAs(page, FILTER_ADMIN)
+
+    // This account signed up by email, so the email view always has a row —
+    // no dependence on what the other specs happened to create.
+    await page.goto("/admin/users?filter.signedUpWith=email&limit=100")
+    await expect(
+      page.getByRole("row", { name: new RegExp(FILTER_ADMIN) }),
+    ).toBeVisible()
+
+    // The filter survives a sort click: links carry foreign params through
+    await page.getByRole("link", { name: /^Signed up as/ }).click()
+    await expect(page).toHaveURL(/filter\.signedUpWith=email/)
+    await expect(page).toHaveURL(/sortBy=identifier/)
+    await expect(
+      page.getByRole("row", { name: new RegExp(FILTER_ADMIN) }),
+    ).toBeVisible()
+
+    // ?filter.* reaches the store rather than trimming a fetched page, so an
+    // account that does not match is absent entirely
+    await page.goto("/admin/users?filter.signedUpWith=sms&limit=100")
+    await expect(
+      page.getByRole("row", { name: new RegExp(FILTER_ADMIN) }),
+    ).toHaveCount(0)
   })
 
   test("shows the config without leaking secrets, and links between pages", async ({

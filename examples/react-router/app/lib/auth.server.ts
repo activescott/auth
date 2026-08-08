@@ -72,8 +72,18 @@ const userStore: UserStore = {
    * sorting and paging into the database; here the whole map is small enough
    * to sort in memory.
    */
-  async listUsers({ limit, offset, sortBy, sortOrder }) {
-    const all = [...users.values()]
+  async listUsers({ limit, offset, sortBy, sortOrder, filter }) {
+    let all = [...users.values()]
+
+    // Filtering belongs here, not in the page: `total` has to count the
+    // filtered set for the pager to be right. A real app turns this into a
+    // WHERE clause. Keys this store does not recognize are ignored, the same
+    // way an unknown `sortBy` is.
+    const wantedProvider = filter?.signedUpWith
+    if (wantedProvider) {
+      all = all.filter((user) => user.metadata?.signedUpWith === wantedProvider)
+    }
+
     const direction = sortOrder === "asc" ? 1 : -1
     if (sortBy) {
       all.sort((left, right) => {
