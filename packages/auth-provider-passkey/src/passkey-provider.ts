@@ -5,6 +5,7 @@ import type {
   AuthProvider,
   AuthResult,
   Identity,
+  ProviderDescription,
   ProviderRoute,
 } from "@activescott/auth"
 import {
@@ -163,6 +164,28 @@ export class PasskeyProvider implements AuthProvider {
         handler: "verify",
       },
     ]
+  }
+
+  /**
+   * Non-secret settings for the admin dashboard, with defaults resolved.
+   *
+   * `challengeSecret` is omitted: it signs the challenge cookie, so leaking it
+   * would let anyone mint challenges. `rpID` and `expectedOrigin` read as null
+   * when unset because they then default to the request's hostname and origin,
+   * which vary per request and are not a configured value.
+   */
+  public describe(): ProviderDescription {
+    return {
+      settings: {
+        rpName: this.config.rpName,
+        rpID: this.config.rpID ?? null,
+        expectedOrigin: this.config.expectedOrigin ?? null,
+        challengeExpiry:
+          this.config.challengeExpiry ?? DEFAULT_CHALLENGE_EXPIRY,
+        challengeCookieName:
+          this.config.challengeCookieName ?? DEFAULT_CHALLENGE_COOKIE_NAME,
+      },
+    }
   }
 
   /**
