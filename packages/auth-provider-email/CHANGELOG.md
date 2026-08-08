@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.0.0](https://github.com/activescott/auth/compare/auth-provider-email@1.1.0...auth-provider-email@2.0.0) (2026-08-08)
+
+### ⚠ BREAKING CHANGES
+
+* requires @activescott/auth v4, where AuthProvider.describe()
+became a required member.
+
+### Features
+
+* describe() for the admin configuration page ([ee732dd](https://github.com/activescott/auth/commit/ee732dd10de63af099745695d06fbd00107134ba))
+
+### Bug Fixes
+
+* require @activescott/auth v4 as a peer ([0e7b65e](https://github.com/activescott/auth/commit/0e7b65ea8e0b10e18b8fe4c6cbf9486cf614bcd1))
+
 ## [1.1.0](https://github.com/activescott/auth/compare/auth-provider-email@1.0.3...auth-provider-email@1.1.0) (2026-08-07)
 
 ### Features

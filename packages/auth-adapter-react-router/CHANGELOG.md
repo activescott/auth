@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.1.0...auth-adapter-react-router@1.2.0) (2026-08-08)
+
+### Features
+
+* admin users and configuration pages ([e41ef56](https://github.com/activescott/auth/commit/e41ef564fcfa631093ec58dda57a3ac6fc3d23d5))
+* row actions, custom cells, and filtering ([91074b4](https://github.com/activescott/auth/commit/91074b4f21f48bbe28554391cb6e63528332f136))
+
 ## [1.1.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.0.5...auth-adapter-react-router@1.1.0) (2026-08-07)
 
 ### Features

@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.0](https://github.com/activescott/auth/compare/auth-provider-passkey@0.1.0...auth-provider-passkey@1.0.0) (2026-08-08)
+
+### ⚠ BREAKING CHANGES
+
+* requires @activescott/auth v4, where AuthProvider.describe()
+became a required member.
+
+### Features
+
+* describe() for the admin configuration page ([f17306c](https://github.com/activescott/auth/commit/f17306cb3641dd9a783f578cc68d24a1788e82a9))
+
+### Bug Fixes
+
+* require @activescott/auth v4 as a peer ([d2105bb](https://github.com/activescott/auth/commit/d2105bba03796c56de000a0041097f3ef97ba2c6))
+
 ## 0.1.0 (2026-08-02)
 
 ### Features

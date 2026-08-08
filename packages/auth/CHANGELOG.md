@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [4.0.0](https://github.com/activescott/auth/compare/auth@3.1.0...auth@4.0.0) (2026-08-08)
+
+### ⚠ BREAKING CHANGES
+
+* AuthProvider.describe() is now required. It reports a
+provider's non-secret settings for the configuration page. Only a provider
+knows which of its own settings are secret, so redaction is its job rather
+than the dashboard's -- omit API keys, passwords, tokens, and signing
+secrets rather than masking them. A provider with nothing to show returns
+{ settings: {} }, so the migration is one method.
+
+### Features
+
+* opaque filter criteria on ListUsersOptions ([2d95e2d](https://github.com/activescott/auth/commit/2d95e2df4cf33996b8372e68d163e4717aa319ca))
+* user listing and config introspection for the admin dashboard ([5aeb443](https://github.com/activescott/auth/commit/5aeb443ab20563eebbdf8872d8c69660bfa2cf5c)), closes [#58](https://github.com/activescott/auth/issues/58)
+
 ## [3.1.0](https://github.com/activescott/auth/compare/auth@3.0.1...auth@3.1.0) (2026-08-06)
 
 ### Features

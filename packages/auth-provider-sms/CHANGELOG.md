@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.0](https://github.com/activescott/auth/compare/auth-provider-sms@0.3.0...auth-provider-sms@1.0.0) (2026-08-08)
+
+### ⚠ BREAKING CHANGES
+
+* requires @activescott/auth v4, where AuthProvider.describe()
+became a required member.
+
+### Features
+
+* describe() for the admin configuration page ([b7ae3bd](https://github.com/activescott/auth/commit/b7ae3bd30f7957763fab17abf628f9c5d1db1b01))
+
+### Bug Fixes
+
+* require @activescott/auth v4 as a peer ([310906f](https://github.com/activescott/auth/commit/310906fa669773a582de6f4f04d5e1e39c091a24))
+
 ## [0.3.0](https://github.com/activescott/auth/compare/auth-provider-sms@0.2.0...auth-provider-sms@0.3.0) (2026-08-07)
 
 ### Features
