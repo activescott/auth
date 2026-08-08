@@ -4,6 +4,7 @@ import type {
   AuthResult,
   AuthInitResult,
   Challenge,
+  ProviderDescription,
   ProviderRoute,
 } from "@activescott/auth"
 import {
@@ -428,6 +429,35 @@ export class EmailProvider implements AuthProvider {
       { method: "POST", path: "/email/verify", handler: "verify" },
       { method: "GET", path: "/email/callback", handler: "verify" },
     ]
+  }
+
+  /**
+   * Non-secret settings for the admin dashboard, with defaults resolved so
+   * the page shows what is actually in effect.
+   *
+   * The SMTP password and username are omitted: `pass` is a credential, and
+   * `user` is usually the same credential's other half (and often an address
+   * worth not publishing). The host and port are enough to tell which server
+   * is in use.
+   */
+  public describe(): ProviderDescription {
+    return {
+      settings: {
+        from: this.config.from,
+        expiry: this.config.expiry ?? DEFAULT_EXPIRY,
+        "otp.length": this.config.otp?.length ?? DEFAULT_OTP_LENGTH,
+        "otp.maxAttempts":
+          this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
+        "otp.cookieName":
+          this.config.otp?.cookieName ?? DEFAULT_OTP_COOKIE_NAME,
+        "template.appName": this.config.template?.appName ?? null,
+        "template.subject": this.config.template?.subject ?? null,
+        "smtp.host": this.config.smtp.host,
+        "smtp.port": this.config.smtp.port,
+        "smtp.secure": this.config.smtp.secure ?? null,
+        transport: this.transport.constructor.name,
+      },
+    }
   }
 
   /**
