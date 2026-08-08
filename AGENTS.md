@@ -46,7 +46,9 @@ Source map for what lives where (not in README):
 - `packages/auth-sms-twilio/src/twilio-messaging-transport.ts` — Twilio Messaging `SmsTransport` (raw fetch, zero deps); `src/twilio-verify-transport.ts` — Twilio Verify `VerificationTransport`, which sidesteps US A2P 10DLC registration. Two Twilio products, named after the product each one talks to.
 - `packages/auth/src/abuse/` — abuse protection for the initiate endpoints, active by default: `abuse-guard.ts` (orchestration, `AbuseConfig`, block logging), `rate-limiter.ts` + `rate-limit-store.ts` (fixed-window rules), `client-ip.ts`, `bot-check.ts` (`BotCheckProvider`, signed form token); `src/stores/in-memory-rate-limit-store.ts` is the default store.
 - `packages/auth-botcheck-turnstile/src/turnstile-bot-check.ts` — Cloudflare Turnstile `BotCheckProvider` (raw fetch, zero deps). Hosted bot checks each get their own package so consumers don't install vendors they don't use.
+- `packages/auth/src/admin/admin-data.ts` — framework-agnostic admin dashboard data (`createAdminData`), exported at the `@activescott/auth/admin` subpath. Reads `UserStore.listUsers` / `IdentityStore.findByUserIds` (both optional) and `Auth.describeConfig()`. Never copies `Identity.metadata` into its output.
 - `packages/auth-adapter-react-router/src/handlers.ts` — `createAuthHandlers` and friends.
+- `packages/auth-adapter-react-router/src/admin/` — the admin dashboard's React pages and allowlist gate, at the `./admin` subpath so the main entry stays React-free. Still imports nothing from `react-router` (links go through an optional `linkComponent` prop), which is what keeps one build working on v7 and v8.
 - `examples/react-router/` — runnable example app (email + SMS sign-in on tabbed login page); its Playwright e2e suite is nested workspace `examples/react-router/tests`.
 
 Everything speaks Fetch-API `Request`/`Response` (no Node-only APIs in core path) so packages run on Node and edge runtimes — preserve when changing core or providers.
@@ -59,7 +61,10 @@ Follow best practices for best-in-class, easy-to-understand JS/TS open-source pr
 - JSDoc on every export. In example app, write for reader copying code into own app: explain _why_ (which input attributes trigger OTP autofill, why tabs are links, why sessionStorage instead of redirect URL) — not restatement of code.
 - Examples teaching material first: prefer little duplication over indirection making reader chase imports to understand flow. Generic reusable pieces (components, hooks) get extracted — with standalone docs.
 - Resolve messy input at boundary where it enters (e.g. login form composes full E.164 number before submit) so everything downstream handles one canonical form.
-- Zero runtime deps in core and provider packages; deps live only in vendor adapter packages.
+- **Dependencies.** Splitting the library into packages exists so an app installs only what it uses, so the rule differs by package:
+  - `packages/auth` (core) — effectively zero runtime deps (`jose` only, for session JWTs), and no Node-only APIs. Everything else has to earn its way in past a very high bar; prefer raw `fetch` and WebCrypto. Adding a dependency here taxes every consumer.
+  - Provider, transport, bot-check, and framework-adapter packages — **may take runtime dependencies**, and several do (`auth-provider-email` → `nodemailer`; `auth-provider-passkey` → `@simplewebauthn/server`, `zod`; `auth-adapter-react-router` → `react` and `react-router` as peers). That is the point of the split: an app that signs in by SMS never installs a WebAuthn library. Still be deliberate — vendor SDKs that are a thin wrapper over one HTTP call are not worth it (`auth-sms-twilio` and `auth-botcheck-turnstile` use raw `fetch` and ship zero deps).
+  - Peer vs. regular: something the host app already owns goes in `peerDependencies` (React, React Router); something only this package needs is a regular dependency. Mark a peer `optional` when only a subpath needs it — `react` is optional on the adapter because its main entry is React-free.
 
 ## Specs
 
