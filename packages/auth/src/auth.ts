@@ -1,14 +1,19 @@
 import type {
   AuthConfig,
+  AuthConfigDescription,
   AuthContext,
   AuthError,
   AuthInitResult,
   AuthProvider,
   AuthResult,
   AuthUser,
+  ChallengeStore,
   Identity,
+  IdentityStore,
   SessionConfig,
+  UserStore,
 } from "./types.js"
+import { REDACTED } from "./types.js"
 import { SessionManager } from "./session/session-manager.js"
 import { AuthErrors } from "./errors.js"
 import { AbuseGuard } from "./abuse/abuse-guard.js"
@@ -29,6 +34,16 @@ const ACTION_GROUP = 2
 /** Sent-message fallback for providers that declare none */
 const DEFAULT_SENT_MESSAGE =
   "If that account exists, a sign-in message has been sent."
+
+/**
+ * Best-effort name for a store implementation. Stores are usually plain object
+ * literals, whose constructor is `Object` — report that plainly instead of
+ * showing a misleading "Object".
+ */
+function describeStoreType(store: object): string {
+  const name = store.constructor?.name
+  return !name || name === "Object" ? "(object literal)" : name
+}
 
 /**
  * In-memory cache for session verification to reduce DB queries
@@ -296,6 +311,64 @@ export class Auth {
    */
   public getSessionConfig(): SessionConfig {
     return this.config.session
+  }
+
+  /**
+   * Get the configured stores.
+   * `createContext` exposes the same objects but needs a Request; this is for
+   * callers that operate outside a provider flow, such as the admin dashboard.
+   */
+  public getStores(): {
+    identityStore: IdentityStore
+    userStore: UserStore
+    challengeStore: ChallengeStore
+  } {
+    return {
+      identityStore: this.config.identityStore,
+      userStore: this.config.userStore,
+      challengeStore: this.config.challengeStore,
+    }
+  }
+
+  /**
+   * Describe the running configuration with every secret removed and every
+   * default resolved, for the admin dashboard's config page.
+   *
+   * Deliberately built field by field rather than by copying `AuthConfig`, so
+   * a field added to the config later cannot leak by default — it has to be
+   * added here to appear.
+   */
+  public describeConfig(): AuthConfigDescription {
+    const { session, identityStore, userStore, challengeStore } = this.config
+    return {
+      session: {
+        cookieName: session.cookieName,
+        maxAge: session.maxAge,
+        issuer: session.issuer,
+        audience: session.audience,
+        cookie: { ...session.cookie },
+        secret: REDACTED,
+        additionalSecretCount: session.additionalSecrets?.length ?? 0,
+      },
+      providers: this.getProviders().map((provider) => ({
+        id: provider.id,
+        name: provider.name,
+        initiateSentMessage: provider.initiateSentMessage,
+        routes: provider.getRoutes(),
+        settings: provider.describe().settings,
+      })),
+      abuse: this.abuseGuard.describe(),
+      stores: {
+        userStore: describeStoreType(userStore),
+        identityStore: describeStoreType(identityStore),
+        challengeStore: describeStoreType(challengeStore),
+        capabilities: {
+          listUsers: typeof userStore.listUsers === "function",
+          findByUserIds: typeof identityStore.findByUserIds === "function",
+          deleteIdentity: typeof identityStore.delete === "function",
+        },
+      },
+    }
   }
 
   /**

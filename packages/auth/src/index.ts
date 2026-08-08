@@ -11,14 +11,22 @@ export type {
   AuthErrorCode,
   IdentityStore,
   UserStore,
+  ListUsersOptions,
+  ListUsersResult,
   SessionConfig,
   AuthConfig,
   AuthContext,
   ProviderRoute,
   AuthProvider,
+  ProviderDescription,
+  SessionConfigDescription,
+  ProviderConfigDescription,
+  StoresDescription,
+  AuthConfigDescription,
   Challenge,
   ChallengeStore,
 } from "./types.js"
+export { REDACTED } from "./types.js"
 
 // Auth class
 export { Auth } from "./auth.js"
@@ -42,6 +50,7 @@ export type {
   AbuseConfig,
   AbuseContext,
   AbuseDecision,
+  AbuseDescription,
   AbuseEvent,
   AbuseReason,
 } from "./abuse/abuse-guard.js"

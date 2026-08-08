@@ -86,6 +86,24 @@ export interface AbuseConfig {
 }
 
 /**
+ * Abuse protection as it is actually running, with every default resolved.
+ * `AbuseConfig` leaves unset fields undefined, so it cannot answer "what are
+ * my limits" on its own; this can. Contains no secrets.
+ */
+export interface AbuseDescription {
+  enabled: boolean
+  perIp: RateLimitRule[]
+  perIdentifier: RateLimitRule[]
+  minFormFillSeconds: number
+  /** Ids of every bot check in effect, including the built-in form-token one */
+  botChecks: string[]
+  respondWith: "generic" | "rateLimited"
+  /** Whether counters live in the built-in in-memory store (single instance
+   * only) or in one the application supplied */
+  store: "in-memory" | "custom"
+}
+
+/**
  * The subset of the guard that providers use: per-recipient throttling, which
  * can only run once the provider has parsed and normalized the identifier out
  * of the request body.
@@ -138,6 +156,23 @@ export class AbuseGuard {
   /** How a blocked caller should be answered */
   public get respondWith(): "generic" | "rateLimited" {
     return this.config.respondWith ?? "generic"
+  }
+
+  /**
+   * Report the running configuration with defaults resolved, for the admin
+   * dashboard's config page.
+   */
+  public describe(): AbuseDescription {
+    return {
+      enabled: this.enabled,
+      perIp: this.config.perIp ?? DEFAULT_PER_IP_RULES,
+      perIdentifier: this.config.perIdentifier ?? DEFAULT_PER_IDENTIFIER_RULES,
+      minFormFillSeconds:
+        this.config.minFormFillSeconds ?? DEFAULT_MIN_FORM_FILL_SECONDS,
+      botChecks: this.botChecks.map((check) => check.id),
+      respondWith: this.respondWith,
+      store: this.ownedStore ? "in-memory" : "custom",
+    }
   }
 
   /**

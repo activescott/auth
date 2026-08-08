@@ -57,6 +57,7 @@ function createMockProvider(
       new URL(request.url).pathname.startsWith("/auth/email"),
     ),
     getRoutes: vi.fn().mockReturnValue([]),
+    describe: vi.fn().mockReturnValue({ settings: {} }),
     ...overrides,
   }
 }
