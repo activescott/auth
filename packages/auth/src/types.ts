@@ -187,6 +187,22 @@ export interface ListUsersOptions {
   sortBy?: string
   /** Sort direction; stores should default to "desc" */
   sortOrder?: "asc" | "desc"
+  /**
+   * Narrowing criteria, opaque to this library in the same way `sortBy` is:
+   * the store decides which keys it understands and ignores the rest.
+   *
+   * This is what makes a filtered view correct rather than cosmetic — the
+   * store turns these into a `WHERE`, so `total` counts the filtered set and
+   * pagination pages through it. Filtering an already-fetched page in the
+   * browser could not do either.
+   *
+   * @example
+   * ```ts
+   * // ?filter.approvalStatus=PENDING reaches the store as:
+   * { filter: { approvalStatus: "PENDING" } }
+   * ```
+   */
+  filter?: Record<string, string>
 }
 
 /**
