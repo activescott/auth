@@ -126,13 +126,45 @@ what an operator scans the table for, and half an address is useless. Only
 opaque identifiers (passkey credential ids, 40+ base64url characters) are
 elided, with the full value in the `title`.
 
+### Read-only in the library, not inert on the page
+
+Review from the first prospective consumer (fernfiles, a waitlist with
+PENDING/APPROVED/BLOCKED tabs and per-row Approve/Block buttons) pointed out
+that "read-only v1" had been implemented as "no extension point for the app's
+own mutations" — which would have meant adopting `requireAdmin` and keeping a
+bespoke table anyway.
+
+The distinction that matters is _who writes_, not _what renders_. So the page
+gained three presentation-only slots — `rowActions`, `renderCell`, and the
+existing `navExtra` — and the library still never writes. A form rendered in
+`rowActions` posts to the application's own route action.
+
+### Filtering is a store concern, not a page concern
+
+`ListUsersOptions.filter?: Record<string, string>`, opaque exactly as `sortBy`
+is, populated from `?filter.<key>=`. The prefix keeps application keys from
+colliding with `page`/`limit`/`sortBy`/`sortOrder` and means no key has to be
+registered anywhere.
+
+It has to reach the store rather than trimming a fetched page: otherwise
+`total` counts the unfiltered set and the pager is wrong. This is what makes a
+tabbed view correct instead of cosmetic.
+
+Relatedly, `sortHref`/`pageHref` were rebuilding the query string from
+scratch, which silently dropped anything the application had put there — its
+own tabs, a return path. Both now start from the request's query string and
+change only what they own. The loader returns `searchParams` for that, and
+`filter` so a page can mark the active tab.
+
 ## Things deliberately not built
 
-- **Any write action.** v1 is read-only, per the issue. `IdentityStore.delete`
-  exists and revoking a lost passkey is the obvious first candidate, but it
-  needs a confirm step and CSRF handling the library has no pattern for yet.
-- **Search or filtering.** Sorting and paging cover the common case; a search
-  box would need another store method and a query contract.
+- **Any write action in the library.** v1 is read-only, per the issue.
+  `IdentityStore.delete` exists and revoking a lost passkey is the obvious
+  first candidate, but it needs a confirm step and CSRF handling the library
+  has no pattern for yet. Applications render their own via `rowActions`.
+- **Free-text search.** Filtering is exact-match key/value. A search box needs
+  a query contract (which fields? prefix or substring?) that is better decided
+  once someone needs it.
 - **An admin index page.** Two pages navigate to each other directly; a landing
   page with counts would need a `countUsers` the stores do not have.
 - **A configurable mount path in core.** `/auth/...` stays hardcoded. The admin
