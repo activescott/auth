@@ -31,13 +31,27 @@ function createUser(overrides: Partial<AdminUserRow> = {}): AdminUserRow {
 function createUsersData(
   overrides: Partial<AdminUsersLoaderData> = {},
 ): AdminUsersLoaderData {
-  return {
+  const data: AdminUsersLoaderData = {
     users: [createUser()],
     pagination: { page: 1, limit: 20, total: 1 },
     sort: { sortOrder: "desc" },
+    filter: {},
+    searchParams: "",
     basePath: "/admin",
     ...overrides,
   }
+  // Unless a test supplies its own, stand in the query string the loader would
+  // have seen for this page and sort — that is what the links are built from.
+  if (!overrides.searchParams) {
+    const params = new URLSearchParams()
+    if (data.pagination.page > 1) {
+      params.set("page", String(data.pagination.page))
+    }
+    if (data.sort.sortBy) params.set("sortBy", data.sort.sortBy)
+    params.set("sortOrder", data.sort.sortOrder)
+    data.searchParams = params.toString()
+  }
+  return data
 }
 
 function render(element: React.ReactElement): string {
@@ -396,5 +410,105 @@ describe("navExtra", () => {
     )
 
     expect(html).toContain("Back to Dashboard")
+  })
+})
+
+describe("application extension points", () => {
+  it("renders a trailing actions column only when rowActions is supplied", () => {
+    const without = render(<AdminUsersPage data={createUsersData()} />)
+    expect(without).not.toContain("Actions")
+
+    const html = render(
+      <AdminUsersPage
+        data={createUsersData()}
+        rowActions={(row) => (
+          <button name="userId" value={row.id}>
+            Approve
+          </button>
+        )}
+      />,
+    )
+    expect(html).toContain(">Actions<")
+    expect(html).toContain('value="user-1"')
+    expect(html).toContain("Approve")
+  })
+
+  it("lets the application name the actions column", () => {
+    const html = render(
+      <AdminUsersPage
+        data={createUsersData()}
+        rowActionsLabel="Moderate"
+        rowActions={() => <span>x</span>}
+      />,
+    )
+
+    expect(html).toContain(">Moderate<")
+  })
+
+  it("gives renderCell precedence over the render shorthand", () => {
+    const html = render(
+      <AdminUsersPage
+        data={createUsersData({
+          users: [createUser({ metadata: { approvalStatus: "PENDING" } })],
+        })}
+        metadataColumns={[
+          {
+            key: "approvalStatus",
+            render: "badge",
+            renderCell: (value, row) => (
+              <b data-user={row.id}>{String(value).toLowerCase()}</b>
+            ),
+          },
+        ]}
+      />,
+    )
+
+    expect(html).toContain('<b data-user="user-1">pending</b>')
+  })
+
+  it("carries the application's own query params through sort and page links", () => {
+    const html = render(
+      <AdminUsersPage
+        data={createUsersData({
+          pagination: { page: 2, limit: 20, total: 100 },
+          sort: { sortBy: "handle", sortOrder: "asc" },
+          searchParams:
+            "page=2&sortBy=handle&sortOrder=asc&tab=pending&filter.approvalStatus=PENDING",
+        })}
+        metadataColumns={[{ key: "handle", sortable: true }]}
+      />,
+    )
+
+    // Every generated link keeps the tab and the filter
+    const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1] ?? "")
+    const listLinks = hrefs.filter((href) => href.includes("/admin/users?"))
+    expect(listLinks.length).toBeGreaterThan(0)
+    for (const href of listLinks) {
+      expect(href).toContain("tab=pending")
+      expect(href).toContain("filter.approvalStatus=PENDING")
+    }
+  })
+
+  it("resets to page 1 when the sort changes but keeps it when paging", () => {
+    const data = createUsersData({
+      pagination: { page: 3, limit: 20, total: 100 },
+      sort: { sortBy: "handle", sortOrder: "asc" },
+      searchParams: "page=3&sortBy=handle&sortOrder=asc&tab=pending",
+    })
+
+    const html = render(
+      <AdminUsersPage
+        data={data}
+        metadataColumns={[{ key: "handle", sortable: true }]}
+      />,
+    )
+    const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1] ?? "")
+
+    const sortLink = hrefs.find((href) => href.includes("sortOrder=desc"))
+    expect(sortLink).toBeDefined()
+    expect(sortLink).not.toContain("page=")
+
+    expect(hrefs.some((href) => href.includes("page=2"))).toBe(true)
+    expect(hrefs.some((href) => href.includes("page=4"))).toBe(true)
   })
 })

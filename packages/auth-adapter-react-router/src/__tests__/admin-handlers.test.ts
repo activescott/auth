@@ -368,3 +368,70 @@ describe("adminConfigLoader", () => {
     expect(data.config).toBeDefined()
   })
 })
+
+describe("adminUsersLoader filtering", () => {
+  function createLoader(overrides: Record<string, unknown> = {}) {
+    const listUsers = vi.fn().mockResolvedValue({ users: [], total: 0 })
+    const handlers = createAdminHandlers(createMockAuth({ listUsers }), {
+      requireAuth: signedIn,
+      admins: ADMIN_EMAIL,
+      ...overrides,
+    })
+    return { ...handlers, listUsers }
+  }
+
+  it("passes filter.* params to the store verbatim", async () => {
+    const { adminUsersLoader, listUsers } = createLoader()
+
+    const data = await adminUsersLoader({
+      request: usersRequest("?filter.approvalStatus=PENDING&filter.plan=pro"),
+    })
+
+    expect(listUsers).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filter: { approvalStatus: "PENDING", plan: "pro" },
+      }),
+    )
+    expect(data.filter).toEqual({ approvalStatus: "PENDING", plan: "pro" })
+  })
+
+  it("omits filter entirely when the request has none", async () => {
+    const { adminUsersLoader, listUsers } = createLoader()
+
+    const data = await adminUsersLoader({ request: usersRequest() })
+
+    expect(listUsers.mock.calls[0]?.[0]).not.toHaveProperty("filter")
+    expect(data.filter).toEqual({})
+  })
+
+  it("does not mistake paging params for filter criteria", async () => {
+    const { adminUsersLoader, listUsers } = createLoader()
+
+    await adminUsersLoader({
+      request: usersRequest("?page=2&limit=5&sortBy=email&filter.tier=gold"),
+    })
+
+    expect(listUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ filter: { tier: "gold" } }),
+    )
+  })
+
+  it("ignores a bare `filter.` with no key", async () => {
+    const { adminUsersLoader } = createLoader()
+
+    const data = await adminUsersLoader({ request: usersRequest("?filter.=x") })
+
+    expect(data.filter).toEqual({})
+  })
+
+  it("reports the query string so links can preserve it", async () => {
+    const { adminUsersLoader } = createLoader()
+
+    const data = await adminUsersLoader({
+      request: usersRequest("?tab=pending&filter.approvalStatus=PENDING"),
+    })
+
+    expect(data.searchParams).toContain("tab=pending")
+    expect(data.searchParams).toContain("filter.approvalStatus=PENDING")
+  })
+})

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { AuthUser, Identity } from "@activescott/auth"
 import type { AdminUserRow } from "@activescott/auth/admin"
 
@@ -84,6 +85,14 @@ export interface AdminMetadataColumn {
   render?: "text" | "badge" | "code" | "boolean" | "date" | "link"
   /** Destination for `render: "link"` */
   href?: (value: unknown, row: AdminUserRow) => string
+  /**
+   * Render the cell yourself, for anything the `render` shorthands do not
+   * cover. Takes precedence over `render` when both are set.
+   *
+   * Presentation only — the library still never writes. Put a form here and
+   * the mutation is your route's action, not ours.
+   */
+  renderCell?: (value: unknown, row: AdminUserRow) => ReactNode
 }
 
 /**

@@ -41,6 +41,17 @@ export interface AdminUsersPageProps extends AdminPresentationProps {
   metadataColumns?: AdminMetadataColumn[]
   /** Built-in columns to show; all are on by default */
   showColumns?: AdminShowColumns
+  /**
+   * Render a trailing actions column. Supply it and each row gets your
+   * content — typically a `<Form method="post">` posting to your own route's
+   * action.
+   *
+   * This is presentation only: the page stays read-only, and the mutation is
+   * your action, your validation, your audit trail. The library never writes.
+   */
+  rowActions?: (row: AdminUserRow) => ReactNode
+  /** Heading for the `rowActions` column (default "Actions") */
+  rowActionsLabel?: string
   /** Page heading (default "Users") */
   title?: string
 }
@@ -59,6 +70,8 @@ export function AdminUsersPage({
   data,
   metadataColumns = [],
   showColumns,
+  rowActions,
+  rowActionsLabel = "Actions",
   title = "Users",
   classNames,
   includeDefaultStyles = true,
@@ -147,6 +160,14 @@ export function AdminUsersPage({
                     linkComponent={linkComponent}
                   />
                 ) : null}
+                {rowActions ? (
+                  <Header
+                    label={rowActionsLabel}
+                    data={data}
+                    ui={ui}
+                    linkComponent={linkComponent}
+                  />
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -196,6 +217,7 @@ export function AdminUsersPage({
                       </code>
                     </Cell>
                   ) : null}
+                  {rowActions ? <Cell ui={ui}>{rowActions(user)}</Cell> : null}
                 </tr>
               ))}
             </tbody>
@@ -301,6 +323,17 @@ function Header({
 }
 
 /**
+ * Both link builders start from the request's own query string and change only
+ * what they own, so anything else the application put there — status tabs, a
+ * `filter.*` key, a return path — survives the click. Rebuilding the query
+ * from scratch would drop those silently, which is the kind of bug that only
+ * shows up after someone adds a tab.
+ */
+function linkParams(data: AdminUsersLoaderData): URLSearchParams {
+  return new URLSearchParams(data.searchParams)
+}
+
+/**
  * Sorting returns to page 1: the row that was on page 3 under the old order is
  * almost never on page 3 under the new one, so keeping the page number would
  * land the reader somewhere arbitrary.
@@ -310,18 +343,16 @@ function sortHref(
   sortBy: string,
   sortOrder: "asc" | "desc",
 ): string {
-  const params = new URLSearchParams({ sortBy, sortOrder })
-  params.set("limit", String(data.pagination.limit))
+  const params = linkParams(data)
+  params.set("sortBy", sortBy)
+  params.set("sortOrder", sortOrder)
+  params.delete("page")
   return `${data.basePath}/users?${params.toString()}`
 }
 
 function pageHref(data: AdminUsersLoaderData, page: number): string {
-  const params = new URLSearchParams({
-    page: String(page),
-    limit: String(data.pagination.limit),
-  })
-  if (data.sort.sortBy) params.set("sortBy", data.sort.sortBy)
-  params.set("sortOrder", data.sort.sortOrder)
+  const params = linkParams(data)
+  params.set("page", String(page))
   return `${data.basePath}/users?${params.toString()}`
 }
 
@@ -454,6 +485,10 @@ function MetadataCell({
   linkComponent,
 }: MetadataCellProps): ReactNode {
   const value = row.metadata[column.key]
+
+  // The application's own renderer wins: it was given the value and the row,
+  // and anything it returns is more specific than a shorthand.
+  if (column.renderCell) return column.renderCell(value, row)
 
   if (column.render === "date") {
     return (

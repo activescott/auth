@@ -26,6 +26,15 @@ export interface AdminUsersLoaderData {
     sortBy?: string
     sortOrder: "asc" | "desc"
   }
+  /** Active filter, parsed from `?filter.<key>=` and passed to the store */
+  filter: Record<string, string>
+  /**
+   * The request's query string, so sort and pagination links can be built by
+   * changing only what they own and carrying everything else through. Without
+   * it, the first sort click would silently drop an application's own
+   * parameters — its status tabs, say.
+   */
+  searchParams: string
   basePath: string
 }
 
@@ -42,6 +51,13 @@ export interface AdminHandlers<TUser = AuthUser> {
   /**
    * Throw-or-return gate for admin routes. Throws a redirect to the login page
    * when signed out and the configured forbidden response otherwise.
+   *
+   * The allowlist check reads the session through `Auth.verifySession`, which
+   * caches for two minutes — so removing someone from the allowlist, or
+   * deleting the identity that matched it, can take that long to shut them
+   * out. Anything needing immediate revocation should enforce it in the
+   * `requireAuth` you pass in, which runs first and is yours to make
+   * uncached.
    */
   requireAdmin: (request: Request) => Promise<TUser>
   adminUsersLoader: (context: {
@@ -126,17 +142,24 @@ export function createAdminHandlers<TUser = AuthUser>(
         defaultSort?.sortOrder,
       )
 
+      const filter = readFilter(url.searchParams)
+
       const { users, total } = await adminData.listUsers({
         limit,
         offset: (page - 1) * limit,
         sortBy: sortBy ?? undefined,
         sortOrder,
+        // Omitted rather than passed as an empty object, so a store can treat
+        // "no filter" as `filter === undefined`
+        ...(Object.keys(filter).length > 0 ? { filter } : {}),
       })
 
       return {
         users,
         pagination: { page, limit, total },
         sort: { sortBy: sortBy ?? undefined, sortOrder },
+        filter,
+        searchParams: url.searchParams.toString(),
         basePath,
       }
     },
@@ -178,4 +201,24 @@ function readSortOrder(
 ): "asc" | "desc" {
   if (value === "asc" || value === "desc") return value
   return fallback ?? "desc"
+}
+
+/** Prefix marking a query parameter as filter criteria for the store */
+const FILTER_PREFIX = "filter."
+
+/**
+ * Collect `?filter.<key>=<value>` parameters into the object handed to
+ * `listUsers`. The prefix keeps application filter keys from colliding with
+ * `page`, `limit`, `sortBy`, and `sortOrder`, and means no key has to be
+ * registered anywhere — which key names mean anything is the store's business,
+ * exactly as it is for `sortBy`.
+ */
+function readFilter(searchParams: URLSearchParams): Record<string, string> {
+  const filter: Record<string, string> = {}
+  for (const [key, value] of searchParams) {
+    if (!key.startsWith(FILTER_PREFIX)) continue
+    const name = key.slice(FILTER_PREFIX.length)
+    if (name.length > 0) filter[name] = value
+  }
+  return filter
 }
