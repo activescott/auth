@@ -626,3 +626,48 @@ describe("SmsProvider with a VerificationTransport", () => {
     expect(result.success).toBe(false)
   })
 })
+
+describe("describe", () => {
+  it("reports the message settings when sending the code itself", () => {
+    const settings = createProvider({ webOtpDomain: "example.com" }).describe()
+      .settings
+
+    expect(settings.transportKind).toBe("message sending")
+    expect(settings.appName).toBe("Test App")
+    expect(settings.expiry).toBe("10m")
+    expect(settings["otp.length"]).toBe(6)
+    expect(settings["otp.maxAttempts"]).toBe(OTP_MAX_ATTEMPTS)
+    expect(settings.webOtpDomain).toBe("example.com")
+    expect(settings.customMessageTemplate).toBe(false)
+  })
+
+  it("nulls the message settings under a hosted verification transport, which owns the message", () => {
+    const provider = new SmsProvider(
+      { appName: "Test App", webOtpDomain: "example.com" },
+      {
+        startVerification: vi.fn(),
+        checkVerification: vi.fn(),
+      },
+    )
+
+    const settings = provider.describe().settings
+
+    expect(settings.transportKind).toBe("hosted verification")
+    expect(settings.appName).toBeNull()
+    expect(settings["otp.length"]).toBeNull()
+    expect(settings.webOtpDomain).toBeNull()
+    // still ours to enforce, so still reported
+    expect(settings.expiry).toBe("10m")
+    expect(settings["otp.maxAttempts"]).toBe(5)
+  })
+
+  it("names the transport class without exposing the transport itself", () => {
+    const settings = createProvider().describe().settings
+
+    expect(typeof settings.transport).toBe("string")
+    for (const value of Object.values(settings)) {
+      if (value === null) continue
+      expect(typeof value).not.toBe("object")
+    }
+  })
+})

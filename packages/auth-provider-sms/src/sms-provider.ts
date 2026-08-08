@@ -5,6 +5,7 @@ import type {
   AuthInitResult,
   ChallengeStore,
   OtpChallengeResult,
+  ProviderDescription,
   ProviderRoute,
 } from "@activescott/auth"
 import {
@@ -263,6 +264,41 @@ export class SmsProvider implements AuthProvider {
       { method: "POST", path: "/sms/initiate", handler: "initiate" },
       { method: "POST", path: "/sms/verify", handler: "verify" },
     ]
+  }
+
+  /**
+   * Non-secret settings for the admin dashboard, with defaults resolved.
+   *
+   * Vendor credentials live in the transport, not in this config, so there is
+   * nothing here to redact — but only the transport's class name is reported,
+   * never the transport object, because that is where account SIDs and auth
+   * tokens are held.
+   *
+   * The message-composition settings are reported as null under a hosted
+   * verification transport: the vendor owns the code and the message text
+   * there, so showing configured values would misrepresent what is in effect.
+   */
+  public describe(): ProviderDescription {
+    const hosted = isVerificationTransport(this.transport)
+    return {
+      settings: {
+        transport: this.transport.constructor.name,
+        transportKind: hosted ? "hosted verification" : "message sending",
+        expiry: this.config.expiry ?? DEFAULT_EXPIRY,
+        "otp.maxAttempts":
+          this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
+        "otp.cookieName":
+          this.config.otp?.cookieName ?? DEFAULT_OTP_COOKIE_NAME,
+        appName: hosted ? null : (this.config.appName ?? DEFAULT_APP_NAME),
+        "otp.length": hosted
+          ? null
+          : (this.config.otp?.length ?? DEFAULT_OTP_LENGTH),
+        webOtpDomain: hosted ? null : (this.config.webOtpDomain ?? null),
+        customMessageTemplate: hosted
+          ? null
+          : this.config.messageTemplate !== undefined,
+      },
+    }
   }
 
   /**
