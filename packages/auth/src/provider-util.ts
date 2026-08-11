@@ -215,7 +215,7 @@ export async function authenticateWithIdentifier(
       userId: user.id,
       provider: providerId,
       identifier,
-      metadata: {},
+      providerState: {},
     })
   }
 
@@ -300,7 +300,7 @@ export async function completeLinkVerification(
       userId: session.user.id,
       provider: providerId,
       identifier,
-      metadata: {},
+      providerState: {},
     })
     const identity = await context.identityStore.update(created.id, {
       verifiedAt: new Date(),

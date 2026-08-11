@@ -36,7 +36,7 @@ function createMockIdentity(overrides: Partial<Identity> = {}): Identity {
     userId: "user-1",
     provider: "email",
     identifier: "user@example.com",
-    metadata: {},
+    providerState: {},
     createdAt: new Date(),
     ...overrides,
   }
@@ -45,8 +45,9 @@ function createMockIdentity(overrides: Partial<Identity> = {}): Identity {
 function createMockProvider(
   overrides: Partial<AuthProvider> = {},
 ): AuthProvider {
+  const id = overrides.id ?? "email"
   return {
-    id: "email",
+    id,
     name: "Email",
     initiate: vi.fn().mockResolvedValue({ success: true, message: "Sent" }),
     verify: vi.fn().mockResolvedValue({
@@ -54,10 +55,12 @@ function createMockProvider(
       user: { id: "user-1" },
       identity: createMockIdentity(),
     }),
-    canHandle: vi.fn((request: Request) =>
-      new URL(request.url).pathname.startsWith("/auth/email"),
-    ),
-    getRoutes: vi.fn().mockReturnValue([]),
+    getRoutes: vi.fn().mockReturnValue([
+      { method: "POST", path: `/${id}/initiate`, handler: "initiate" },
+      { method: "GET", path: `/${id}/verify`, handler: "verify" },
+      { method: "POST", path: `/${id}/verify`, handler: "verify" },
+      { method: "POST", path: `/${id}/register-options`, handler: "action" },
+    ]),
     describe: vi.fn().mockReturnValue({ settings: {} }),
     ...overrides,
   }
@@ -73,10 +76,13 @@ function createMockStores(): {
       findByUserId: vi.fn().mockResolvedValue([createMockIdentity()]),
       create: vi.fn().mockResolvedValue(createMockIdentity()),
       update: vi.fn().mockResolvedValue(createMockIdentity()),
+      delete: vi.fn(),
+      reassignByUserId: vi.fn(),
     },
     userStore: {
       findById: vi.fn().mockResolvedValue({ id: "user-1" }),
       create: vi.fn().mockResolvedValue({ id: "user-1" }),
+      onMerge: vi.fn(),
     },
   }
 }
@@ -139,26 +145,34 @@ describe("Auth", () => {
       expect(response.status).toBe(200)
     })
 
-    it("should route send action to provider initiate", async () => {
+    it("should not serve action names outside the declared route table", async () => {
       const provider = createMockProvider()
       auth = new Auth(createAuthConfig({ providers: [provider] }))
 
-      const request = new Request(`${TEST_BASE_URL}/auth/email/send`, {
-        method: "POST",
-      })
-      await auth.handleRequest(request)
+      // "send" and "callback" were pre-v5 aliases; no longer declared routes
+      const send = await auth.handleRequest(
+        new Request(`${TEST_BASE_URL}/auth/email/send`, { method: "POST" }),
+      )
+      const callback = await auth.handleRequest(
+        new Request(`${TEST_BASE_URL}/auth/email/callback`),
+      )
 
-      expect(provider.initiate).toHaveBeenCalledTimes(1)
+      expect(send.status).toBe(404)
+      expect(callback.status).toBe(404)
+      expect(provider.initiate).not.toHaveBeenCalled()
+      expect(provider.verify).not.toHaveBeenCalled()
     })
 
-    it("should route callback action to provider verify", async () => {
+    it("should answer 405 when only the method differs from the declared route", async () => {
       const provider = createMockProvider()
       auth = new Auth(createAuthConfig({ providers: [provider] }))
 
-      const request = new Request(`${TEST_BASE_URL}/auth/email/callback`)
-      await auth.handleRequest(request)
+      const response = await auth.handleRequest(
+        new Request(`${TEST_BASE_URL}/auth/email/initiate`),
+      )
 
-      expect(provider.verify).toHaveBeenCalledTimes(1)
+      expect(response.status).toBe(405)
+      expect(provider.initiate).not.toHaveBeenCalled()
     })
 
     it("should return 404 for unknown provider", async () => {
@@ -188,7 +202,7 @@ describe("Auth", () => {
       expect(response.status).toBe(404)
     })
 
-    it("should dispatch unknown actions to provider handleAction", async () => {
+    it("should dispatch declared action routes to provider handleAction", async () => {
       const actionResponse = new Response(JSON.stringify({ ok: true }), {
         headers: { "Content-Type": "application/json" },
       })
@@ -233,9 +247,12 @@ describe("Auth", () => {
       })
       auth = new Auth(createAuthConfig({ providers: [provider] }))
 
-      const request = new Request(`${TEST_BASE_URL}/auth/email/unknown`, {
-        method: "POST",
-      })
+      const request = new Request(
+        `${TEST_BASE_URL}/auth/email/register-options`,
+        {
+          method: "POST",
+        },
+      )
       const response = await auth.handleRequest(request)
 
       expect(response.status).toBe(500)
@@ -452,18 +469,6 @@ describe("Auth", () => {
       auth = new Auth(createAuthConfig())
       expect(auth.getProviders()).toHaveLength(1)
     })
-
-    it("should find provider by request", () => {
-      auth = new Auth(createAuthConfig())
-      const request = new Request(`${TEST_BASE_URL}/auth/email/verify`)
-      expect(auth.findProvider(request)).toBeDefined()
-    })
-
-    it("should return undefined for unmatched request", () => {
-      auth = new Auth(createAuthConfig())
-      const request = new Request(`${TEST_BASE_URL}/other/path`)
-      expect(auth.findProvider(request)).toBeUndefined()
-    })
   })
 
   describe("session cookies", () => {
@@ -529,16 +534,6 @@ describe("Auth", () => {
       expect(result.intoUserId).toBe("user-a")
       expect(result.movedIdentities).toHaveLength(1)
       expect(result.movedIdentities[0]?.id).toBe("identity-b")
-    })
-
-    it("should report a configuration error without reassignByUserId", async () => {
-      const stores = createMergeStores()
-      delete stores.identityStore.reassignByUserId
-      auth = new Auth(createAuthConfig(stores))
-
-      await expect(auth.mergeUsers("user-b", "user-a")).rejects.toMatchObject({
-        code: "CONFIGURATION_ERROR",
-      })
     })
 
     it("should reject merging a user into itself", async () => {

@@ -5,6 +5,7 @@ import type {
   AuthError,
   AuthInitResult,
   AuthProvider,
+  AuthResponders,
   AuthResult,
   AuthUser,
   ChallengeStore,
@@ -163,23 +164,22 @@ export class Auth {
   }
 
   /**
-   * Find provider that can handle the request
+   * Handle an authentication request. URL format: /auth/{provider}/{action}.
+   *
+   * Dispatch is driven by the provider's declared route table
+   * (`getRoutes()`): the route's `handler` decides whether the abuse guard
+   * runs (initiate), the verify path is taken, or `handleAction` is called.
+   * A method+path with no declared route is 404 (405 when only the method
+   * differs). The core-owned `link-merge` action (account merging) is served
+   * for every provider.
+   *
+   * `responders` lets the caller (typically a framework adapter) turn
+   * verify outcomes into its own responses — see {@link AuthResponders}.
    */
-  public findProvider(request: Request): AuthProvider | undefined {
-    for (const provider of this.providers.values()) {
-      if (provider.canHandle(request)) {
-        return provider
-      }
-    }
-    return undefined
-  }
-
-  /**
-   * Handle an authentication request.
-   * Routes to appropriate provider based on URL pattern.
-   * URL format: /auth/{provider}/{action}
-   */
-  public async handleRequest(request: Request): Promise<Response> {
+  public async handleRequest(
+    request: Request,
+    responders?: AuthResponders,
+  ): Promise<Response> {
     const url = new URL(request.url)
     const path = url.pathname
 
@@ -206,34 +206,50 @@ export class Auth {
     const context = this.createContext(request)
 
     try {
-      if (action === "initiate" || action === "send") {
-        const decision = await this.abuseGuard.checkInitiate(
-          request,
-          providerId,
-        )
-        if (!decision.allowed) {
-          return this.blockedInitiateResponse(request, provider, decision)
-        }
-        const result = await provider.initiate(request, context)
-        if (result instanceof Response) return result
-        return this.initResultToResponse(result)
-      }
-
-      if (action === "verify" || action === "callback") {
-        const result = await provider.verify(request, context)
-        if (result instanceof Response) return result
-        return this.authResultToResponse(result)
-      }
-
       if (action === "link-merge") {
         return await this.handleLinkMerge(request, providerId)
       }
 
-      if (provider.handleAction) {
-        return await provider.handleAction(action, request, context)
+      const routePath = `/${providerId}/${action}`
+      const routes = provider.getRoutes()
+      const route = routes.find(
+        (candidate) =>
+          candidate.path === routePath && candidate.method === request.method,
+      )
+      if (!route) {
+        const pathDeclared = routes.some(
+          (candidate) => candidate.path === routePath,
+        )
+        return pathDeclared
+          ? new Response("Method Not Allowed", { status: 405 })
+          : new Response("Not Found", { status: 404 })
       }
 
-      return new Response("Unknown action", { status: 404 })
+      switch (route.handler) {
+        case "initiate": {
+          const decision = await this.abuseGuard.checkInitiate(
+            request,
+            providerId,
+          )
+          if (!decision.allowed) {
+            return this.blockedInitiateResponse(request, provider, decision)
+          }
+          const result = await provider.initiate(request, context)
+          if (result instanceof Response) return result
+          return this.initResultToResponse(result)
+        }
+        case "verify": {
+          const result = await provider.verify(request, context)
+          if (result instanceof Response) return result
+          return await this.authResultToResponse(result, request, responders)
+        }
+        case "action": {
+          if (!provider.handleAction) {
+            return new Response("Not Found", { status: 404 })
+          }
+          return await provider.handleAction(action, request, context)
+        }
+      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error(`Auth error in ${providerId}/${action}:`, error)
@@ -319,12 +335,6 @@ export class Auth {
   ): Promise<MergeResult> {
     const { identityStore, userStore } = this.config
 
-    if (typeof identityStore.reassignByUserId !== "function") {
-      throw new AuthenticationError(
-        "CONFIGURATION_ERROR",
-        "Account merging requires IdentityStore.reassignByUserId",
-      )
-    }
     if (fromUserId === intoUserId) {
       throw new AuthenticationError(
         "IDENTITY_CONFLICT",
@@ -346,7 +356,7 @@ export class Auth {
 
     const movedIdentities = await identityStore.findByUserId(fromUserId)
     await identityStore.reassignByUserId(fromUserId, intoUserId)
-    await userStore.onMerge?.(fromUser, intoUser)
+    await userStore.onMerge(fromUser, intoUser)
 
     return { fromUserId, intoUserId, movedIdentities }
   }
@@ -434,7 +444,6 @@ export class Auth {
         capabilities: {
           listUsers: typeof userStore.listUsers === "function",
           findByUserIds: typeof identityStore.findByUserIds === "function",
-          deleteIdentity: typeof identityStore.delete === "function",
         },
       },
     }
@@ -650,12 +659,19 @@ export class Auth {
   }
 
   /**
-   * Convert auth result to Response
+   * Convert a verify outcome to a Response, preferring the caller's
+   * responders (a framework adapter creating a session cookie and redirect)
+   * over the default JSON.
    */
-  private authResultToResponse(result: AuthResult): Response {
+  private async authResultToResponse(
+    result: AuthResult,
+    request: Request,
+    responders?: AuthResponders,
+  ): Promise<Response> {
     if (result.success) {
-      // For successful auth, the provider should have already handled
-      // creating the session and redirect. This is a fallback.
+      if (responders?.onSuccess) {
+        return responders.onSuccess(result, request)
+      }
       const headers = new Headers({ "Content-Type": "application/json" })
       for (const cookie of result.setCookies ?? []) {
         headers.append("Set-Cookie", cookie)
@@ -670,6 +686,9 @@ export class Auth {
           headers,
         },
       )
+    }
+    if (responders?.onFailure) {
+      return responders.onFailure(result, request)
     }
     return this.errorToResponse(result.error, result.setCookies)
   }

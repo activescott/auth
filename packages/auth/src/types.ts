@@ -38,9 +38,10 @@ export interface Identity {
    * Opaque to the application: stores must persist and return it
    * unmodified (a JSON/JSONB column works). May contain sensitive
    * material; protect it accordingly (encryption at rest is a
-   * reasonable default).
+   * reasonable default). Unlike `AuthUser.metadata` (an app-facing
+   * grab-bag), this belongs to the provider — never render or edit it.
    */
-  metadata: Record<string, unknown>
+  providerState: Record<string, unknown>
   /** When this identity was created */
   createdAt: Date
   /** When this identity was last verified */
@@ -151,24 +152,24 @@ export interface IdentityStore {
     userId: string
     provider: string
     identifier: string
-    metadata: Record<string, unknown>
+    providerState: Record<string, unknown>
   }): Promise<Identity>
 
   /**
-   * Update an identity's provider-owned metadata and/or verifiedAt.
-   * A provided metadata value replaces the stored one wholesale.
+   * Update an identity's provider-owned state and/or verifiedAt.
+   * A provided providerState value replaces the stored one wholesale.
    * Required: providers depend on it — e.g., the passkey provider
    * writes the signature counter here on every sign-in.
    */
   update(
     id: string,
-    data: Partial<Pick<Identity, "metadata" | "verifiedAt">>,
+    data: Partial<Pick<Identity, "providerState" | "verifiedAt">>,
   ): Promise<Identity>
 
   /**
    * Delete an identity
    */
-  delete?(id: string): Promise<void>
+  delete(id: string): Promise<void>
 
   /**
    * Find all identities for several users in one round trip.
@@ -181,8 +182,7 @@ export interface IdentityStore {
   /**
    * Reassign every identity of `fromUserId` to `toUserId` — bulk, and atomic
    * where the backing store allows (SQL: one UPDATE ... WHERE user_id = ...).
-   * Optional: only account merging needs it; `Auth.mergeUsers` reports a
-   * configuration error when it is missing.
+   * Account merging (`Auth.mergeUsers`) depends on it.
    *
    * This is the first write `Auth.mergeUsers` performs, so throwing here
    * vetoes the merge with nothing changed. Applications whose per-user data
@@ -191,7 +191,7 @@ export interface IdentityStore {
    * data, delete the absorbed user row — and leave `UserStore.onMerge` as a
    * notification. See the account-merge docs in the README.
    */
-  reassignByUserId?(fromUserId: string, toUserId: string): Promise<void>
+  reassignByUserId(fromUserId: string, toUserId: string): Promise<void>
 }
 
 /**
@@ -281,6 +281,10 @@ export interface UserStore {
    * Deleting `fromUser` also ends its outstanding sessions: session
    * verification re-checks `findById` on each request.
    *
+   * Required so every store decides explicitly what happens to the absorbed
+   * user; an empty implementation is a valid decision, silent orphaning by
+   * omission is not.
+   *
    * NOT atomic with the reassignment: a throw here surfaces as a 500 with
    * the identities already moved, so keep this idempotent and safe to
    * re-run. Applications that need the whole merge to be all-or-nothing
@@ -288,7 +292,7 @@ export interface UserStore {
    * transaction, which also vetoes cleanly by throwing before any write)
    * and use this hook only for logging/notification.
    */
-  onMerge?(fromUser: AuthUser, intoUser: AuthUser): Promise<void>
+  onMerge(fromUser: AuthUser, intoUser: AuthUser): Promise<void>
 
   /**
    * Called when identity linking attaches a newly verified identifier to
@@ -298,6 +302,23 @@ export interface UserStore {
    * email column when a phone-first user links an email address.
    */
   onIdentityLinked?(user: AuthUser, identity: Identity): Promise<void>
+}
+
+/**
+ * Optional hooks for {@link Auth.handleRequest} that turn a verify outcome
+ * into the caller's HTTP response — e.g., a framework adapter creates the
+ * session cookie and redirects. They apply only to routes declared
+ * `handler: "verify"` whose provider returned an AuthResult; providers that
+ * answer with a Response directly (confirm pages, passkey JSON) bypass them,
+ * as do initiate results. When a hook is absent the default JSON response is
+ * used.
+ */
+export interface AuthResponders {
+  /** Turn a successful verify into the response (session cookie, redirect) */
+  onSuccess?: (result: AuthSuccess, request: Request) => Promise<Response>
+  /** Turn a failed verify into the response. Include `failure.setCookies`
+   * (e.g. the IDENTITY_CONFLICT merge ticket) in what you return. */
+  onFailure?: (failure: AuthFailure, request: Request) => Promise<Response>
 }
 
 /**
@@ -471,7 +492,6 @@ export interface StoresDescription {
     listUsers: boolean
     /** Without this the dashboard falls back to one query per user */
     findByUserIds: boolean
-    deleteIdentity: boolean
   }
 }
 
@@ -516,15 +536,23 @@ export interface AuthContext {
 }
 
 /**
- * Route definition for a provider
+ * Route definition for a provider. `Auth.handleRequest` dispatches strictly
+ * from this table: a request whose method+path matches no declared route is
+ * a 404 (405 when only the method differs).
  */
 export interface ProviderRoute {
   /** HTTP method */
   method: "GET" | "POST"
   /** Path pattern (relative to auth base path) */
   path: string
-  /** Handler type */
-  handler: "initiate" | "verify"
+  /**
+   * Which provider entry point serves the route. "initiate" runs the abuse
+   * guard first and calls `initiate`; "verify" calls `verify`; "action"
+   * calls `handleAction` with the path's action segment (no abuse guard —
+   * declare "initiate" for anything that sends a message to a
+   * user-controlled address).
+   */
+  handler: "initiate" | "verify" | "action"
 }
 
 /**
@@ -587,8 +615,8 @@ export interface AuthProvider {
   /**
    * Handle a provider-specific action beyond initiate/verify — e.g., the
    * passkey provider's register-options, register-verify,
-   * authenticate-options, authenticate-verify. `Auth.handleRequest`
-   * dispatches actions it does not recognize here before returning 404.
+   * authenticate-options, authenticate-verify. `Auth.handleRequest` calls
+   * this for routes declared with `handler: "action"`.
    */
   handleAction?(
     action: string,
@@ -597,13 +625,8 @@ export interface AuthProvider {
   ): Promise<Response>
 
   /**
-   * Check if this provider can handle the given request.
-   * Used for automatic provider routing.
-   */
-  canHandle(request: Request): boolean
-
-  /**
-   * Get the routes this provider needs registered.
+   * The routes this provider serves. `Auth.handleRequest` dispatches from
+   * this table alone, so a path/method not declared here is unreachable.
    */
   getRoutes(): ProviderRoute[]
 

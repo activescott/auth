@@ -9,6 +9,7 @@ export type {
   AuthInitResult,
   AuthError,
   AuthErrorCode,
+  AuthResponders,
   IdentityStore,
   UserStore,
   ListUsersOptions,
