@@ -8,6 +8,8 @@ import {
   readCookie,
   parseDuration,
   authenticateWithIdentifier,
+  completeLinkVerification,
+  linkUserIdFromChallenge,
 } from "../provider-util.js"
 import type { AuthContext, Identity } from "../types.js"
 import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
@@ -238,5 +240,209 @@ describe("authenticateWithIdentifier", () => {
     expect(result.success).toBe(false)
     if (result.success) return
     expect(result.error.code).toBe("USER_NOT_FOUND")
+  })
+})
+
+describe("linkUserIdFromChallenge", () => {
+  it("should return the stamped user id", () => {
+    expect(linkUserIdFromChallenge({ data: { linkUserId: "user-1" } })).toBe(
+      "user-1",
+    )
+  })
+
+  it("should return undefined for sign-in challenges", () => {
+    expect(linkUserIdFromChallenge({ data: undefined })).toBeUndefined()
+    expect(linkUserIdFromChallenge({ data: {} })).toBeUndefined()
+    expect(
+      linkUserIdFromChallenge({ data: { linkUserId: 42 } }),
+    ).toBeUndefined()
+  })
+})
+
+describe("completeLinkVerification", () => {
+  const LINK_REQUEST = new Request("https://example.com/auth/sms/verify", {
+    method: "POST",
+  })
+
+  function createLinkContext(
+    overrides: Partial<AuthContext> = {},
+  ): AuthContext {
+    return createMockContext({
+      getSession: vi.fn().mockResolvedValue({
+        user: { id: "user-1" },
+        identity: createMockIdentity(),
+      }),
+      ...overrides,
+    })
+  }
+
+  it("should report a configuration error without getSession", async () => {
+    const context = createLinkContext({ getSession: undefined })
+
+    const result = await completeLinkVerification(
+      "sms",
+      "+14155550100",
+      "user-1",
+      LINK_REQUEST,
+      context,
+    )
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("CONFIGURATION_ERROR")
+  })
+
+  it("should fail without a session", async () => {
+    const context = createLinkContext({
+      getSession: vi.fn().mockResolvedValue(null),
+    })
+
+    const result = await completeLinkVerification(
+      "sms",
+      "+14155550100",
+      "user-1",
+      LINK_REQUEST,
+      context,
+    )
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("SESSION_INVALID")
+  })
+
+  it("should fail when the session user differs from the challenge's", async () => {
+    const context = createLinkContext({
+      getSession: vi.fn().mockResolvedValue({
+        user: { id: "user-2" },
+        identity: createMockIdentity({ userId: "user-2" }),
+      }),
+    })
+
+    const result = await completeLinkVerification(
+      "sms",
+      "+14155550100",
+      "user-1",
+      LINK_REQUEST,
+      context,
+    )
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("SESSION_INVALID")
+  })
+
+  it("should create the identity for the session user when the identifier is new", async () => {
+    const linked = createMockIdentity({
+      id: "identity-2",
+      provider: "sms",
+      identifier: "+14155550100",
+      verifiedAt: new Date(),
+    })
+    const context = createLinkContext({
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue(linked),
+        update: vi.fn().mockResolvedValue(linked),
+      },
+    })
+
+    const result = await completeLinkVerification(
+      "sms",
+      "+14155550100",
+      "user-1",
+      LINK_REQUEST,
+      context,
+    )
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.user.id).toBe("user-1")
+    expect(result.identity.id).toBe("identity-2")
+    expect(context.identityStore.create).toHaveBeenCalledWith({
+      userId: "user-1",
+      provider: "sms",
+      identifier: "+14155550100",
+      metadata: {},
+    })
+    // No user was created or resolved from the identifier
+    expect(context.userStore.create).not.toHaveBeenCalled()
+  })
+
+  it("should be idempotent when the identifier is already on the session user", async () => {
+    const existing = createMockIdentity({
+      provider: "sms",
+      identifier: "+14155550100",
+    })
+    const context = createLinkContext({
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(existing),
+        findByUserId: vi.fn().mockResolvedValue([existing]),
+        create: vi.fn(),
+        update: vi.fn().mockResolvedValue(existing),
+      },
+    })
+
+    const result = await completeLinkVerification(
+      "sms",
+      "+14155550100",
+      "user-1",
+      LINK_REQUEST,
+      context,
+    )
+
+    expect(result.success).toBe(true)
+    expect(context.identityStore.create).not.toHaveBeenCalled()
+    expect(context.identityStore.update).toHaveBeenCalledWith(
+      "identity-1",
+      expect.objectContaining({ verifiedAt: expect.any(Date) }),
+    )
+  })
+
+  it("should mint a merge ticket when the identifier belongs to another user", async () => {
+    const otherUsers = createMockIdentity({
+      id: "identity-9",
+      userId: "user-9",
+      provider: "sms",
+      identifier: "+14155550100",
+    })
+    const challengeStore = new InMemoryChallengeStore()
+    const context = createLinkContext({
+      challengeStore,
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(otherUsers),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn(),
+        update: vi.fn(),
+      },
+    })
+
+    const result = await completeLinkVerification(
+      "sms",
+      "+14155550100",
+      "user-1",
+      LINK_REQUEST,
+      context,
+    )
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("IDENTITY_CONFLICT")
+    expect(context.identityStore.create).not.toHaveBeenCalled()
+
+    const cookie = result.setCookies?.find((value) =>
+      value.startsWith("auth_merge_ticket="),
+    )
+    expect(cookie).toBeDefined()
+    expect(cookie).toContain("HttpOnly")
+
+    const ticketId = cookie?.split(";")[0]?.split("=")[1] ?? ""
+    const ticket = await challengeStore.findById(ticketId)
+    expect(ticket?.type).toBe("account-merge")
+    expect(ticket?.data).toEqual({
+      fromUserId: "user-9",
+      intoUserId: "user-1",
+      provider: "sms",
+    })
   })
 })

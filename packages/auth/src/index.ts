@@ -25,6 +25,7 @@ export type {
   AuthConfigDescription,
   Challenge,
   ChallengeStore,
+  MergeResult,
 } from "./types.js"
 export { REDACTED } from "./types.js"
 
@@ -86,7 +87,11 @@ export {
   readCookie,
   parseDuration,
   authenticateWithIdentifier,
+  completeLinkVerification,
+  linkUserIdFromChallenge,
   initiateAccepted,
+  MERGE_TICKET_COOKIE_NAME,
+  MERGE_TICKET_TYPE,
 } from "./provider-util.js"
 
 // Errors

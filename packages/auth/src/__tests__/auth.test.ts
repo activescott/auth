@@ -3,6 +3,7 @@ import { SignJWT } from "jose"
 import { Auth } from "../auth.js"
 import { createFormToken } from "../abuse/bot-check.js"
 import { SessionManager } from "../session/session-manager.js"
+import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
 import type {
   AuthConfig,
   AuthProvider,
@@ -478,6 +479,264 @@ describe("Auth", () => {
 
       const destroyCookie = auth.destroySessionCookie()
       expect(destroyCookie).toContain("Max-Age=0")
+    })
+  })
+
+  describe("mergeUsers", () => {
+    function createMergeStores(): {
+      identityStore: IdentityStore
+      userStore: UserStore
+    } {
+      return {
+        identityStore: {
+          findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+          findByUserId: vi
+            .fn()
+            .mockResolvedValue([
+              createMockIdentity({ id: "identity-b", userId: "user-b" }),
+            ]),
+          create: vi.fn(),
+          update: vi.fn(),
+          reassignByUserId: vi.fn().mockResolvedValue(undefined),
+        },
+        userStore: {
+          findById: vi
+            .fn()
+            .mockImplementation(async (id: string) =>
+              id === "user-a" || id === "user-b" ? { id } : null,
+            ),
+          create: vi.fn(),
+          onMerge: vi.fn().mockResolvedValue(undefined),
+        },
+      }
+    }
+
+    it("should reassign identities, call onMerge, and report what moved", async () => {
+      const stores = createMergeStores()
+      auth = new Auth(createAuthConfig(stores))
+
+      const result = await auth.mergeUsers("user-b", "user-a")
+
+      expect(stores.identityStore.reassignByUserId).toHaveBeenCalledWith(
+        "user-b",
+        "user-a",
+      )
+      expect(stores.userStore.onMerge).toHaveBeenCalledWith(
+        { id: "user-b" },
+        { id: "user-a" },
+      )
+      expect(result.fromUserId).toBe("user-b")
+      expect(result.intoUserId).toBe("user-a")
+      expect(result.movedIdentities).toHaveLength(1)
+      expect(result.movedIdentities[0]?.id).toBe("identity-b")
+    })
+
+    it("should report a configuration error without reassignByUserId", async () => {
+      const stores = createMergeStores()
+      delete stores.identityStore.reassignByUserId
+      auth = new Auth(createAuthConfig(stores))
+
+      await expect(auth.mergeUsers("user-b", "user-a")).rejects.toMatchObject({
+        code: "CONFIGURATION_ERROR",
+      })
+    })
+
+    it("should reject merging a user into itself", async () => {
+      auth = new Auth(createAuthConfig(createMergeStores()))
+
+      await expect(auth.mergeUsers("user-a", "user-a")).rejects.toMatchObject({
+        code: "IDENTITY_CONFLICT",
+      })
+    })
+
+    it("should reject when either user is missing", async () => {
+      auth = new Auth(createAuthConfig(createMergeStores()))
+
+      await expect(
+        auth.mergeUsers("user-missing", "user-a"),
+      ).rejects.toMatchObject({ code: "USER_NOT_FOUND" })
+    })
+  })
+
+  describe("link-merge action", () => {
+    const TICKET_ID = "ticket-1"
+
+    /**
+     * An Auth whose stores hold user-a (signed in, email identity) and
+     * user-b (owner of the conflicting identifier), with a redeemable merge
+     * ticket in a real challenge store.
+     */
+    async function createMergeScenario(overrides?: {
+      ticketProvider?: string
+    }): Promise<{
+      auth: Auth
+      identityStore: IdentityStore
+      userStore: UserStore
+      sessionCookieValue: string
+    }> {
+      const sessionIdentity = createMockIdentity({ userId: "user-a" })
+      const identityStore: IdentityStore = {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([sessionIdentity]),
+        create: vi.fn(),
+        update: vi.fn(),
+        reassignByUserId: vi.fn().mockResolvedValue(undefined),
+      }
+      const userStore: UserStore = {
+        findById: vi
+          .fn()
+          .mockImplementation(async (id: string) =>
+            id === "user-a" || id === "user-b" ? { id } : null,
+          ),
+        create: vi.fn(),
+        onMerge: vi.fn().mockResolvedValue(undefined),
+      }
+      const challengeStore = new InMemoryChallengeStore()
+      await challengeStore.create({
+        id: TICKET_ID,
+        type: "account-merge",
+        identifier: "+14155550100",
+        data: {
+          fromUserId: "user-b",
+          intoUserId: "user-a",
+          provider: overrides?.ticketProvider ?? "email",
+        },
+        maxAttempts: 1,
+        expiresAt: new Date(Date.now() + 60_000),
+      })
+
+      const mergeAuth = new Auth(
+        createAuthConfig({ identityStore, userStore, challengeStore }),
+      )
+      const cookie = await mergeAuth.createSessionCookie(
+        { id: "user-a" },
+        sessionIdentity,
+      )
+      const sessionCookieValue = cookie.split(";")[0] ?? ""
+
+      return { auth: mergeAuth, identityStore, userStore, sessionCookieValue }
+    }
+
+    function mergeRequest(cookies: string[]): Request {
+      return new Request(`${TEST_BASE_URL}/auth/email/link-merge`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: cookies.join("; "),
+        },
+        body: "{}",
+      })
+    }
+
+    it("should merge and answer JSON for fetch callers", async () => {
+      const scenario = await createMergeScenario()
+      auth = scenario.auth
+
+      const response = await auth.handleRequest(
+        mergeRequest([
+          `auth_merge_ticket=${TICKET_ID}`,
+          scenario.sessionCookieValue,
+        ]),
+      )
+
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body.success).toBe(true)
+      expect(body.merged).toEqual({
+        fromUserId: "user-b",
+        intoUserId: "user-a",
+        movedIdentityCount: 1,
+      })
+      expect(scenario.identityStore.reassignByUserId).toHaveBeenCalledWith(
+        "user-b",
+        "user-a",
+      )
+      const cleared = response.headers
+        .getSetCookie()
+        .find((value) => value.startsWith("auth_merge_ticket="))
+      expect(cleared).toContain("Max-Age=0")
+    })
+
+    it("should redirect browser form posts back with ?merged=1", async () => {
+      const scenario = await createMergeScenario()
+      auth = scenario.auth
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/link-merge`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "text/html",
+          Referer: `${TEST_BASE_URL}/dashboard`,
+          Cookie: [
+            `auth_merge_ticket=${TICKET_ID}`,
+            scenario.sessionCookieValue,
+          ].join("; "),
+        },
+        body: "",
+      })
+      const response = await auth.handleRequest(request)
+
+      expect(response.status).toBe(302)
+      const location = new URL(response.headers.get("Location") ?? "")
+      expect(location.pathname).toBe("/dashboard")
+      expect(location.searchParams.get("merged")).toBe("1")
+    })
+
+    it("should reject without a ticket cookie", async () => {
+      const scenario = await createMergeScenario()
+      auth = scenario.auth
+
+      const response = await auth.handleRequest(
+        mergeRequest([scenario.sessionCookieValue]),
+      )
+
+      expect(response.status).toBe(401)
+      expect(scenario.identityStore.reassignByUserId).not.toHaveBeenCalled()
+    })
+
+    it("should reject without a session for the surviving user", async () => {
+      const scenario = await createMergeScenario()
+      auth = scenario.auth
+
+      const response = await auth.handleRequest(
+        mergeRequest([`auth_merge_ticket=${TICKET_ID}`]),
+      )
+
+      expect(response.status).toBe(401)
+      const body = await response.json()
+      expect(body.error.code).toBe("SESSION_INVALID")
+      expect(scenario.identityStore.reassignByUserId).not.toHaveBeenCalled()
+    })
+
+    it("should be single-use", async () => {
+      const scenario = await createMergeScenario()
+      auth = scenario.auth
+      const cookies = [
+        `auth_merge_ticket=${TICKET_ID}`,
+        scenario.sessionCookieValue,
+      ]
+
+      const first = await auth.handleRequest(mergeRequest(cookies))
+      expect(first.status).toBe(200)
+
+      const second = await auth.handleRequest(mergeRequest(cookies))
+      expect(second.status).toBe(401)
+      expect(scenario.identityStore.reassignByUserId).toHaveBeenCalledTimes(1)
+    })
+
+    it("should reject a ticket minted by a different provider", async () => {
+      const scenario = await createMergeScenario({ ticketProvider: "sms" })
+      auth = scenario.auth
+
+      const response = await auth.handleRequest(
+        mergeRequest([
+          `auth_merge_ticket=${TICKET_ID}`,
+          scenario.sessionCookieValue,
+        ]),
+      )
+
+      expect(response.status).toBe(401)
+      expect(scenario.identityStore.reassignByUserId).not.toHaveBeenCalled()
     })
   })
 })

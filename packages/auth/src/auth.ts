@@ -10,14 +10,23 @@ import type {
   ChallengeStore,
   Identity,
   IdentityStore,
+  MergeResult,
   SessionConfig,
   UserStore,
 } from "./types.js"
 import { REDACTED } from "./types.js"
 import { SessionManager } from "./session/session-manager.js"
-import { AuthErrors } from "./errors.js"
+import { AuthenticationError, AuthErrors } from "./errors.js"
 import { AbuseGuard } from "./abuse/abuse-guard.js"
-import { initiateAccepted } from "./provider-util.js"
+import {
+  buildChallengeClearingCookie,
+  buildReturnUrl,
+  initiateAccepted,
+  isBrowserFormPost,
+  MERGE_TICKET_COOKIE_NAME,
+  MERGE_TICKET_TYPE,
+  readCookie,
+} from "./provider-util.js"
 
 // Time constants
 const MS_PER_SECOND = 1000
@@ -216,6 +225,10 @@ export class Auth {
         return this.authResultToResponse(result)
       }
 
+      if (action === "link-merge") {
+        return await this.handleLinkMerge(request, providerId)
+      }
+
       if (provider.handleAction) {
         return await provider.handleAction(action, request, context)
       }
@@ -280,6 +293,62 @@ export class Auth {
     if (token) this.sessionCache.set(token, user, identity)
 
     return { user, identity }
+  }
+
+  /**
+   * Merge one user's identities into another: every identity of
+   * `fromUserId` is reassigned to `intoUserId` (via the store's bulk
+   * `reassignByUserId`), then `UserStore.onMerge` lets the application
+   * migrate or delete its own data keyed by the absorbed user id. The
+   * library never deletes user rows; once the application does, the
+   * absorbed user's outstanding sessions die naturally because session
+   * verification re-checks `findById` on each request.
+   *
+   * This is mechanism only — it does not verify that the caller may merge
+   * these two users. The built-in `/auth/{provider}/link-merge` endpoint
+   * performs that authorization (authenticated session for `intoUserId`
+   * plus a merge ticket minted by a fresh possession proof); call this
+   * directly only with equivalent checks of your own.
+   *
+   * @throws AuthenticationError CONFIGURATION_ERROR when the identity store
+   * lacks `reassignByUserId`; USER_NOT_FOUND when either user is missing.
+   */
+  public async mergeUsers(
+    fromUserId: string,
+    intoUserId: string,
+  ): Promise<MergeResult> {
+    const { identityStore, userStore } = this.config
+
+    if (typeof identityStore.reassignByUserId !== "function") {
+      throw new AuthenticationError(
+        "CONFIGURATION_ERROR",
+        "Account merging requires IdentityStore.reassignByUserId",
+      )
+    }
+    if (fromUserId === intoUserId) {
+      throw new AuthenticationError(
+        "IDENTITY_CONFLICT",
+        "Cannot merge a user into itself",
+      )
+    }
+
+    const [fromUser, intoUser] = await Promise.all([
+      userStore.findById(fromUserId),
+      userStore.findById(intoUserId),
+    ])
+    if (!fromUser || !intoUser) {
+      throw new AuthenticationError(
+        "USER_NOT_FOUND",
+        "Both users must exist to merge them",
+        { fromUserFound: Boolean(fromUser), intoUserFound: Boolean(intoUser) },
+      )
+    }
+
+    const movedIdentities = await identityStore.findByUserId(fromUserId)
+    await identityStore.reassignByUserId(fromUserId, intoUserId)
+    await userStore.onMerge?.(fromUser, intoUser)
+
+    return { fromUserId, intoUserId, movedIdentities }
   }
 
   /**
@@ -389,6 +458,111 @@ export class Auth {
   }
 
   /**
+   * Redeem a merge ticket minted by a link-mode verify that hit an
+   * IDENTITY_CONFLICT (see completeLinkVerification). Requirements:
+   * the ticket cookie from the browser that proved possession, an
+   * unexpired single-use ticket row, and an authenticated session for the
+   * user the ticket says survives the merge. Browser form posts are
+   * answered with a redirect back to the submitting page (?merged=1);
+   * fetch callers get JSON.
+   */
+  private async handleLinkMerge(
+    request: Request,
+    providerId: string,
+  ): Promise<Response> {
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 })
+    }
+
+    const invalidTicket = () =>
+      this.errorToResponse(
+        AuthErrors.invalidToken({
+          reason:
+            "Missing, expired, or already-used merge ticket. Verify the identifier again.",
+        }),
+      )
+
+    const ticketId = readCookie(request, MERGE_TICKET_COOKIE_NAME)
+    if (!ticketId) return invalidTicket()
+
+    const ticket = await this.config.challengeStore.findById(ticketId)
+    if (!ticket || ticket.type !== MERGE_TICKET_TYPE) return invalidTicket()
+    if (ticket.expiresAt.getTime() < Date.now()) return invalidTicket()
+
+    // One redemption attempt per ticket, success or not: a failed attempt
+    // (e.g. wrong session) burns it and the user re-verifies possession.
+    const attempts = await this.config.challengeStore.incrementAttempts(
+      ticket.id,
+    )
+    if (attempts > ticket.maxAttempts) return invalidTicket()
+
+    const fromUserId = ticket.data?.fromUserId
+    const intoUserId = ticket.data?.intoUserId
+    const mintedBy = ticket.data?.provider
+    if (
+      typeof fromUserId !== "string" ||
+      typeof intoUserId !== "string" ||
+      mintedBy !== providerId
+    ) {
+      return invalidTicket()
+    }
+
+    const session = await this.verifySession(request)
+    if (!session || session.user.id !== intoUserId) {
+      return this.errorToResponse(
+        AuthErrors.sessionInvalid({
+          reason: "Sign in as the account you are merging into",
+        }),
+      )
+    }
+
+    await this.config.challengeStore.delete(ticket.id)
+
+    let merged: MergeResult
+    try {
+      merged = await this.mergeUsers(fromUserId, intoUserId)
+    } catch (error) {
+      if (error instanceof AuthenticationError) {
+        return this.errorToResponse(error.toAuthError())
+      }
+      throw error
+    }
+
+    const clearingCookie = buildChallengeClearingCookie(
+      MERGE_TICKET_COOKIE_NAME,
+      this.getBaseUrl(request),
+    )
+
+    if (isBrowserFormPost(request)) {
+      // The submitting page's URL still carries the ?error=IDENTITY_CONFLICT
+      // that prompted the merge; drop it so the outcome reads as resolved.
+      const returnUrl = new URL(buildReturnUrl(request, { merged: "1" }))
+      returnUrl.searchParams.delete("error")
+      const headers = new Headers({ Location: returnUrl.toString() })
+      headers.append("Set-Cookie", clearingCookie)
+      return new Response(null, { status: 302, headers })
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        merged: {
+          fromUserId: merged.fromUserId,
+          intoUserId: merged.intoUserId,
+          movedIdentityCount: merged.movedIdentities.length,
+        },
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Set-Cookie": clearingCookie,
+        },
+      },
+    )
+  }
+
+  /**
    * Answer a blocked initiate. By default this is byte-identical to what the
    * provider would have returned on success (minus the challenge cookie),
    * so bots get no feedback about which addresses or IPs are throttled;
@@ -485,13 +659,14 @@ export class Auth {
         },
       )
     }
-    return this.errorToResponse(result.error)
+    return this.errorToResponse(result.error, result.setCookies)
   }
 
   /**
-   * Convert error to Response
+   * Convert error to Response. Failures can carry cookies too — e.g. the
+   * merge ticket that accompanies an IDENTITY_CONFLICT.
    */
-  private errorToResponse(error: AuthError): Response {
+  private errorToResponse(error: AuthError, setCookies?: string[]): Response {
     const statusMap: Record<string, number> = {
       INVALID_TOKEN: 401,
       EXPIRED_TOKEN: 401,
@@ -500,14 +675,19 @@ export class Auth {
       SESSION_INVALID: 401,
       USER_NOT_FOUND: 404,
       IDENTITY_NOT_FOUND: 404,
+      IDENTITY_CONFLICT: 409,
       RATE_LIMITED: 429,
       CONFIGURATION_ERROR: 500,
       PROVIDER_ERROR: 500,
     }
 
+    const headers = new Headers({ "Content-Type": "application/json" })
+    for (const cookie of setCookies ?? []) {
+      headers.append("Set-Cookie", cookie)
+    }
     return new Response(JSON.stringify({ success: false, error }), {
       status: statusMap[error.code] ?? 500,
-      headers: { "Content-Type": "application/json" },
+      headers,
     })
   }
 }
