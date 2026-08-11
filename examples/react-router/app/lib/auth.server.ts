@@ -138,11 +138,18 @@ const identityStore: IdentityStore = {
       userId: data.userId,
       provider: data.provider,
       identifier: data.identifier,
-      metadata: data.metadata,
+      providerState: data.providerState,
       createdAt: new Date(),
     }
     identities.set(identity.id, identity)
     return identity
+  },
+  /**
+   * Required as of v5 — the passkey list and future unlinking depend on it.
+   * A real app: `DELETE FROM identities WHERE id = $1`.
+   */
+  async delete(id) {
+    identities.delete(id)
   },
   async update(id, data) {
     const existing = identities.get(id)
@@ -175,7 +182,7 @@ const SESSION_SECRET =
 /**
  * The signed-in user's passkeys for the dashboard list. Passkeys are
  * ordinary identity rows ({provider: "passkey"}) whose provider-owned
- * metadata holds the credential state; a restart wipes the in-memory
+ * providerState holds the credential state; a restart wipes the in-memory
  * store, orphaning any passkeys saved in the browser/password manager
  * for localhost (delete those there when it happens).
  */
@@ -192,7 +199,7 @@ export async function listPasskeys(userId: string): Promise<
   const passkeys = []
   for (const identity of all) {
     if (identity.provider !== "passkey") continue
-    const credential = parsePasskeyCredentialMetadata(identity.metadata)
+    const credential = parsePasskeyCredentialMetadata(identity.providerState)
     if (!credential) continue
     passkeys.push({
       credentialId: identity.identifier,
