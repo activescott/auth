@@ -535,7 +535,7 @@ describe("EmailProvider link mode", () => {
       userId: "user-2",
       provider: "email",
       identifier: TEST_EMAIL,
-      metadata: {},
+      providerState: {},
     })
     // Linking never creates a user from the identifier
     expect(context.userStore.create).not.toHaveBeenCalled()

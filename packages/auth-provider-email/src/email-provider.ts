@@ -461,18 +461,11 @@ export class EmailProvider implements AuthProvider {
     }
   }
 
-  public canHandle(request: Request): boolean {
-    const url = new URL(request.url)
-    return url.pathname.startsWith("/auth/email")
-  }
-
   public getRoutes(): ProviderRoute[] {
     return [
-      { method: "POST", path: "/email/send", handler: "initiate" },
       { method: "POST", path: "/email/initiate", handler: "initiate" },
       { method: "GET", path: "/email/verify", handler: "verify" },
       { method: "POST", path: "/email/verify", handler: "verify" },
-      { method: "GET", path: "/email/callback", handler: "verify" },
     ]
   }
 
