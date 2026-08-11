@@ -80,6 +80,19 @@ const userStore: UserStore = {
 }
 ```
 
+**Merge atomicity.** `reassignByUserId` and `onMerge` cannot be atomic
+across the store boundary, and `onMerge` runs second. If your per-user data
+must move all-or-nothing with the identities, implement the ENTIRE merge
+inside `reassignByUserId` in one database transaction (identities + app
+data + absorbed-row deletion — throwing at its start also vetoes the merge
+cleanly, since it is the first write `Auth.mergeUsers` performs) and leave
+`onMerge` as logging. Otherwise keep `onMerge` idempotent: a failure there
+surfaces with identities already moved.
+
+Also new (optional, not breaking): `UserStore.onIdentityLinked(user,
+identity)` — called when identity linking attaches a new identifier to an
+existing user, for denormalizing identity data onto the user record.
+
 `StoresDescription.capabilities` no longer reports `deleteIdentity`
 (it is always available now); the admin config page row is gone.
 
