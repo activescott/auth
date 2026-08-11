@@ -139,7 +139,13 @@ export function createAuthHandlers<TUser = AuthUser>(
           typeof errorRedirect === "function"
             ? errorRedirect(result.error, request)
             : `${errorRedirect}?error=${encodeURIComponent(result.error.code)}`
-        return redirect(errorUrl)
+        // Failures can carry cookies — e.g. the merge ticket accompanying
+        // an IDENTITY_CONFLICT from a link-mode verify.
+        const headers = new Headers()
+        for (const cookie of result.setCookies ?? []) {
+          headers.append("Set-Cookie", cookie)
+        }
+        return redirect(errorUrl, { headers })
       }
 
       // Create session cookie
