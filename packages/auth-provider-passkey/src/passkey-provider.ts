@@ -146,22 +146,25 @@ export class PasskeyProvider implements AuthProvider {
     }
   }
 
-  public canHandle(request: Request): boolean {
-    const url = new URL(request.url)
-    return url.pathname.startsWith("/auth/passkey")
-  }
-
+  /**
+   * All four actions are declared `handler: "action"` (not
+   * initiate/verify): they are fetch/JSON ceremonies that carry no form
+   * token, so the initiate abuse guard's bot checks would block them.
+   * WebAuthn's own challenge round trip is the abuse control here.
+   */
   public getRoutes(): ProviderRoute[] {
     return [
+      { method: "POST", path: "/passkey/register-options", handler: "action" },
+      { method: "POST", path: "/passkey/register-verify", handler: "action" },
       {
         method: "POST",
         path: "/passkey/authenticate-options",
-        handler: "initiate",
+        handler: "action",
       },
       {
         method: "POST",
         path: "/passkey/authenticate-verify",
-        handler: "verify",
+        handler: "action",
       },
     ]
   }
@@ -283,9 +286,9 @@ export class PasskeyProvider implements AuthProvider {
       verification.registrationInfo
 
     // The identity row IS the credential record: identifier is the
-    // WebAuthn credential ID, and the provider-owned metadata holds the
-    // verification state (see passkeyCredentialMetadataSchema).
-    const metadata: PasskeyCredentialMetadata = {
+    // WebAuthn credential ID, and the provider-owned providerState holds
+    // the verification state (see passkeyCredentialMetadataSchema).
+    const credentialState: PasskeyCredentialMetadata = {
       publicKey: uint8ArrayToBase64url(credential.publicKey),
       counter: credential.counter,
       transports: credential.transports,
@@ -297,7 +300,7 @@ export class PasskeyProvider implements AuthProvider {
       userId: session.user.id,
       provider: this.id,
       identifier: credential.id,
-      metadata,
+      providerState: credentialState,
     })
 
     return jsonResponse(
@@ -367,12 +370,12 @@ export class PasskeyProvider implements AuthProvider {
       })
     }
 
-    const stored = parsePasskeyCredentialMetadata(identity.metadata)
+    const stored = parsePasskeyCredentialMetadata(identity.providerState)
     if (!stored) {
       return jsonResponse(HTTP_SERVER_ERROR, {
         success: false,
         error: AuthErrors.providerError(
-          "Stored passkey credential is invalid — the identity store must persist Identity.metadata unmodified",
+          "Stored passkey credential is invalid — the identity store must persist Identity.providerState unmodified",
         ),
       })
     }
@@ -419,7 +422,7 @@ export class PasskeyProvider implements AuthProvider {
     }
 
     await context.identityStore.update(identity.id, {
-      metadata: {
+      providerState: {
         ...stored,
         counter: newCounter,
         lastUsedAt: new Date().toISOString(),
@@ -438,7 +441,7 @@ export class PasskeyProvider implements AuthProvider {
 
   /**
    * A user's passkey identities with their validated credential state;
-   * identities whose metadata fails validation are skipped
+   * identities whose provider state fails validation are skipped
    */
   private async findPasskeyIdentities(
     context: AuthContext,
@@ -451,7 +454,7 @@ export class PasskeyProvider implements AuthProvider {
     }[] = []
     for (const identity of identities) {
       if (identity.provider !== this.id) continue
-      const credential = parsePasskeyCredentialMetadata(identity.metadata)
+      const credential = parsePasskeyCredentialMetadata(identity.providerState)
       if (credential) result.push({ identity, credential })
     }
     return result

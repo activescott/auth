@@ -10,7 +10,7 @@ import type {
  *
  * Passkeys need no storage interface of their own: each credential is
  * an identity row ({provider: "passkey", identifier: <credentialId>})
- * whose provider-owned Identity.metadata holds the verification state
+ * whose provider-owned Identity.providerState holds the verification state
  * (see passkeyCredentialMetadataSchema).
  */
 export interface PasskeyProviderConfig {

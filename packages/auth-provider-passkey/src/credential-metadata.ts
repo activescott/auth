@@ -1,9 +1,9 @@
 import { z } from "zod"
 
 /**
- * Schema for the provider-owned Identity.metadata of a passkey identity.
+ * Schema for the provider-owned Identity.providerState of a passkey identity.
  * The identity row's identifier is the WebAuthn credential ID; this
- * metadata holds the verification state for it. Applications persist it
+ * state holds the verification data for it. Applications persist it
  * opaquely (a JSON/JSONB column) and never construct it themselves.
  */
 export const passkeyCredentialMetadataSchema = z.object({
@@ -40,8 +40,8 @@ export type PasskeyCredentialMetadata = z.infer<
 >
 
 /**
- * Validate an identity's metadata as passkey credential state. Returns
- * null when the metadata does not match the schema (e.g., the store
+ * Validate an identity's provider state as passkey credential state. Returns
+ * null when it does not match the schema (e.g., the store
  * corrupted or dropped it).
  */
 export function parsePasskeyCredentialMetadata(
