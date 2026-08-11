@@ -1,6 +1,6 @@
 # Spec: Merging authenticators/identities into a single user
 
-Status: future feature — not scheduled. Written now so the OTP/SMS/passkeys implementation (see `../otp-sms-passkeys/plan.md`) stays compatible with it.
+Status: **implemented** by [issue #70](https://github.com/activescott/auth/issues/70) — see [plan.md](./plan.md) for the decisions made and [summary.md](./summary.md) for what shipped. Originally written ahead of time so the OTP/SMS/passkeys implementation (see `../otp-sms-passkeys/plan.md`) would stay compatible with it; the design below is essentially what landed, with the conflict surfaced as error code `IDENTITY_CONFLICT` plus a single-use merge-ticket cookie rather than a `LinkResult` object, and `reassignByUserId` returning `void` (the moved identities are reported by `Auth.mergeUsers` instead).
 
 ## Problem
 
