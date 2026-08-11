@@ -317,6 +317,13 @@ const userStore: UserStore = {
 
 Once your `onMerge` deletes (or disables) the absorbed user, its outstanding sessions die on their next request — session verification re-checks `UserStore.findById` every time, so no token-revocation machinery is needed.
 
+**Atomicity.** `Auth.mergeUsers` calls `reassignByUserId` first, then `onMerge`; the two calls cannot be atomic across your store boundary. That gives you two supported patterns:
+
+- **Simple** (above): identities move in `reassignByUserId`, app data moves in `onMerge`. A failure in `onMerge` surfaces as a 500 with identities already moved, so keep `onMerge` idempotent and safe to re-run.
+- **Atomic** (recommended when per-user data is critical): implement the _entire_ merge inside `reassignByUserId` in one database transaction — reassign identities, migrate app data, delete the absorbed user row — and leave `onMerge` as logging. Because `reassignByUserId` is the first write `mergeUsers` performs, throwing at its start also serves as a clean veto: nothing has changed yet.
+
+**Scope of a merge.** Possession is proven for _one_ identifier, but the merge moves _all_ of the absorbed user's identities — including passkeys. Merge redemption re-checks at that moment that the verified identifier still belongs to the account being absorbed. Applications that treat some identifiers as high-value can additionally require a fresh sign-in before offering the merge prompt at all.
+
 `Auth.mergeUsers(fromUserId, intoUserId)` is also public for server-side use — it is mechanism only, so guard it with checks equivalent to the built-in flow's.
 
 The example app's dashboard implements the whole flow — method list, add-email/add-phone forms, and the merge prompt — in [`examples/react-router/app/routes/dashboard.tsx`](./examples/react-router/app/routes/dashboard.tsx).

@@ -446,3 +446,78 @@ describe("completeLinkVerification", () => {
     })
   })
 })
+
+describe("completeLinkVerification onIdentityLinked hook", () => {
+  const LINK_REQUEST = new Request("https://example.com/auth/sms/verify", {
+    method: "POST",
+  })
+
+  it("should notify the user store when a new identifier is linked", async () => {
+    const onIdentityLinked = vi.fn()
+    const linked = createMockIdentity({
+      id: "identity-2",
+      identifier: "+14155550100",
+    })
+    const context = createMockContext({
+      getSession: vi.fn().mockResolvedValue({
+        user: { id: "user-1" },
+        identity: createMockIdentity(),
+      }),
+      userStore: {
+        findById: vi.fn(),
+        create: vi.fn(),
+        onIdentityLinked,
+      },
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue(linked),
+        update: vi.fn().mockResolvedValue(linked),
+      },
+    })
+
+    const result = await completeLinkVerification(
+      "sms",
+      "+14155550100",
+      "user-1",
+      LINK_REQUEST,
+      context,
+    )
+
+    expect(result.success).toBe(true)
+    expect(onIdentityLinked).toHaveBeenCalledWith({ id: "user-1" }, linked)
+  })
+
+  it("should not notify when the identifier was already linked", async () => {
+    const onIdentityLinked = vi.fn()
+    const existing = createMockIdentity({ identifier: "+14155550100" })
+    const context = createMockContext({
+      getSession: vi.fn().mockResolvedValue({
+        user: { id: "user-1" },
+        identity: existing,
+      }),
+      userStore: {
+        findById: vi.fn(),
+        create: vi.fn(),
+        onIdentityLinked,
+      },
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(existing),
+        findByUserId: vi.fn().mockResolvedValue([existing]),
+        create: vi.fn(),
+        update: vi.fn().mockResolvedValue(existing),
+      },
+    })
+
+    const result = await completeLinkVerification(
+      "sms",
+      "+14155550100",
+      "user-1",
+      LINK_REQUEST,
+      context,
+    )
+
+    expect(result.success).toBe(true)
+    expect(onIdentityLinked).not.toHaveBeenCalled()
+  })
+})

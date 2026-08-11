@@ -183,6 +183,13 @@ export interface IdentityStore {
    * where the backing store allows (SQL: one UPDATE ... WHERE user_id = ...).
    * Optional: only account merging needs it; `Auth.mergeUsers` reports a
    * configuration error when it is missing.
+   *
+   * This is the first write `Auth.mergeUsers` performs, so throwing here
+   * vetoes the merge with nothing changed. Applications whose per-user data
+   * must move all-or-nothing with the identities should implement the
+   * ENTIRE merge here in one transaction — reassign identities, migrate app
+   * data, delete the absorbed user row — and leave `UserStore.onMerge` as a
+   * notification. See the account-merge docs in the README.
    */
   reassignByUserId?(fromUserId: string, toUserId: string): Promise<void>
 }
@@ -273,8 +280,24 @@ export interface UserStore {
    * of the absorbed user record — the library never deletes user rows.
    * Deleting `fromUser` also ends its outstanding sessions: session
    * verification re-checks `findById` on each request.
+   *
+   * NOT atomic with the reassignment: a throw here surfaces as a 500 with
+   * the identities already moved, so keep this idempotent and safe to
+   * re-run. Applications that need the whole merge to be all-or-nothing
+   * should perform it inside `IdentityStore.reassignByUserId` (one
+   * transaction, which also vetoes cleanly by throwing before any write)
+   * and use this hook only for logging/notification.
    */
   onMerge?(fromUser: AuthUser, intoUser: AuthUser): Promise<void>
+
+  /**
+   * Called when identity linking attaches a newly verified identifier to
+   * this user (a `mode: "link"` verify) — not on ordinary sign-in or
+   * sign-up, where `create`/`IdentityStore.create` already run. Use it to
+   * denormalize identity data onto the user record, e.g. filling a nullable
+   * email column when a phone-first user links an email address.
+   */
+  onIdentityLinked?(user: AuthUser, identity: Identity): Promise<void>
 }
 
 /**
