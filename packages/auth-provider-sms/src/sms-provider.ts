@@ -13,6 +13,8 @@ import {
   generateOtpCode,
   hashOtpCode,
   verifyOtpChallenge,
+  completeLinkVerification,
+  linkUserIdFromChallenge,
   parseRequestBody,
   isBrowserFormPost,
   buildReturnUrl,
@@ -102,6 +104,24 @@ export class SmsProvider implements AuthProvider {
         )
       }
 
+      // mode=link: attach this phone number to the signed-in user instead
+      // of signing in as it. The link intent is stamped into the challenge
+      // here, so at verify time it comes from the server-side challenge,
+      // never from the client.
+      let linkUserId: string | undefined
+      if (body.mode === "link") {
+        const session = await context.getSession?.(request)
+        if (!session) {
+          return this.initiateFailure(
+            request,
+            AuthErrors.sessionInvalid({
+              reason: "Sign in before linking a phone number",
+            }),
+          )
+        }
+        linkUserId = session.user.id
+      }
+
       // Cap how many texts one number receives regardless of source IP.
       // A throttled request gets the same answer as a sent one.
       const decision = await context.abuse?.checkIdentifier(this.id, phone)
@@ -117,6 +137,7 @@ export class SmsProvider implements AuthProvider {
         identifier: phone,
         maxAttempts: this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
         expiresAt: new Date(Date.now() + expirySeconds * MS_PER_SECOND),
+        ...(linkUserId ? { data: { linkUserId } } : {}),
       }
 
       if (isVerificationTransport(this.transport)) {
@@ -134,9 +155,12 @@ export class SmsProvider implements AuthProvider {
 
         await context.challengeStore.create({
           ...challenge,
-          data: started.reference
-            ? { verificationReference: started.reference }
-            : undefined,
+          data: {
+            ...challenge.data,
+            ...(started.reference
+              ? { verificationReference: started.reference }
+              : {}),
+          },
         })
       } else {
         const code = generateOtpCode(
@@ -229,19 +253,34 @@ export class SmsProvider implements AuthProvider {
         return { success: false, error: this.otpFailureError(outcome.reason) }
       }
 
-      const result = await authenticateWithIdentifier(
-        this.id,
-        outcome.challenge.identifier,
-        context,
-      )
-      if (!result.success) return result
+      // A sign-in challenge resolves a user from the phone number; a
+      // link-mode challenge attaches the number to the session user instead.
+      const linkUserId = linkUserIdFromChallenge(outcome.challenge)
+      const result = linkUserId
+        ? await completeLinkVerification(
+            this.id,
+            outcome.challenge.identifier,
+            linkUserId,
+            request,
+            context,
+          )
+        : await authenticateWithIdentifier(
+            this.id,
+            outcome.challenge.identifier,
+            context,
+          )
 
-      return {
-        ...result,
-        setCookies: [
-          buildChallengeClearingCookie(this.cookieName(), context.baseUrl),
-        ],
+      const clearingCookie = buildChallengeClearingCookie(
+        this.cookieName(),
+        context.baseUrl,
+      )
+      if (!result.success) {
+        return result.setCookies
+          ? { ...result, setCookies: [...result.setCookies, clearingCookie] }
+          : result
       }
+
+      return { ...result, setCookies: [clearingCookie] }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Error in sms provider verify:", error)
