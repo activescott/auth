@@ -51,7 +51,8 @@ test("add a passkey on the dashboard, then sign in with it", async ({
     await page.getByRole("button", { name: /sign in with a passkey/i }).click()
     await page.waitForURL("**/dashboard")
   }
-  await expect(page.getByText("passkey-user@example.com")).toBeVisible()
+  // The identifier appears in the header and the sign-in-methods list
+  await expect(page.getByText("passkey-user@example.com").first()).toBeVisible()
 })
 
 test("passkey sign-in fails without a registered credential", async ({

@@ -45,7 +45,8 @@ test.describe("sms auth", () => {
     await expect(
       page.getByRole("heading", { name: /dashboard/i }),
     ).toBeVisible()
-    await expect(page.getByText("+14155550201")).toBeVisible()
+    // The identifier appears in the header and the sign-in-methods list
+    await expect(page.getByText("+14155550201").first()).toBeVisible()
   })
 
   test("a wrong code shows an error and does not sign in", async ({ page }) => {

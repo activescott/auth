@@ -40,7 +40,8 @@ test.describe("auth", () => {
     await expect(
       page.getByRole("heading", { name: /dashboard/i }),
     ).toBeVisible()
-    await expect(page.getByText("bob@example.com")).toBeVisible()
+    // The identifier appears in the header and the sign-in-methods list
+    await expect(page.getByText("bob@example.com").first()).toBeVisible()
   })
 
   test("logout clears the session", async ({ page }) => {
