@@ -671,3 +671,187 @@ describe("describe", () => {
     }
   })
 })
+
+describe("SmsProvider link mode", () => {
+  let challengeStore: InMemoryChallengeStore
+
+  const session = {
+    user: { id: "user-2" },
+    identity: createMockIdentity({ id: "identity-2", userId: "user-2" }),
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    challengeStore = new InMemoryChallengeStore()
+  })
+
+  afterEach(() => {
+    challengeStore.destroy()
+  })
+
+  function createLinkInitiateRequest(phone = TEST_PHONE): Request {
+    return new Request(`${TEST_BASE_URL}/auth/sms/initiate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ phone, mode: "link" }).toString(),
+    })
+  }
+
+  it("should refuse initiate without a session", async () => {
+    const provider = createProvider()
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(null),
+    })
+
+    const result = await provider.initiate(createLinkInitiateRequest(), context)
+
+    if (result instanceof Response) throw new Error("expected a result object")
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("SESSION_INVALID")
+    expect(mockTransport.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it("should stamp the challenge with the session user id", async () => {
+    const provider = createProvider()
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+    })
+
+    const result = await provider.initiate(createLinkInitiateRequest(), context)
+    if (result instanceof Response || !result.success) {
+      throw new Error("initiate failed")
+    }
+
+    const challengeId = result.setCookies?.[0]?.split(";")[0]?.split("=")[1]
+    const challenge = await challengeStore.findById(challengeId ?? "")
+    expect(challenge?.data?.linkUserId).toBe("user-2")
+  })
+
+  it("should link a new phone number to the session user on verify", async () => {
+    const provider = createProvider()
+    const linked = createMockIdentity({
+      id: "identity-3",
+      userId: "user-2",
+    })
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue(linked),
+        update: vi.fn().mockResolvedValue(linked),
+      },
+    })
+
+    const initResult = await provider.initiate(
+      createLinkInitiateRequest(),
+      context,
+    )
+    if (initResult instanceof Response || !initResult.success) {
+      throw new Error("initiate failed")
+    }
+    const cookie = initResult.setCookies?.[0]?.split(";")[0]
+    const code = codeFromMessage(lastMessage())
+
+    const result = await verifyCode(provider, context, code, cookie)
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.user.id).toBe("user-2")
+    expect(context.identityStore.create).toHaveBeenCalledWith({
+      userId: "user-2",
+      provider: "sms",
+      identifier: TEST_PHONE,
+      metadata: {},
+    })
+    expect(context.userStore.create).not.toHaveBeenCalled()
+  })
+
+  it("should answer IDENTITY_CONFLICT with a merge ticket when the number belongs to another user", async () => {
+    const provider = createProvider()
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+      identityStore: {
+        findByProviderAndIdentifier: vi
+          .fn()
+          .mockResolvedValue(createMockIdentity({ userId: "user-9" })),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn(),
+        update: vi.fn(),
+      },
+    })
+
+    const initResult = await provider.initiate(
+      createLinkInitiateRequest(),
+      context,
+    )
+    if (initResult instanceof Response || !initResult.success) {
+      throw new Error("initiate failed")
+    }
+    const cookie = initResult.setCookies?.[0]?.split(";")[0]
+    const code = codeFromMessage(lastMessage())
+
+    const result = await verifyCode(provider, context, code, cookie)
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("IDENTITY_CONFLICT")
+    expect(context.identityStore.create).not.toHaveBeenCalled()
+
+    const cookies = result.setCookies ?? []
+    expect(
+      cookies.some((value) => value.startsWith("auth_merge_ticket=")),
+    ).toBe(true)
+    expect(
+      cookies.some(
+        (value) =>
+          value.startsWith("auth_sms_challenge=;") &&
+          value.includes("Max-Age=0"),
+      ),
+    ).toBe(true)
+  })
+
+  it("should link through a hosted verification transport too", async () => {
+    const transport = createVerificationTransport()
+    const provider = new SmsProvider({ appName: "Test App" }, transport)
+    const linked = createMockIdentity({ id: "identity-3", userId: "user-2" })
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue(linked),
+        update: vi.fn().mockResolvedValue(linked),
+      },
+    })
+
+    const initResult = await provider.initiate(
+      createLinkInitiateRequest(),
+      context,
+    )
+    if (initResult instanceof Response || !initResult.success) {
+      throw new Error("initiate failed")
+    }
+    const cookie = initResult.setCookies?.[0]?.split(";")[0] ?? ""
+
+    // The challenge keeps both the vendor reference and the link intent
+    const challenge = await challengeStore.findById(cookie.split("=")[1] ?? "")
+    expect(challenge?.data).toEqual({
+      verificationReference: TEST_VERIFICATION_REFERENCE,
+      linkUserId: "user-2",
+    })
+
+    const result = await verifyCode(provider, context, "123456", cookie)
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.user.id).toBe("user-2")
+    expect(context.identityStore.create).toHaveBeenCalledWith({
+      userId: "user-2",
+      provider: "sms",
+      identifier: TEST_PHONE,
+      metadata: {},
+    })
+  })
+})
