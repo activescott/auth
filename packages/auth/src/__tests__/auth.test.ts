@@ -575,8 +575,17 @@ describe("Auth", () => {
       sessionCookieValue: string
     }> {
       const sessionIdentity = createMockIdentity({ userId: "user-a" })
+      // The identifier the ticket was minted for still belongs to user-b —
+      // redemption re-checks this before merging
+      const conflictingIdentity = createMockIdentity({
+        id: "identity-b",
+        userId: "user-b",
+        identifier: "+14155550100",
+      })
       const identityStore: IdentityStore = {
-        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByProviderAndIdentifier: vi
+          .fn()
+          .mockResolvedValue(conflictingIdentity),
         findByUserId: vi.fn().mockResolvedValue([sessionIdentity]),
         create: vi.fn(),
         update: vi.fn(),
@@ -727,6 +736,28 @@ describe("Auth", () => {
     it("should reject a ticket minted by a different provider", async () => {
       const scenario = await createMergeScenario({ ticketProvider: "sms" })
       auth = scenario.auth
+
+      const response = await auth.handleRequest(
+        mergeRequest([
+          `auth_merge_ticket=${TICKET_ID}`,
+          scenario.sessionCookieValue,
+        ]),
+      )
+
+      expect(response.status).toBe(401)
+      expect(scenario.identityStore.reassignByUserId).not.toHaveBeenCalled()
+    })
+
+    it("should reject when the identifier no longer belongs to the absorbed user", async () => {
+      const scenario = await createMergeScenario()
+      auth = scenario.auth
+      // Ownership changed within the ticket's window (another merge, an
+      // unlink); redeeming the stale ticket must not merge anyone
+      vi.mocked(
+        scenario.identityStore.findByProviderAndIdentifier,
+      ).mockResolvedValue(
+        createMockIdentity({ userId: "user-c", identifier: "+14155550100" }),
+      )
 
       const response = await auth.handleRequest(
         mergeRequest([

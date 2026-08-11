@@ -516,6 +516,18 @@ export class Auth {
       )
     }
 
+    // The identifier's ownership can change within the ticket's lifetime
+    // (another merge, an unlink); merge only if it still belongs to the user
+    // the ticket was minted against.
+    const currentOwner =
+      await this.config.identityStore.findByProviderAndIdentifier(
+        mintedBy,
+        ticket.identifier,
+      )
+    if (!currentOwner || currentOwner.userId !== fromUserId) {
+      return invalidTicket()
+    }
+
     await this.config.challengeStore.delete(ticket.id)
 
     let merged: MergeResult

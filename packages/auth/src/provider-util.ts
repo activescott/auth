@@ -305,6 +305,7 @@ export async function completeLinkVerification(
     const identity = await context.identityStore.update(created.id, {
       verifiedAt: new Date(),
     })
+    await context.userStore.onIdentityLinked?.(session.user, identity)
     return { success: true, user: session.user, identity }
   }
 
