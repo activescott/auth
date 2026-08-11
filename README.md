@@ -293,11 +293,11 @@ Offer the user a choice; if they confirm, post to the same provider's `link-merg
 
 Redeeming the ticket requires the same browser (HttpOnly cookie), an unexpired ticket (10 minutes, one attempt), and an authenticated session for the surviving user — so a merge always means: signed in as account A **and** freshly proved possession of account B's identifier. Silent account takeover is not possible. Apps that consider some identifiers high-value can force a fresh sign-in before offering the flow at all.
 
-The merge moves every identity of the absorbed user onto the surviving user, then hands your app the rest via two optional store methods:
+The merge moves every identity of the absorbed user onto the surviving user, then hands your app the rest via two store methods:
 
 ```ts
 const identityStore: IdentityStore = {
-  // Required for merging; one atomic UPDATE in SQL
+  // One atomic UPDATE in SQL
   async reassignByUserId(fromUserId, toUserId) {
     await sql`UPDATE identities SET user_id = ${toUserId} WHERE user_id = ${fromUserId}`
   },
@@ -404,7 +404,9 @@ This is an npm workspaces monorepo.
 
 Implement the [`AuthProvider`](./packages/auth/src/types.ts) interface from `@activescott/auth` and pass an instance into `new Auth({ providers: [...] })`.
 
-The cleanest reference is the email provider itself: [`packages/auth-provider-email/src/email-provider.ts`](./packages/auth-provider-email/src/email-provider.ts) — a complete, production implementation showing how `initiate` / `verify` / `canHandle` / `getRoutes` / `describe` fit together, how to use the `AuthContext` to look up or create the user via the stores, and how to surface errors with `AuthErrors`.
+The cleanest reference is the email provider itself: [`packages/auth-provider-email/src/email-provider.ts`](./packages/auth-provider-email/src/email-provider.ts) — a complete, production implementation showing how `initiate` / `verify` / `getRoutes` / `describe` fit together, how to use the `AuthContext` to look up or create the user via the stores, and how to surface errors with `AuthErrors`.
+
+`Auth.handleRequest` dispatches strictly from your `getRoutes()` table: each route's `handler` kind picks the entry point (`"initiate"` runs the abuse guard first, `"verify"` feeds the adapter's session/redirect flow, `"action"` calls your `handleAction`), and any method+path you did not declare is a 404.
 
 `describe()` is what the [admin dashboard](#admin-dashboard)'s configuration page displays for your provider. Only your provider knows which of its settings are secret, so redaction is its job: omit API keys, passwords, tokens, and signing secrets rather than masking them. Return `{ settings: {} }` if there is nothing worth showing.
 
