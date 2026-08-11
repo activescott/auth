@@ -1,10 +1,23 @@
-import type { AuthContext, AuthInitResult, AuthResult } from "./types.js"
+import type {
+  AuthContext,
+  AuthInitResult,
+  AuthResult,
+  Challenge,
+} from "./types.js"
 import { AuthErrors } from "./errors.js"
 
 // Time unit multipliers in seconds
 const SECONDS_PER_MINUTE = 60
 const SECONDS_PER_HOUR = 3600
 const SECONDS_PER_DAY = 86_400
+const MS_PER_SECOND = 1000
+
+/** Challenge type of a merge ticket (see {@link completeLinkVerification}) */
+export const MERGE_TICKET_TYPE = "account-merge"
+/** Cookie binding a merge ticket to the browser that proved possession */
+export const MERGE_TICKET_COOKIE_NAME = "auth_merge_ticket"
+/** How long a merge ticket stays redeemable */
+const MERGE_TICKET_EXPIRY_SECONDS = 10 * SECONDS_PER_MINUTE
 
 /**
  * Parse a request body into a plain object. Handles JSON and
@@ -214,5 +227,120 @@ export async function authenticateWithIdentifier(
     success: true,
     user,
     identity,
+  }
+}
+
+/**
+ * The user id a link-mode challenge is bound to, or undefined for an
+ * ordinary sign-in challenge. Providers stamp `data.linkUserId` at initiate
+ * when the request carries `mode: "link"`, so at verify time the mode comes
+ * from the stored challenge — a sign-in challenge can never be redeemed as a
+ * link and vice versa.
+ */
+export function linkUserIdFromChallenge(
+  challenge: Pick<Challenge, "data">,
+): string | undefined {
+  const value = challenge.data?.linkUserId
+  return typeof value === "string" ? value : undefined
+}
+
+/**
+ * Attach a freshly verified identifier to the signed-in user instead of
+ * resolving a user from it. The link-mode counterpart of
+ * {@link authenticateWithIdentifier}; providers call it after the OTP round
+ * trip proves possession of the identifier.
+ *
+ * Outcomes:
+ * - identifier unknown → an Identity is created for the session user;
+ * - identifier already on the session user → verifiedAt is refreshed
+ *   (idempotent);
+ * - identifier on a DIFFERENT user → IDENTITY_CONFLICT, plus a short-lived
+ *   single-use merge ticket bound to this browser by cookie. The app may
+ *   then offer to merge the accounts; POSTing /auth/{provider}/link-merge
+ *   redeems the ticket (see Auth.mergeUsers). Possession was proven by the
+ *   OTP that got us here, and the ticket additionally requires the same
+ *   authenticated session at redemption, so no silent takeover is possible.
+ *
+ * The session must still be present and belong to `linkUserId` — the user id
+ * the challenge was bound to at initiate.
+ */
+export async function completeLinkVerification(
+  providerId: string,
+  identifier: string,
+  linkUserId: string,
+  request: Request,
+  context: AuthContext,
+): Promise<AuthResult> {
+  if (!context.getSession) {
+    return {
+      success: false,
+      error: AuthErrors.configurationError(
+        "Identity linking requires AuthContext.getSession (upgrade @activescott/auth)",
+      ),
+    }
+  }
+
+  const session = await context.getSession(request)
+  if (!session || session.user.id !== linkUserId) {
+    return {
+      success: false,
+      error: AuthErrors.sessionInvalid({
+        reason: "Sign in again to finish linking this identifier",
+      }),
+    }
+  }
+
+  const existing = await context.identityStore.findByProviderAndIdentifier(
+    providerId,
+    identifier,
+  )
+
+  if (!existing) {
+    const created = await context.identityStore.create({
+      userId: session.user.id,
+      provider: providerId,
+      identifier,
+      metadata: {},
+    })
+    const identity = await context.identityStore.update(created.id, {
+      verifiedAt: new Date(),
+    })
+    return { success: true, user: session.user, identity }
+  }
+
+  if (existing.userId === session.user.id) {
+    const identity = await context.identityStore.update(existing.id, {
+      verifiedAt: new Date(),
+    })
+    return { success: true, user: session.user, identity }
+  }
+
+  const ticketId = crypto.randomUUID()
+  await context.challengeStore.create({
+    id: ticketId,
+    type: MERGE_TICKET_TYPE,
+    identifier,
+    data: {
+      fromUserId: existing.userId,
+      intoUserId: session.user.id,
+      provider: providerId,
+    },
+    maxAttempts: 1,
+    expiresAt: new Date(
+      Date.now() + MERGE_TICKET_EXPIRY_SECONDS * MS_PER_SECOND,
+    ),
+  })
+
+  return {
+    success: false,
+    error: AuthErrors.identityConflict({ provider: providerId, identifier }),
+    setCookies: [
+      buildChallengeCookie(
+        MERGE_TICKET_COOKIE_NAME,
+        ticketId,
+        MERGE_TICKET_EXPIRY_SECONDS,
+        context.baseUrl,
+      ),
+    ],
   }
 }

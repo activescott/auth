@@ -25,6 +25,7 @@ export const AUTH_ERROR_CODES = {
   RATE_LIMITED: "RATE_LIMITED",
   SESSION_EXPIRED: "SESSION_EXPIRED",
   SESSION_INVALID: "SESSION_INVALID",
+  IDENTITY_CONFLICT: "IDENTITY_CONFLICT",
 } as const satisfies Record<AuthErrorCode, AuthErrorCode>
 
 /**
@@ -51,6 +52,8 @@ export const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
   RATE_LIMITED: "Too many attempts. Please wait and try again.",
   SESSION_EXPIRED: "Your session has expired. Please sign in again.",
   SESSION_INVALID: "Invalid session. Please sign in again.",
+  IDENTITY_CONFLICT:
+    "That sign-in method already belongs to another account. You can merge the two accounts.",
 }
 
 const DEFAULT_ERROR_MESSAGE =
@@ -164,4 +167,11 @@ export const AuthErrors = {
 
   sessionInvalid: (details?: Record<string, unknown>) =>
     createAuthError("SESSION_INVALID", "Session is invalid", details),
+
+  identityConflict: (details?: Record<string, unknown>) =>
+    createAuthError(
+      "IDENTITY_CONFLICT",
+      "This identifier already belongs to another account",
+      details,
+    ),
 } as const

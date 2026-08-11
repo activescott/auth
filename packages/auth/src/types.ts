@@ -83,6 +83,12 @@ export interface AuthSuccess {
 export interface AuthFailure {
   success: false
   error: AuthError
+  /**
+   * Set-Cookie header values the caller must include in the HTTP response
+   * even though authentication failed — e.g., the merge ticket cookie that
+   * accompanies an IDENTITY_CONFLICT during identity linking.
+   */
+  setCookies?: string[]
 }
 
 /**
@@ -118,6 +124,7 @@ export type AuthErrorCode =
   | "RATE_LIMITED"
   | "SESSION_EXPIRED"
   | "SESSION_INVALID"
+  | "IDENTITY_CONFLICT"
 
 /**
  * Identity storage adapter interface.
@@ -170,6 +177,14 @@ export interface IdentityStore {
    * `findByUserId`.
    */
   findByUserIds?(userIds: string[]): Promise<Identity[]>
+
+  /**
+   * Reassign every identity of `fromUserId` to `toUserId` — bulk, and atomic
+   * where the backing store allows (SQL: one UPDATE ... WHERE user_id = ...).
+   * Optional: only account merging needs it; `Auth.mergeUsers` reports a
+   * configuration error when it is missing.
+   */
+  reassignByUserId?(fromUserId: string, toUserId: string): Promise<void>
 }
 
 /**
@@ -250,6 +265,28 @@ export interface UserStore {
    * renders configured metadata keys as columns.
    */
   listUsers?(options: ListUsersOptions): Promise<ListUsersResult>
+
+  /**
+   * Called by `Auth.mergeUsers` after every identity of `fromUser` has been
+   * reassigned to `intoUser`. Migrate or delete application data keyed by
+   * `fromUser.id` here (file roots, preferences, billing rows), and dispose
+   * of the absorbed user record — the library never deletes user rows.
+   * Deleting `fromUser` also ends its outstanding sessions: session
+   * verification re-checks `findById` on each request.
+   */
+  onMerge?(fromUser: AuthUser, intoUser: AuthUser): Promise<void>
+}
+
+/**
+ * Result of {@link Auth.mergeUsers}.
+ */
+export interface MergeResult {
+  /** The absorbed user, whose identities were moved */
+  fromUserId: string
+  /** The surviving user */
+  intoUserId: string
+  /** The identities that were reassigned, as they were before the move */
+  movedIdentities: Identity[]
 }
 
 /**
