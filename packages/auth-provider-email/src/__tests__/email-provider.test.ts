@@ -449,3 +449,150 @@ describe("describe", () => {
     expect(JSON.stringify(settings)).not.toContain("pass")
   })
 })
+
+describe("EmailProvider link mode", () => {
+  let provider: EmailProvider
+  let challengeStore: InMemoryChallengeStore
+
+  const sessionUser = { id: "user-2" }
+  const session = {
+    user: sessionUser,
+    identity: createMockIdentity({ id: "identity-2", userId: "user-2" }),
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    provider = createProvider()
+    challengeStore = new InMemoryChallengeStore()
+  })
+
+  afterEach(() => {
+    challengeStore.destroy()
+  })
+
+  function createLinkInitiateRequest(email = TEST_EMAIL): Request {
+    return new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ email, mode: "link" }).toString(),
+    })
+  }
+
+  it("should refuse initiate without a session", async () => {
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(null),
+    })
+
+    const result = await provider.initiate(createLinkInitiateRequest(), context)
+
+    if (result instanceof Response) throw new Error("expected a result object")
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("SESSION_INVALID")
+    expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
+  })
+
+  it("should stamp the challenge with the session user id", async () => {
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+    })
+
+    await provider.initiate(createLinkInitiateRequest(), context)
+
+    const challengeId =
+      new URL(lastMagicLink()).searchParams.get("challenge") ?? ""
+    const challenge = await challengeStore.findById(challengeId)
+    expect(challenge?.data?.linkUserId).toBe("user-2")
+  })
+
+  it("should link a new email to the session user on verify", async () => {
+    const linked = createMockIdentity({
+      id: "identity-3",
+      userId: "user-2",
+      identifier: TEST_EMAIL,
+    })
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockResolvedValue(linked),
+        update: vi.fn().mockResolvedValue(linked),
+      },
+    })
+
+    await provider.initiate(createLinkInitiateRequest(), context)
+    const result = await provider.verify(
+      createRedeemRequest(lastMagicLink()),
+      context,
+    )
+
+    if (result instanceof Response) throw new Error("expected a result object")
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.user.id).toBe("user-2")
+    expect(context.identityStore.create).toHaveBeenCalledWith({
+      userId: "user-2",
+      provider: "email",
+      identifier: TEST_EMAIL,
+      metadata: {},
+    })
+    // Linking never creates a user from the identifier
+    expect(context.userStore.create).not.toHaveBeenCalled()
+  })
+
+  it("should answer IDENTITY_CONFLICT with a merge ticket when the email belongs to another user", async () => {
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+      identityStore: {
+        findByProviderAndIdentifier: vi
+          .fn()
+          .mockResolvedValue(createMockIdentity({ userId: "user-9" })),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn(),
+        update: vi.fn(),
+      },
+    })
+
+    await provider.initiate(createLinkInitiateRequest(), context)
+    const result = await provider.verify(
+      createRedeemRequest(lastMagicLink()),
+      context,
+    )
+
+    if (result instanceof Response) throw new Error("expected a result object")
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.code).toBe("IDENTITY_CONFLICT")
+    expect(context.identityStore.create).not.toHaveBeenCalled()
+
+    const cookies = result.setCookies ?? []
+    expect(
+      cookies.some((cookie) => cookie.startsWith("auth_merge_ticket=")),
+    ).toBe(true)
+    // The consumed challenge's cookie is cleared alongside the ticket
+    expect(
+      cookies.some(
+        (cookie) =>
+          cookie.startsWith("auth_challenge=;") && cookie.includes("Max-Age=0"),
+      ),
+    ).toBe(true)
+  })
+
+  it("should render link wording on the confirm page", async () => {
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+    })
+
+    await provider.initiate(createLinkInitiateRequest(), context)
+    const response = await provider.verify(
+      new Request(lastMagicLink()),
+      context,
+    )
+
+    if (!(response instanceof Response)) throw new Error("expected a page")
+    const html = await response.text()
+    expect(html).toContain("Link your email")
+    expect(html).toContain("Confirm link")
+  })
+})

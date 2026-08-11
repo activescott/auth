@@ -13,6 +13,8 @@ import {
   hashOtpCode,
   verifyOtpChallenge,
   constantTimeEqual,
+  completeLinkVerification,
+  linkUserIdFromChallenge,
   parseRequestBody,
   isBrowserFormPost,
   buildReturnUrl,
@@ -94,6 +96,24 @@ export class EmailProvider implements AuthProvider {
         )
       }
 
+      // mode=link: attach this email to the signed-in user instead of
+      // signing in as it. The link intent is stamped into the challenge
+      // here, so at verify time it comes from the server-side challenge,
+      // never from the client.
+      let linkUserId: string | undefined
+      if (body.mode === "link") {
+        const session = await context.getSession?.(request)
+        if (!session) {
+          return this.initiateFailure(
+            request,
+            AuthErrors.sessionInvalid({
+              reason: "Sign in before linking an email address",
+            }),
+          )
+        }
+        linkUserId = session.user.id
+      }
+
       // Cap how much mail one address receives regardless of source IP. A
       // throttled request gets the same answer as a sent one, so a caller
       // spraying addresses learns nothing.
@@ -120,6 +140,7 @@ export class EmailProvider implements AuthProvider {
         data: {
           hashedKey: await hashOtpCode(challengeId, linkKey),
           ...(redirectTo ? { redirectTo } : {}),
+          ...(linkUserId ? { linkUserId } : {}),
         },
         maxAttempts: this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
         expiresAt: new Date(Date.now() + expirySeconds * MS_PER_SECOND),
@@ -195,7 +216,7 @@ export class EmailProvider implements AuthProvider {
       const body = await parseRequestBody(request)
 
       if (typeof body.challenge === "string" && typeof body.key === "string") {
-        return this.redeemLink(context, body.challenge, body.key)
+        return this.redeemLink(request, context, body.challenge, body.key)
       }
 
       if (typeof body.code === "string") {
@@ -243,22 +264,33 @@ export class EmailProvider implements AuthProvider {
       ? `?redirectTo=${encodeURIComponent(redirectTo)}`
       : ""
 
+    // A link-mode challenge adds the email to the signed-in account rather
+    // than signing in as it; say so instead of "sign in".
+    const linking = Boolean(linkUserIdFromChallenge(challenge))
+    const title = linking
+      ? `Link your email to ${escapeHtml(appName)}`
+      : `Sign in to ${escapeHtml(appName)}`
+    const prompt = linking
+      ? `Confirm to link <strong>${escapeHtml(challenge.identifier)}</strong> to your account.`
+      : `Confirm to finish signing in as <strong>${escapeHtml(challenge.identifier)}</strong>.`
+    const buttonLabel = linking ? "Confirm link" : "Confirm sign-in"
+
     const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Sign in to ${escapeHtml(appName)}</title>
+<title>${title}</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; padding: 48px 16px; margin: 0;">
   <main style="max-width: 360px; text-align: center;">
-    <h1 style="font-size: 22px;">Sign in to ${escapeHtml(appName)}</h1>
-    <p style="color: #6b7280;">Confirm to finish signing in as <strong>${escapeHtml(challenge.identifier)}</strong>.</p>
+    <h1 style="font-size: 22px;">${title}</h1>
+    <p style="color: #6b7280;">${prompt}</p>
     <form method="post" action="${escapeHtml(action)}">
       <input type="hidden" name="challenge" value="${escapeHtml(challengeId)}">
       <input type="hidden" name="key" value="${escapeHtml(key)}">
-      <button type="submit" style="background: ${escapeHtml(primaryColor)}; color: white; border: 0; padding: 12px 32px; border-radius: 6px; font-size: 16px; cursor: pointer;">Confirm sign-in</button>
+      <button type="submit" style="background: ${escapeHtml(primaryColor)}; color: white; border: 0; padding: 12px 32px; border-radius: 6px; font-size: 16px; cursor: pointer;">${buttonLabel}</button>
     </form>
   </main>
 </body>
@@ -271,9 +303,11 @@ export class EmailProvider implements AuthProvider {
   }
 
   /**
-   * Redeem a magic link: consume the challenge and authenticate
+   * Redeem a magic link: consume the challenge and authenticate (or link,
+   * for a link-mode challenge)
    */
   private async redeemLink(
+    request: Request,
     context: AuthContext,
     challengeId: string,
     key: string,
@@ -284,19 +318,42 @@ export class EmailProvider implements AuthProvider {
     // Single use: consumed by redemption
     await context.challengeStore.delete(challenge.id)
 
-    const result = await authenticateWithIdentifier(
-      this.id,
-      challenge.identifier,
-      context,
-    )
-    if (!result.success) return result
+    return this.authenticateOrLink(challenge, request, context)
+  }
 
-    return {
-      ...result,
-      setCookies: [
-        buildChallengeClearingCookie(this.cookieName(), context.baseUrl),
-      ],
+  /**
+   * The post-redemption step shared by both redemption paths: a sign-in
+   * challenge resolves a user from the identifier; a link-mode challenge
+   * attaches the identifier to the session user instead. Appends the
+   * challenge-clearing cookie to successes and to failures that already
+   * carry cookies (the IDENTITY_CONFLICT merge ticket).
+   */
+  private async authenticateOrLink(
+    challenge: Challenge,
+    request: Request,
+    context: AuthContext,
+  ): Promise<AuthResult> {
+    const linkUserId = linkUserIdFromChallenge(challenge)
+    const result = linkUserId
+      ? await completeLinkVerification(
+          this.id,
+          challenge.identifier,
+          linkUserId,
+          request,
+          context,
+        )
+      : await authenticateWithIdentifier(this.id, challenge.identifier, context)
+
+    const clearingCookie = buildChallengeClearingCookie(
+      this.cookieName(),
+      context.baseUrl,
+    )
+    if (!result.success) {
+      return result.setCookies
+        ? { ...result, setCookies: [...result.setCookies, clearingCookie] }
+        : result
     }
+    return { ...result, setCookies: [clearingCookie] }
   }
 
   /**
@@ -377,19 +434,7 @@ export class EmailProvider implements AuthProvider {
       return { success: false, error: this.otpFailureError(outcome.reason) }
     }
 
-    const result = await authenticateWithIdentifier(
-      this.id,
-      outcome.challenge.identifier,
-      context,
-    )
-    if (!result.success) return result
-
-    return {
-      ...result,
-      setCookies: [
-        buildChallengeClearingCookie(this.cookieName(), context.baseUrl),
-      ],
-    }
+    return this.authenticateOrLink(outcome.challenge, request, context)
   }
 
   /**
