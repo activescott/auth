@@ -64,7 +64,7 @@ const VERIFIED_AUTHENTICATION = {
   },
 }
 
-/** Credential state as stored in Identity.metadata by the provider */
+/** Credential state as stored in Identity.providerState by the provider */
 function credentialMetadata(
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
@@ -115,7 +115,7 @@ class TestIdentityStore implements IdentityStore {
     userId: string
     provider: string
     identifier: string
-    metadata: Record<string, unknown>
+    providerState: Record<string, unknown>
   }): Promise<Identity> {
     const identity: Identity = {
       id: `identity-${this.nextId++}`,
@@ -128,7 +128,7 @@ class TestIdentityStore implements IdentityStore {
 
   public async update(
     id: string,
-    data: Partial<Pick<Identity, "metadata" | "verifiedAt">>,
+    data: Partial<Pick<Identity, "providerState" | "verifiedAt">>,
   ): Promise<Identity> {
     const existing = this.identities.get(id)
     if (!existing) throw new Error(`Identity ${id} not found`)
@@ -160,7 +160,7 @@ function createContext(overrides: Partial<AuthContext> = {}): AuthContext {
         userId: "user-1",
         provider: "email",
         identifier: "user@example.com",
-        metadata: {},
+        providerState: {},
         createdAt: new Date(),
       },
     }),
@@ -233,13 +233,13 @@ function authenticationBody(overrides: Record<string, unknown> = {}): object {
 
 async function seedPasskeyIdentity(
   context: AuthContext,
-  metadata: Record<string, unknown> = credentialMetadata(),
+  providerState: Record<string, unknown> = credentialMetadata(),
 ): Promise<Identity> {
   return context.identityStore.create({
     userId: "user-1",
     provider: "passkey",
     identifier: "cred-1",
-    metadata,
+    providerState,
   })
 }
 
@@ -368,20 +368,20 @@ describe("PasskeyProvider", () => {
         userId: "user-1",
         provider: "passkey",
         identifier: "existing-cred",
-        metadata: credentialMetadata({ transports: ["internal"] }),
+        providerState: credentialMetadata({ transports: ["internal"] }),
       })
       // A non-passkey identity and a corrupt passkey row are both skipped
       await context.identityStore.create({
         userId: "user-1",
         provider: "email",
         identifier: "user@example.com",
-        metadata: {},
+        providerState: {},
       })
       await context.identityStore.create({
         userId: "user-1",
         provider: "passkey",
         identifier: "corrupt-cred",
-        metadata: { not: "a credential" },
+        providerState: { not: "a credential" },
       })
 
       await provider.handleAction(
@@ -459,7 +459,7 @@ describe("PasskeyProvider", () => {
             userId: "user-2",
             provider: "email",
             identifier: "other@example.com",
-            metadata: {},
+            providerState: {},
             createdAt: new Date(),
           },
         }),
@@ -507,7 +507,7 @@ describe("PasskeyProvider", () => {
       expect(response.status).toBe(401)
     })
 
-    it("should create a passkey identity carrying the credential metadata", async () => {
+    it("should create a passkey identity carrying the credential providerState", async () => {
       const { provider, webauthn } = createProvider()
       const context = createContext()
       const cookie = await registrationCookie(provider, context)
@@ -539,7 +539,7 @@ describe("PasskeyProvider", () => {
       const identity = await findPasskeyIdentity(context)
       expect(identity).not.toBeNull()
       expect(identity?.userId).toBe("user-1")
-      expect(identity?.metadata).toMatchObject({
+      expect(identity?.providerState).toMatchObject({
         publicKey: "AQID",
         counter: 0,
         transports: ["internal"],
@@ -608,7 +608,7 @@ describe("PasskeyProvider", () => {
       expect(body.error.code).toBe("INVALID_CREDENTIALS")
     })
 
-    it("should return 500 when the stored metadata is corrupt", async () => {
+    it("should return 500 when the stored providerState is corrupt", async () => {
       const { provider } = createProvider()
       const context = createContext()
       await seedPasskeyIdentity(context, { not: "a credential" })
@@ -678,8 +678,8 @@ describe("PasskeyProvider", () => {
       expect(context.createSession).toHaveBeenCalledTimes(1)
 
       const identity = await findPasskeyIdentity(context)
-      expect(identity?.metadata.counter).toBe(1)
-      expect(typeof identity?.metadata.lastUsedAt).toBe("string")
+      expect(identity?.providerState.counter).toBe(1)
+      expect(typeof identity?.providerState.lastUsedAt).toBe("string")
       expect(identity?.verifiedAt).toBeInstanceOf(Date)
     })
 
@@ -716,7 +716,7 @@ describe("PasskeyProvider", () => {
         expect.stringContaining("counter regression"),
       )
       const identity = await findPasskeyIdentity(testContext)
-      expect(identity?.metadata.counter).toBe(5)
+      expect(identity?.providerState.counter).toBe(5)
     })
   })
 
