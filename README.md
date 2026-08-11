@@ -279,6 +279,8 @@ Post to the provider's normal initiate endpoint with one extra field, `mode: "li
 
 Nothing about whether an identifier is taken is revealed before possession is proven, so the link flow cannot be used to probe which emails or numbers have accounts.
 
+Link confirmations are worded as confirmations, not sign-in requests — the recipient did not ask to sign in. The email provider's default subject becomes "Confirm your email" (customize with `template.linkSubject`; custom `EmailTransport`s receive `purpose: "link"` in the send options), and the SMS provider texts a "confirmation code" (customize with `linkMessageTemplate`).
+
 ### When the identifier belongs to another account: merge
 
 If the verified identifier already signs in to a **different** user, the verify answers with error code `IDENTITY_CONFLICT` (HTTP 409, or `?error=IDENTITY_CONFLICT` on the redirect) instead of silently signing the user into the other account. The response also sets a short-lived, single-use **merge ticket** cookie recording exactly which two users may merge.
