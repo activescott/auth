@@ -293,11 +293,6 @@ export class SmsProvider implements AuthProvider {
     }
   }
 
-  public canHandle(request: Request): boolean {
-    const url = new URL(request.url)
-    return url.pathname.startsWith("/auth/sms")
-  }
-
   public getRoutes(): ProviderRoute[] {
     return [
       { method: "POST", path: "/sms/initiate", handler: "initiate" },

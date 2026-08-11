@@ -41,7 +41,7 @@
     "directory": "packages/auth-provider-sms"
   },
   "peerDependencies": {
-    "@activescott/auth": "^4.0.0"
+    "@activescott/auth": "^5.0.0"
   },
   "devDependencies": {
     "@activescott/auth": "*",
