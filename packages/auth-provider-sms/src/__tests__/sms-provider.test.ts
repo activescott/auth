@@ -366,13 +366,11 @@ describe("SmsProvider", () => {
   })
 
   describe("routing", () => {
-    it("should handle /auth/sms paths only", () => {
-      expect(
-        provider.canHandle(new Request(`${TEST_BASE_URL}/auth/sms/initiate`)),
-      ).toBe(true)
-      expect(
-        provider.canHandle(new Request(`${TEST_BASE_URL}/auth/email/verify`)),
-      ).toBe(false)
+    it("should declare its initiate and verify routes", () => {
+      expect(provider.getRoutes()).toEqual([
+        { method: "POST", path: "/sms/initiate", handler: "initiate" },
+        { method: "POST", path: "/sms/verify", handler: "verify" },
+      ])
     })
   })
 })
@@ -763,7 +761,7 @@ describe("SmsProvider link mode", () => {
       userId: "user-2",
       provider: "sms",
       identifier: TEST_PHONE,
-      metadata: {},
+      providerState: {},
     })
     expect(context.userStore.create).not.toHaveBeenCalled()
   })
@@ -851,7 +849,7 @@ describe("SmsProvider link mode", () => {
       userId: "user-2",
       provider: "sms",
       identifier: TEST_PHONE,
-      metadata: {},
+      providerState: {},
     })
   })
 })
