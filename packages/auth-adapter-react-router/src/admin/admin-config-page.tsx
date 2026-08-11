@@ -117,10 +117,6 @@ export function AdminConfigPage({
               "Can batch identity lookups",
               config.stores.capabilities.findByUserIds,
             ],
-            [
-              "Can delete identities",
-              config.stores.capabilities.deleteIdentity,
-            ],
           ]}
         />
       </Card>

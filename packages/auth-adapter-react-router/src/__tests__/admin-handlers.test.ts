@@ -13,7 +13,7 @@ function createIdentity(overrides: Partial<Identity> = {}): Identity {
     userId: "user-1",
     provider: "email",
     identifier: ADMIN_EMAIL,
-    metadata: {},
+    providerState: {},
     createdAt: new Date("2024-01-01T00:00:00.000Z"),
     ...overrides,
   }
