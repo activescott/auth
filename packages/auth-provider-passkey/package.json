@@ -1,6 +1,6 @@
 {
   "name": "@activescott/auth-provider-passkey",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Passkey (WebAuthn) provider for @activescott/auth",
   "type": "module",
   "main": "./dist/index.js",

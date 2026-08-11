@@ -3,6 +3,34 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.0.0](https://github.com/activescott/auth/compare/auth@4.1.0...auth@5.0.0) (2026-08-11)
+
+### ⚠ BREAKING CHANGES
+
+* four API changes requiring consumer updates:
+
+- Identity.metadata is renamed to Identity.providerState (and in
+  IdentityStore.create/update). It was always provider-owned state, and the
+  old name collided with the app-facing AuthUser.metadata.
+- IdentityStore.delete, IdentityStore.reassignByUserId, and
+  UserStore.onMerge are now required. All are a few lines to implement, and
+  making them required turns runtime CONFIGURATION_ERRORs into compile-time
+  type errors. StoresDescription.capabilities no longer reports
+  deleteIdentity.
+- Auth.handleRequest dispatches strictly from each provider's getRoutes()
+  table: undeclared method+path is 404 (405 on method mismatch), route
+  handler kind decides initiate/verify/action, and the pre-v5 send/callback
+  action aliases are gone. ProviderRoute.handler gains "action" for
+  handleAction routes. AuthProvider.canHandle and Auth.findProvider are
+  removed.
+- Auth.handleRequest accepts optional AuthResponders ({ onSuccess,
+  onFailure }) so adapters turn verify outcomes into their own responses
+  instead of re-implementing provider dispatch.
+
+### Features
+
+* v5 — required store methods, providerState rename, route-table dispatch ([67ccd15](https://github.com/activescott/auth/commit/67ccd15d9b9bc3cd4ec082bf2078cdda9f0496d5))
+
 ## [4.1.0](https://github.com/activescott/auth/compare/auth@4.0.0...auth@4.1.0) (2026-08-11)
 
 ### Features

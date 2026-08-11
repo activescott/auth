@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.0.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.3.0...auth-adapter-react-router@2.0.0) (2026-08-11)
+
+### ⚠ BREAKING CHANGES
+
+* requires @activescott/auth ^5.0.0. handleAuth no longer
+re-implements provider dispatch (regex on the action name, direct
+provider.verify call); it passes onSuccess/onFailure responders to
+Auth.handleRequest, which owns all routing. Behavior for createAuthHandlers
+users is unchanged. The admin config page no longer shows the
+deleteIdentity capability row (IdentityStore.delete is required in v5).
+
+### Features
+
+* v5 — handleAuth via core responders ([e01615a](https://github.com/activescott/auth/commit/e01615a156cdee8095b5cf556a5e54469d73cc6d))
+
 ## [1.3.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.2.0...auth-adapter-react-router@1.3.0) (2026-08-11)
 
 ### Features

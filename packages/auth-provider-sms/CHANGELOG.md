@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.0.0](https://github.com/activescott/auth/compare/auth-provider-sms@1.1.0...auth-provider-sms@2.0.0) (2026-08-11)
+
+### ⚠ BREAKING CHANGES
+
+* requires @activescott/auth ^5.0.0. canHandle is gone
+(core routes from the declared route table; GET requests to the POST-only
+routes now answer 405), and identity provider state follows core's
+Identity.metadata → Identity.providerState rename. Endpoint URLs are
+unchanged.
+
+### Features
+
+* v5 — providerState rename, strict route table ([b74a4f1](https://github.com/activescott/auth/commit/b74a4f1d2231173e17af41871da8b55ecf818b1d))
+
 ## [1.1.0](https://github.com/activescott/auth/compare/auth-provider-sms@1.0.0...auth-provider-sms@1.1.0) (2026-08-11)
 
 ### Features

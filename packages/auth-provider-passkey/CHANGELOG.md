@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.0.0](https://github.com/activescott/auth/compare/auth-provider-passkey@1.0.0...auth-provider-passkey@2.0.0) (2026-08-11)
+
+### ⚠ BREAKING CHANGES
+
+* requires @activescott/auth ^5.0.0. Credential state is
+stored under Identity.providerState (renamed from Identity.metadata; the
+parsePasskeyCredentialMetadata helper keeps its name and now takes
+identity.providerState). All four ceremonies are declared handler: "action"
+routes in getRoutes() so core's route-table dispatch serves them without
+the initiate abuse guard, matching v4 behavior; canHandle is gone. Endpoint
+URLs and request/response shapes are unchanged.
+
+### Features
+
+* v5 — providerState rename, declared action routes ([8867fde](https://github.com/activescott/auth/commit/8867fde68f7ccc91ea47c488e33de67ccd123875))
+
 ## [1.0.0](https://github.com/activescott/auth/compare/auth-provider-passkey@0.1.0...auth-provider-passkey@1.0.0) (2026-08-08)
 
 ### ⚠ BREAKING CHANGES

@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.0.0](https://github.com/activescott/auth/compare/auth-provider-email@2.1.0...auth-provider-email@3.0.0) (2026-08-11)
+
+### ⚠ BREAKING CHANGES
+
+* requires @activescott/auth ^5.0.0. The legacy alias
+endpoints POST /auth/email/send and GET /auth/email/callback are removed
+from getRoutes() and now answer 404 — use /auth/email/initiate and
+/auth/email/verify. canHandle is gone (core routes from the declared route
+table), and identity provider state follows core's Identity.metadata →
+Identity.providerState rename.
+
+### Features
+
+* v5 — providerState rename, strict route table ([4e4e6f3](https://github.com/activescott/auth/commit/4e4e6f3a91a772e8a0bc9165b8815a69e4d70251))
+
 ## [2.1.0](https://github.com/activescott/auth/compare/auth-provider-email@2.0.0...auth-provider-email@2.1.0) (2026-08-11)
 
 ### Features
