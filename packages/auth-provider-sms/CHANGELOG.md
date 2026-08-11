@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.1.0](https://github.com/activescott/auth/compare/auth-provider-sms@2.0.0...auth-provider-sms@2.1.0) (2026-08-11)
+
+### Features
+
+* link-aware message wording ([62364b5](https://github.com/activescott/auth/commit/62364b51987a55855f4045372bea6d21a0ac0904)), closes [#74](https://github.com/activescott/auth/issues/74)
+
 ## [2.0.0](https://github.com/activescott/auth/compare/auth-provider-sms@1.1.0...auth-provider-sms@2.0.0) (2026-08-11)
 
 ### ⚠ BREAKING CHANGES

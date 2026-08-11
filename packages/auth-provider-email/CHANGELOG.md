@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.1.0](https://github.com/activescott/auth/compare/auth-provider-email@3.0.0...auth-provider-email@3.1.0) (2026-08-11)
+
+### Features
+
+* link-aware email wording ([d0bb588](https://github.com/activescott/auth/commit/d0bb588713afd52651d3ae49fe3db848d9bca4b2)), closes [#74](https://github.com/activescott/auth/issues/74)
+
 ## [3.0.0](https://github.com/activescott/auth/compare/auth-provider-email@2.1.0...auth-provider-email@3.0.0) (2026-08-11)
 
 ### ⚠ BREAKING CHANGES

@@ -1,6 +1,6 @@
 {
   "name": "@activescott/auth-provider-sms",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "SMS one-time-code provider for @activescott/auth",
   "type": "module",
   "main": "./dist/index.js",
