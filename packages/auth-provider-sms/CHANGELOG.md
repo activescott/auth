@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.0](https://github.com/activescott/auth/compare/auth-provider-sms@1.0.0...auth-provider-sms@1.1.0) (2026-08-11)
+
+### Features
+
+* link mode to attach a phone number to the signed-in account ([417e0bf](https://github.com/activescott/auth/commit/417e0bf7b44a02d39615b76f2e52b76a3d36c1c5)), closes [#70](https://github.com/activescott/auth/issues/70)
+
 ## [1.0.0](https://github.com/activescott/auth/compare/auth-provider-sms@0.3.0...auth-provider-sms@1.0.0) (2026-08-08)
 
 ### ⚠ BREAKING CHANGES

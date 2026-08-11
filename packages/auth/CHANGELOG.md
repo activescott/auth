@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [4.1.0](https://github.com/activescott/auth/compare/auth@4.0.0...auth@4.1.0) (2026-08-11)
+
+### Features
+
+* identity linking and account merge ([b60adb1](https://github.com/activescott/auth/commit/b60adb132d453d8bf6c8005a22df72f6636e9262)), closes [#70](https://github.com/activescott/auth/issues/70)
+* merge-review hardening and onIdentityLinked hook ([840a9d9](https://github.com/activescott/auth/commit/840a9d96fdee5781d77db1a4209df584e658f7c6)), closes [#70](https://github.com/activescott/auth/issues/70)
+
 ## [4.0.0](https://github.com/activescott/auth/compare/auth@3.1.0...auth@4.0.0) (2026-08-08)
 
 ### ⚠ BREAKING CHANGES

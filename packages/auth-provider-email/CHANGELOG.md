@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.1.0](https://github.com/activescott/auth/compare/auth-provider-email@2.0.0...auth-provider-email@2.1.0) (2026-08-11)
+
+### Features
+
+* link mode to attach an email to the signed-in account ([cc6e25c](https://github.com/activescott/auth/commit/cc6e25c411173f4956aa46d9cf68e35ad46c69df)), closes [#70](https://github.com/activescott/auth/issues/70)
+
 ## [2.0.0](https://github.com/activescott/auth/compare/auth-provider-email@1.1.0...auth-provider-email@2.0.0) (2026-08-08)
 
 ### ⚠ BREAKING CHANGES

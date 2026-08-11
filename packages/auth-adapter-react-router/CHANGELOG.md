@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.2.0...auth-adapter-react-router@1.3.0) (2026-08-11)
+
+### Features
+
+* carry failure setCookies on the error redirect ([b1fb35d](https://github.com/activescott/auth/commit/b1fb35df988753f1b8d72756d54be02e8f085544)), closes [#70](https://github.com/activescott/auth/issues/70)
+
 ## [1.2.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.1.0...auth-adapter-react-router@1.2.0) (2026-08-08)
 
 ### Features
