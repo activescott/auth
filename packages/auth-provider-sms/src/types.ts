@@ -105,5 +105,13 @@ export interface SmsProviderConfig {
    * this text on its own final line, as the spec requires.
    */
   messageTemplate?: (code: string, appName: string) => string
+  /**
+   * Override the message text for link-mode confirmations (a signed-in
+   * user adding this phone number to their account). Falls back to
+   * `messageTemplate`, then to a default worded as a confirmation rather
+   * than a sign-in — the recipient of a link text did not ask to sign in.
+   * Same WebOTP handling as `messageTemplate`.
+   */
+  linkMessageTemplate?: (code: string, appName: string) => string
   otp?: SmsOtpConfig
 }

@@ -174,7 +174,7 @@ export class SmsProvider implements AuthProvider {
 
         const sent = await this.transport.sendMessage(
           phone,
-          this.buildMessage(code),
+          this.buildMessage(code, Boolean(linkUserId)),
         )
 
         if (!sent) {
@@ -331,6 +331,9 @@ export class SmsProvider implements AuthProvider {
         customMessageTemplate: hosted
           ? null
           : this.config.messageTemplate !== undefined,
+        customLinkMessageTemplate: hosted
+          ? null
+          : this.config.linkMessageTemplate !== undefined,
       },
     }
   }
@@ -385,14 +388,19 @@ export class SmsProvider implements AuthProvider {
   }
 
   /**
-   * The message text. When webOtpDomain is set, the WebOTP autofill line
-   * (`@domain #code`) goes on the last line as the spec requires.
+   * The message text. A link-mode text reads as a confirmation, not a
+   * sign-in request — its recipient did not ask to sign in. When
+   * webOtpDomain is set, the WebOTP autofill line (`@domain #code`) goes
+   * on the last line as the spec requires.
    */
-  private buildMessage(code: string): string {
+  private buildMessage(code: string, linking = false): string {
     const appName = this.config.appName ?? DEFAULT_APP_NAME
-    const text =
-      this.config.messageTemplate?.(code, appName) ??
-      `Your ${appName} sign-in code is: ${code}`
+    const text = linking
+      ? (this.config.linkMessageTemplate?.(code, appName) ??
+        this.config.messageTemplate?.(code, appName) ??
+        `Your ${appName} confirmation code is: ${code}`)
+      : (this.config.messageTemplate?.(code, appName) ??
+        `Your ${appName} sign-in code is: ${code}`)
 
     if (this.config.webOtpDomain) {
       return `${text}\n\n@${this.config.webOtpDomain} #${code}`
