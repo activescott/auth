@@ -853,3 +853,64 @@ describe("SmsProvider link mode", () => {
     })
   })
 })
+
+describe("SmsProvider link message wording", () => {
+  let challengeStore: InMemoryChallengeStore
+
+  const session = {
+    user: { id: "user-2" },
+    identity: createMockIdentity({ id: "identity-2", userId: "user-2" }),
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    challengeStore = new InMemoryChallengeStore()
+  })
+
+  afterEach(() => {
+    challengeStore.destroy()
+  })
+
+  function linkInitiateRequest(): Request {
+    return new Request(`${TEST_BASE_URL}/auth/sms/initiate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ phone: TEST_PHONE, mode: "link" }).toString(),
+    })
+  }
+
+  it("should text a confirmation, not a sign-in, for link initiates", async () => {
+    const provider = createProvider()
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+    })
+
+    await provider.initiate(linkInitiateRequest(), context)
+
+    expect(lastMessage()).toContain("confirmation code is:")
+    expect(lastMessage()).not.toContain("sign-in")
+  })
+
+  it("should keep sign-in wording for ordinary initiates", async () => {
+    const provider = createProvider()
+    const context = createMockContext(challengeStore)
+
+    await provider.initiate(createInitiateRequest(), context)
+
+    expect(lastMessage()).toContain("sign-in code is:")
+  })
+
+  it("should prefer linkMessageTemplate for link initiates", async () => {
+    const provider = createProvider({
+      linkMessageTemplate: (code, appName) =>
+        `${appName}: confirm with ${code}`,
+    })
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue(session),
+    })
+
+    await provider.initiate(linkInitiateRequest(), context)
+
+    expect(lastMessage()).toMatch(/^Test App: confirm with \d{6}$/)
+  })
+})
