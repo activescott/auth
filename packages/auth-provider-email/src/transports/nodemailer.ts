@@ -30,16 +30,28 @@ export class NodemailerTransport implements EmailTransport {
 
       const { template, from } = config
       const appName = template?.appName ?? "App"
-      const subject = template?.subject ?? "Sign in"
       const primaryColor = template?.primaryColor ?? "#6366f1"
       const code = options?.code
+      const linking = options?.purpose === "link"
+
+      // A link confirmation goes to an address whose owner did not ask to
+      // sign in, so it must not read like a sign-in request
+      const subject = linking
+        ? `${template?.linkSubject ?? "Confirm your email"} for ${appName}`
+        : `${template?.subject ?? "Sign in"} to ${appName}`
 
       const mailOptions = {
         from,
         to,
-        subject: `${subject} to ${appName}`,
-        html: this.generateHtmlEmail(magicLink, appName, primaryColor, code),
-        text: this.generateTextEmail(magicLink, appName, code),
+        subject,
+        html: this.generateHtmlEmail(
+          magicLink,
+          appName,
+          primaryColor,
+          code,
+          linking,
+        ),
+        text: this.generateTextEmail(magicLink, appName, code, linking),
       }
 
       await transporter.sendMail(mailOptions)
@@ -97,27 +109,40 @@ Magic Link: ${magicLink}${code ? `\nCode: ${code}` : ""}
     appName: string,
     primaryColor: string,
     code?: string,
+    linking = false,
   ): string {
-    // The code sentence stays literal ("Your sign-in code is: NNNNNN") so
+    const heading = linking
+      ? `Confirm your email for ${appName}`
+      : `Sign in to ${appName}`
+    const lede = linking
+      ? `Confirm to add this email address to your ${appName} account:`
+      : `Click the link below to sign in to your ${appName} account:`
+    const buttonLabel = linking ? "Confirm Email" : "Sign In"
+    const codeNoun = linking ? "confirmation" : "sign-in"
+    const codeHint = linking
+      ? "Enter this code where you started adding the email, or click the button below."
+      : "Enter this code on the sign-in page, or click the button below."
+
+    // The code sentence stays literal ("Your ... code is: NNNNNN") so
     // Apple Mail and similar clients detect it and offer AutoFill
     const codeSection = code
       ? `
-        <p>Your sign-in code is:</p>
+        <p>Your ${codeNoun} code is:</p>
         <p style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 32px; font-weight: 700; letter-spacing: 6px; margin: 16px 0;">${code}</p>
-        <p style="color: #6b7280; font-size: 14px;">Enter this code on the sign-in page, or click the button below.</p>
+        <p style="color: #6b7280; font-size: 14px;">${codeHint}</p>
       `
       : ""
 
     return `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: ${primaryColor};">Sign in to ${appName}</h2>
+        <h2 style="color: ${primaryColor};">${heading}</h2>
         ${codeSection}
-        <p>Click the link below to sign in to your ${appName} account:</p>
+        <p>${lede}</p>
 
         <div style="margin: 30px 0;">
           <a href="${magicLink}"
              style="background: ${primaryColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-            Sign In
+            ${buttonLabel}
           </a>
         </div>
 
@@ -137,12 +162,20 @@ Magic Link: ${magicLink}${code ? `\nCode: ${code}` : ""}
     magicLink: string,
     appName: string,
     code?: string,
+    linking = false,
   ): string {
-    const codeSection = code ? `Your sign-in code is: ${code}\n\n` : ""
+    const heading = linking
+      ? `Confirm your email for ${appName}`
+      : `Sign in to ${appName}`
+    const codeNoun = linking ? "confirmation" : "sign-in"
+    const linkVerb = linking
+      ? "confirm adding this email to your account"
+      : "sign in"
+    const codeSection = code ? `Your ${codeNoun} code is: ${code}\n\n` : ""
     return `
-Sign in to ${appName}
+${heading}
 
-${codeSection}Click this link to sign in: ${magicLink}
+${codeSection}Click this link to ${linkVerb}: ${magicLink}
 
 This link will expire in 5 minutes.
 
