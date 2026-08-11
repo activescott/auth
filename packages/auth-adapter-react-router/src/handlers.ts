@@ -86,98 +86,60 @@ export function createAuthHandlers<TUser = AuthUser>(
 
   return {
     /**
-     * Handle auth requests (for catch-all auth routes)
-     * Use in a route like /auth/$provider/$action
+     * Handle auth requests (for catch-all auth routes).
+     * Use in a route like /auth/$provider/$action.
+     *
+     * All dispatch lives in `Auth.handleRequest`; this adapter only supplies
+     * the responders that turn a verify outcome into a browser flow —
+     * session cookie plus redirect on success, error redirect on failure.
+     * Providers that answer with a Response themselves (the email confirm
+     * page, passkey JSON) pass through untouched, as do initiate results.
      */
     async handleAuth({ request }: { request: Request }): Promise<Response> {
-      const url = new URL(request.url)
-      const path = url.pathname
+      return auth.handleRequest(request, {
+        onSuccess: async (result, successRequest) => {
+          const sessionCookie = await auth.createSessionCookie(
+            result.user,
+            result.identity,
+          )
 
-      // Exact action match: only the verify|callback actions get the
-      // session-and-redirect handling below. Provider-specific actions
-      // whose names merely contain "verify" (e.g. the passkey
-      // provider's register-verify) fall through to auth.handleRequest.
-      const actionMatch = path.match(/\/auth\/[^/]+\/([^/]+)/)
-      const action = actionMatch?.[1]
-      const isVerify = action === "verify" || action === "callback"
+          // ?redirectTo= on the verify URL (saved during the login flow)
+          // wins over the configured default
+          const redirectToParameter = new URL(
+            successRequest.url,
+          ).searchParams.get("redirectTo")
+          let redirectUrl: string
+          if (redirectToParameter) {
+            redirectUrl = redirectToParameter
+          } else if (typeof successRedirect === "function") {
+            redirectUrl = successRedirect(result.user, result.identity)
+          } else {
+            redirectUrl = successRedirect
+          }
 
-      if (!isVerify) {
-        // For initiate requests, use the default handler
-        return auth.handleRequest(request)
-      }
-
-      // For verify requests, we need to handle the response specially
-      // to create a session and redirect
-      const match = path.match(/\/auth\/([^/]+)\//)
-      if (!match) {
-        return new Response("Not Found", { status: 404 })
-      }
-
-      const providerId = match[1]
-      if (!providerId) {
-        return new Response("Not Found", { status: 404 })
-      }
-
-      const provider = auth.getProvider(providerId)
-
-      if (!provider) {
-        return new Response(`Unknown provider: ${providerId}`, { status: 404 })
-      }
-
-      // Create context and verify
-      const context = auth.createContext(request)
-      const result = await provider.verify(request, context)
-
-      // Providers may answer with a page instead of an auth outcome —
-      // e.g., the email provider's confirm page on magic-link GET
-      if (result instanceof Response) {
-        return result
-      }
-
-      if (!result.success) {
-        const errorUrl =
-          typeof errorRedirect === "function"
-            ? errorRedirect(result.error, request)
-            : `${errorRedirect}?error=${encodeURIComponent(result.error.code)}`
-        // Failures can carry cookies — e.g. the merge ticket accompanying
-        // an IDENTITY_CONFLICT from a link-mode verify.
-        const headers = new Headers()
-        for (const cookie of result.setCookies ?? []) {
-          headers.append("Set-Cookie", cookie)
-        }
-        return redirect(errorUrl, { headers })
-      }
-
-      // Create session cookie
-      const sessionCookie = await auth.createSessionCookie(
-        result.user,
-        result.identity,
-      )
-
-      // Providers may return additional cookies to set (e.g., clearing an
-      // OTP challenge cookie after successful code verification)
-      const extraCookies = result.setCookies ?? []
-
-      // Check for redirectTo query param (set during login flow)
-      const redirectToParameter = url.searchParams.get("redirectTo")
-
-      // Determine redirect URL: use redirectTo param if present, otherwise use configured default
-      let redirectUrl: string
-      if (redirectToParameter) {
-        // Use the saved redirect destination from before login
-        redirectUrl = redirectToParameter
-      } else if (typeof successRedirect === "function") {
-        redirectUrl = successRedirect(result.user, result.identity)
-      } else {
-        redirectUrl = successRedirect
-      }
-
-      const headers = new Headers()
-      headers.append("Set-Cookie", sessionCookie)
-      for (const cookie of extraCookies) {
-        headers.append("Set-Cookie", cookie)
-      }
-      return redirect(redirectUrl, { headers })
+          // Providers may return additional cookies to set (e.g., clearing
+          // an OTP challenge cookie after successful code verification)
+          const headers = new Headers()
+          headers.append("Set-Cookie", sessionCookie)
+          for (const cookie of result.setCookies ?? []) {
+            headers.append("Set-Cookie", cookie)
+          }
+          return redirect(redirectUrl, { headers })
+        },
+        onFailure: async (failure, failureRequest) => {
+          const errorUrl =
+            typeof errorRedirect === "function"
+              ? errorRedirect(failure.error, failureRequest)
+              : `${errorRedirect}?error=${encodeURIComponent(failure.error.code)}`
+          // Failures can carry cookies — e.g. the merge ticket accompanying
+          // an IDENTITY_CONFLICT from a link-mode verify.
+          const headers = new Headers()
+          for (const cookie of failure.setCookies ?? []) {
+            headers.append("Set-Cookie", cookie)
+          }
+          return redirect(errorUrl, { headers })
+        },
+      })
     },
 
     /**

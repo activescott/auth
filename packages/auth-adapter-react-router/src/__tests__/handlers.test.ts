@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi, afterEach } from "vitest"
 import { createAuthHandlers } from "../handlers.js"
-import type { Auth, AuthUser, Identity } from "@activescott/auth"
+import { Auth, InMemoryChallengeStore } from "@activescott/auth"
+import type { AuthProvider, AuthUser, Identity } from "@activescott/auth"
 
 const TEST_BASE_URL = "https://example.com"
 
@@ -177,100 +178,104 @@ describe("createAuthHandlers", () => {
   })
 
   describe("handleAuth", () => {
-    it("should delegate initiate requests to auth.handleRequest", async () => {
-      const mockAuth = createMockAuth()
-      const handlers = createAuthHandlers(mockAuth)
+    const trackedAuths: Auth[] = []
+
+    afterEach(() => {
+      for (const tracked of trackedAuths.splice(0)) tracked.destroy()
+    })
+
+    /**
+     * handleAuth is a thin wrapper over Auth.handleRequest responders, so
+     * these tests run a REAL Auth over a mock provider rather than mocking
+     * the dispatch they exist to verify.
+     */
+    function createTestProvider(
+      overrides: Partial<AuthProvider> = {},
+    ): AuthProvider {
+      return {
+        id: "email",
+        name: "Email",
+        initiate: vi.fn().mockResolvedValue({ success: true, message: "Sent" }),
+        verify: vi.fn().mockResolvedValue({
+          success: true,
+          user: { id: "user-1" },
+          identity: createMockIdentity(),
+        }),
+        getRoutes: () => [
+          { method: "POST", path: "/email/initiate", handler: "initiate" },
+          { method: "GET", path: "/email/verify", handler: "verify" },
+          { method: "POST", path: "/email/verify", handler: "verify" },
+          { method: "POST", path: "/email/register-verify", handler: "action" },
+        ],
+        describe: () => ({ settings: {} }),
+        ...overrides,
+      }
+    }
+
+    function createRealAuth(provider: AuthProvider): Auth {
+      const realAuth = new Auth({
+        session: {
+          secret: "test-secret",
+          maxAge: "7d",
+          cookieName: "auth_session",
+          cookie: { secure: false, sameSite: "lax" },
+        },
+        identityStore: {
+          findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+          findByUserId: vi.fn().mockResolvedValue([]),
+          create: vi.fn(),
+          update: vi.fn(),
+          delete: vi.fn(),
+          reassignByUserId: vi.fn(),
+        },
+        userStore: {
+          findById: vi.fn().mockResolvedValue(null),
+          create: vi.fn(),
+          onMerge: vi.fn(),
+        },
+        challengeStore: new InMemoryChallengeStore(),
+        providers: [provider],
+      })
+      trackedAuths.push(realAuth)
+      return realAuth
+    }
+
+    it("should route initiate requests to the provider untouched", async () => {
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider))
 
       const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
         method: "POST",
       })
-      await handlers.handleAuth({ request })
-
-      expect(mockAuth.handleRequest).toHaveBeenCalledWith(request)
-    })
-
-    it("should delegate actions merely containing 'verify' to auth.handleRequest", async () => {
-      const provider = {
-        id: "passkey",
-        name: "Passkey",
-        verify: vi.fn(),
-        initiate: vi.fn(),
-        canHandle: vi.fn(),
-        getRoutes: vi.fn(),
-      }
-      const mockAuth = createMockAuth({
-        getProvider: vi.fn().mockReturnValue(provider),
-      })
-      const handlers = createAuthHandlers(mockAuth)
-
-      for (const action of [
-        "register-verify",
-        "authenticate-verify",
-        "register-options",
-        "callback-status",
-      ]) {
-        const request = new Request(`${TEST_BASE_URL}/auth/passkey/${action}`, {
-          method: "POST",
-        })
-        await handlers.handleAuth({ request })
-        expect(mockAuth.handleRequest).toHaveBeenCalledWith(request)
-      }
-
-      expect(provider.verify).not.toHaveBeenCalled()
-    })
-
-    it("should handle the callback action like verify", async () => {
-      const provider = {
-        id: "email",
-        name: "Email",
-        verify: vi.fn().mockResolvedValue({
-          success: true,
-          user: { id: "user-1" },
-          identity: createMockIdentity(),
-        }),
-        initiate: vi.fn(),
-        canHandle: vi.fn(),
-        getRoutes: vi.fn(),
-      }
-      const mockAuth = createMockAuth({
-        getProvider: vi.fn().mockReturnValue(provider),
-      })
-      const handlers = createAuthHandlers(mockAuth, {
-        successRedirect: "/dashboard",
-      })
-
-      const request = new Request(`${TEST_BASE_URL}/auth/email/callback`)
       const response = await handlers.handleAuth({ request })
 
-      expect(provider.verify).toHaveBeenCalledTimes(1)
-      expect(response.status).toBe(302)
+      expect(provider.initiate).toHaveBeenCalledTimes(1)
+      expect(response.status).toBe(200)
+    })
+
+    it("should route action routes to handleAction, not verify", async () => {
+      const actionResponse = new Response("{}", {
+        headers: { "Content-Type": "application/json" },
+      })
+      const handleAction = vi.fn().mockResolvedValue(actionResponse)
+      const provider = createTestProvider({ handleAction })
+      const handlers = createAuthHandlers(createRealAuth(provider))
+
+      // register-verify contains "verify" but is declared handler: "action"
+      const request = new Request(
+        `${TEST_BASE_URL}/auth/email/register-verify`,
+        { method: "POST" },
+      )
+      const response = await handlers.handleAuth({ request })
+
+      expect(handleAction).toHaveBeenCalledTimes(1)
+      expect(provider.verify).not.toHaveBeenCalled()
+      expect(response).toBe(actionResponse)
     })
 
     it("should handle verify requests with session cookie and redirect", async () => {
-      const provider = {
-        id: "email",
-        name: "Email",
-        verify: vi.fn().mockResolvedValue({
-          success: true,
-          user: { id: "user-1" },
-          identity: createMockIdentity(),
-        }),
-        initiate: vi.fn(),
-        canHandle: vi.fn(),
-        getRoutes: vi.fn(),
-      }
-
-      const mockAuth = createMockAuth({
-        getProvider: vi.fn().mockReturnValue(provider),
-        createContext: vi.fn().mockReturnValue({
-          identityStore: {},
-          userStore: {},
-          baseUrl: TEST_BASE_URL,
-          createSession: vi.fn(),
-        }),
-      })
-
-      const handlers = createAuthHandlers(mockAuth, {
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider), {
         successRedirect: "/dashboard",
       })
 
@@ -279,35 +284,20 @@ describe("createAuthHandlers", () => {
       )
       const response = await handlers.handleAuth({ request })
 
+      expect(provider.verify).toHaveBeenCalledTimes(1)
       expect(response.status).toBe(302)
       expect(response.headers.get("Location")).toBe("/dashboard")
       expect(response.headers.get("Set-Cookie")).toContain("auth_session=")
     })
 
     it("should redirect to error page on verify failure", async () => {
-      const provider = {
-        id: "email",
-        name: "Email",
+      const provider = createTestProvider({
         verify: vi.fn().mockResolvedValue({
           success: false,
           error: { code: "INVALID_TOKEN", message: "Bad token" },
         }),
-        initiate: vi.fn(),
-        canHandle: vi.fn(),
-        getRoutes: vi.fn(),
-      }
-
-      const mockAuth = createMockAuth({
-        getProvider: vi.fn().mockReturnValue(provider),
-        createContext: vi.fn().mockReturnValue({
-          identityStore: {},
-          userStore: {},
-          baseUrl: TEST_BASE_URL,
-          createSession: vi.fn(),
-        }),
       })
-
-      const handlers = createAuthHandlers(mockAuth)
+      const handlers = createAuthHandlers(createRealAuth(provider))
 
       const request = new Request(
         `${TEST_BASE_URL}/auth/email/verify?token=bad`,
@@ -319,24 +309,14 @@ describe("createAuthHandlers", () => {
     })
 
     it("should carry failure setCookies on the error redirect", async () => {
-      const provider = {
-        id: "email",
-        name: "Email",
+      const provider = createTestProvider({
         verify: vi.fn().mockResolvedValue({
           success: false,
           error: { code: "IDENTITY_CONFLICT", message: "Conflict" },
           setCookies: ["auth_merge_ticket=ticket-1; Path=/auth; HttpOnly"],
         }),
-        initiate: vi.fn(),
-        canHandle: vi.fn(),
-        getRoutes: vi.fn(),
-      }
-
-      const mockAuth = createMockAuth({
-        getProvider: vi.fn().mockReturnValue(provider),
       })
-
-      const handlers = createAuthHandlers(mockAuth)
+      const handlers = createAuthHandlers(createRealAuth(provider))
 
       const request = new Request(`${TEST_BASE_URL}/auth/email/verify`, {
         method: "POST",
@@ -353,25 +333,15 @@ describe("createAuthHandlers", () => {
     })
 
     it("should append provider setCookies alongside the session cookie", async () => {
-      const provider = {
-        id: "email",
-        name: "Email",
+      const provider = createTestProvider({
         verify: vi.fn().mockResolvedValue({
           success: true,
           user: { id: "user-1" },
           identity: createMockIdentity(),
           setCookies: ["auth_challenge=; Path=/auth; Max-Age=0"],
         }),
-        initiate: vi.fn(),
-        canHandle: vi.fn(),
-        getRoutes: vi.fn(),
-      }
-
-      const mockAuth = createMockAuth({
-        getProvider: vi.fn().mockReturnValue(provider),
       })
-
-      const handlers = createAuthHandlers(mockAuth, {
+      const handlers = createAuthHandlers(createRealAuth(provider), {
         successRedirect: "/dashboard",
       })
 
@@ -381,30 +351,19 @@ describe("createAuthHandlers", () => {
       const response = await handlers.handleAuth({ request })
 
       expect(response.status).toBe(302)
-      expect(response.headers.getSetCookie()).toEqual([
-        "auth_session=token; Path=/; HttpOnly",
-        "auth_challenge=; Path=/auth; Max-Age=0",
-      ])
+      const cookies = response.headers.getSetCookie()
+      expect(cookies[0]).toContain("auth_session=")
+      expect(cookies[1]).toBe("auth_challenge=; Path=/auth; Max-Age=0")
     })
 
     it("should pass through a Response from verify (e.g., the confirm page)", async () => {
       const confirmPage = new Response("<html>Confirm sign-in</html>", {
         headers: { "Content-Type": "text/html" },
       })
-      const provider = {
-        id: "email",
-        name: "Email",
+      const provider = createTestProvider({
         verify: vi.fn().mockResolvedValue(confirmPage),
-        initiate: vi.fn(),
-        canHandle: vi.fn(),
-        getRoutes: vi.fn(),
-      }
-
-      const mockAuth = createMockAuth({
-        getProvider: vi.fn().mockReturnValue(provider),
       })
-
-      const handlers = createAuthHandlers(mockAuth)
+      const handlers = createAuthHandlers(createRealAuth(provider))
 
       const request = new Request(
         `${TEST_BASE_URL}/auth/email/verify?challenge=abc&key=def`,
@@ -415,30 +374,8 @@ describe("createAuthHandlers", () => {
     })
 
     it("should use redirectTo query param after successful verify", async () => {
-      const provider = {
-        id: "email",
-        name: "Email",
-        verify: vi.fn().mockResolvedValue({
-          success: true,
-          user: { id: "user-1" },
-          identity: createMockIdentity(),
-        }),
-        initiate: vi.fn(),
-        canHandle: vi.fn(),
-        getRoutes: vi.fn(),
-      }
-
-      const mockAuth = createMockAuth({
-        getProvider: vi.fn().mockReturnValue(provider),
-        createContext: vi.fn().mockReturnValue({
-          identityStore: {},
-          userStore: {},
-          baseUrl: TEST_BASE_URL,
-          createSession: vi.fn(),
-        }),
-      })
-
-      const handlers = createAuthHandlers(mockAuth)
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider))
 
       const request = new Request(
         `${TEST_BASE_URL}/auth/email/verify?token=abc&redirectTo=/settings`,
