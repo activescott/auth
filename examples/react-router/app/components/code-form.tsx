@@ -25,10 +25,13 @@ const DEFAULT_CODE_LENGTH = 6
 export function CodeForm({
   action,
   length = DEFAULT_CODE_LENGTH,
+  submitLabel = "Sign in with code",
   children,
 }: {
   action: string
   length?: number
+  /** Button text; override for flows that are not a sign-in (e.g. linking) */
+  submitLabel?: string
   children: string
 }) {
   const formRef = useRef<HTMLFormElement>(null)
@@ -70,7 +73,7 @@ export function CodeForm({
         disabled={submitting}
         className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50"
       >
-        {submitting ? "Signing in…" : "Sign in with code"}
+        {submitting ? "Submitting…" : submitLabel}
       </button>
     </Form>
   )

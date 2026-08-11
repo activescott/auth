@@ -94,6 +94,17 @@ const userStore: UserStore = {
     }
     return { users: all.slice(offset, offset + limit), total: all.length }
   },
+  /**
+   * Optional. Called by `Auth.mergeUsers` after the absorbed user's
+   * identities have been reassigned. This is where the app migrates data
+   * keyed by the absorbed user id (a real app moves rows, file roots,
+   * billing records) and disposes of the user record — the library never
+   * deletes user rows. Deleting it here also ends that user's outstanding
+   * sessions, because session verification re-checks findById per request.
+   */
+  async onMerge(fromUser) {
+    users.delete(fromUser.id)
+  },
 }
 
 // Real app: `prisma.identity.findFirst({ where: { provider, identifier } })`, etc.
@@ -140,6 +151,17 @@ const identityStore: IdentityStore = {
     identities.set(id, updated)
     return updated
   },
+  /**
+   * Optional; required for account merging. A real app makes this one
+   * atomic statement: `UPDATE identities SET user_id = $2 WHERE user_id = $1`.
+   */
+  async reassignByUserId(fromUserId, toUserId) {
+    for (const [id, identity] of identities) {
+      if (identity.userId === fromUserId) {
+        identities.set(id, { ...identity, userId: toUserId })
+      }
+    }
+  },
 }
 
 /**
@@ -182,6 +204,24 @@ export async function listPasskeys(userId: string): Promise<
     })
   }
   return passkeys
+}
+
+/**
+ * The signed-in user's email and phone sign-in methods for the dashboard
+ * list. Passkeys are identity rows too but have their own section (see
+ * listPasskeys).
+ */
+export async function listSignInMethods(
+  userId: string,
+): Promise<{ provider: string; identifier: string; createdAt: string }[]> {
+  const all = await identityStore.findByUserId(userId)
+  return all
+    .filter((identity) => identity.provider !== "passkey")
+    .map((identity) => ({
+      provider: identity.provider,
+      identifier: identity.identifier,
+      createdAt: identity.createdAt.toISOString(),
+    }))
 }
 
 /**
@@ -384,8 +424,20 @@ const handlers = createAuthHandlers(auth, {
   // (?via=sms), so a plain path would answer a failed phone code on the email
   // tab. buildReturnUrl reads the Referer and preserves everything already
   // there.
-  errorRedirect: (error, request) =>
-    buildReturnUrl(request, { error: error.code }),
+  //
+  // When the verify URL carries ?redirectTo= (the dashboard's link flows set
+  // it), errors go there instead: the magic-link confirm page's Referer is
+  // the confirm page itself, so buildReturnUrl would strand the error on a
+  // dead URL.
+  errorRedirect: (error, request) => {
+    const redirectTo = new URL(request.url).searchParams.get("redirectTo")
+    if (redirectTo) {
+      const url = new URL(redirectTo, request.url)
+      url.searchParams.set("error", error.code)
+      return url.toString()
+    }
+    return buildReturnUrl(request, { error: error.code })
+  },
   loginUrl: "/login",
 })
 

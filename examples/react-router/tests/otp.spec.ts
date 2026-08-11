@@ -44,7 +44,8 @@ test.describe("email OTP code", () => {
     // autofill misses
     await page.getByLabel(/enter the code/i).fill(code)
     await page.waitForURL("**/dashboard")
-    await expect(page.getByText(email)).toBeVisible()
+    // The identifier appears in the header and the sign-in-methods list
+    await expect(page.getByText(email).first()).toBeVisible()
   })
 
   test("a wrong code shows an error and does not sign in", async ({
