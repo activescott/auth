@@ -318,6 +318,40 @@ describe("createAuthHandlers", () => {
       expect(response.headers.get("Location")).toContain("/login?error=")
     })
 
+    it("should carry failure setCookies on the error redirect", async () => {
+      const provider = {
+        id: "email",
+        name: "Email",
+        verify: vi.fn().mockResolvedValue({
+          success: false,
+          error: { code: "IDENTITY_CONFLICT", message: "Conflict" },
+          setCookies: ["auth_merge_ticket=ticket-1; Path=/auth; HttpOnly"],
+        }),
+        initiate: vi.fn(),
+        canHandle: vi.fn(),
+        getRoutes: vi.fn(),
+      }
+
+      const mockAuth = createMockAuth({
+        getProvider: vi.fn().mockReturnValue(provider),
+      })
+
+      const handlers = createAuthHandlers(mockAuth)
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/verify`, {
+        method: "POST",
+      })
+      const response = await handlers.handleAuth({ request })
+
+      expect(response.status).toBe(302)
+      expect(response.headers.get("Location")).toContain(
+        "error=IDENTITY_CONFLICT",
+      )
+      expect(response.headers.getSetCookie()).toEqual([
+        "auth_merge_ticket=ticket-1; Path=/auth; HttpOnly",
+      ])
+    })
+
     it("should append provider setCookies alongside the session cookie", async () => {
       const provider = {
         id: "email",
