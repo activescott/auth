@@ -28,6 +28,7 @@ Passkeys push the same idea further: phishing-resistant, no shared secret, and s
 - ✅ **SMS one-time codes** — vendor-neutral provider with a Twilio Messaging transport (RCS-ready) and [WebOTP](https://developer.mozilla.org/docs/Web/API/WebOTP_API) autofill support. An AWS transport is drafted in [#37](https://github.com/activescott/auth/pull/37) awaiting a tester.
 - ✅ **Hosted verification (no US A2P 10DLC)** — the same SMS provider accepts a `VerificationTransport` where the vendor generates, sends, and checks the code. `TwilioVerifyTransport` ships in the Twilio package: no number to buy, no brand or campaign registration, no waiting weeks on The Campaign Registry — at the cost of ~4–6x per sign-in.
 - ✅ **Passkeys (WebAuthn)** — add a passkey while signed in, then sign in usernameless with Touch ID, Face ID, Windows Hello, 1Password, iCloud Keychain, or a security key; conditional UI (passkey autofill) supported. Verification via [`@simplewebauthn/server`](https://simplewebauthn.dev/); zero-dependency browser client included.
+- ✅ **Identity linking & account merge** — a signed-in user can add an email or phone number as another way into the same account (verified with the same OTP round trip as a sign-in), and when the identifier already belongs to a second account, merge the two after proving possession. See [Linking identities & account merge](#linking-identities--account-merge).
 - ✅ **Admin dashboard** — a read-only users page (every user, the identities they sign in with, when each was last used) and a configuration page that shows how auth is actually set up with secrets removed. Two route files of about ten lines each; access is an allowlist of email addresses and phone numbers. See [Admin dashboard](#admin-dashboard).
 
 The provider interface (`AuthProvider` in `@activescott/auth`) is the extension point. Implementing a new provider does not require changes to the core package.
@@ -255,6 +256,73 @@ The pages look presentable with no configuration, and there is no stylesheet to 
 
 Runnable version: [`examples/react-router/app/routes/admin.users.tsx`](./examples/react-router/app/routes/admin.users.tsx).
 
+## Linking identities & account merge
+
+Without linking, a person who signs in with their email one day and their phone number the next ends up with **two separate accounts**. The OTP providers (email, SMS) support a link mode that attaches a newly verified identifier to the signed-in user instead, and an account-merge flow for when the identifier already belongs to another account.
+
+### Adding a sign-in method to the current account
+
+Post to the provider's normal initiate endpoint with one extra field, `mode: "link"`, while signed in:
+
+```html
+<form method="post" action="/auth/email/initiate">
+  <input type="hidden" name="mode" value="link" />
+  <input name="email" type="email" />
+  <button>Send confirmation</button>
+</form>
+```
+
+- **A session is required** — link initiates fail with `SESSION_INVALID` when nobody is signed in (mirroring how passkey registration is gated).
+- **Verification is identical to a sign-in**: the same OTP/magic-link round trip proves possession of the new identifier, and the same rate limits and bot checks apply to the initiate.
+- The link intent is stored server-side in the challenge, so at verify time it cannot be forged or replayed across modes; the verify must arrive from the same signed-in user who initiated.
+- On success the identifier becomes a new `Identity` on the session user (idempotent if it was already theirs). The normal verify redirect logic applies, so pass `redirectTo` to steer where the browser lands.
+
+Nothing about whether an identifier is taken is revealed before possession is proven, so the link flow cannot be used to probe which emails or numbers have accounts.
+
+### When the identifier belongs to another account: merge
+
+If the verified identifier already signs in to a **different** user, the verify answers with error code `IDENTITY_CONFLICT` (HTTP 409, or `?error=IDENTITY_CONFLICT` on the redirect) instead of silently signing the user into the other account. The response also sets a short-lived, single-use **merge ticket** cookie recording exactly which two users may merge.
+
+Offer the user a choice; if they confirm, post to the same provider's `link-merge` action:
+
+```html
+<form method="post" action="/auth/email/link-merge">
+  <button>Merge accounts</button>
+</form>
+```
+
+Redeeming the ticket requires the same browser (HttpOnly cookie), an unexpired ticket (10 minutes, one attempt), and an authenticated session for the surviving user — so a merge always means: signed in as account A **and** freshly proved possession of account B's identifier. Silent account takeover is not possible. Apps that consider some identifiers high-value can force a fresh sign-in before offering the flow at all.
+
+The merge moves every identity of the absorbed user onto the surviving user, then hands your app the rest via two optional store methods:
+
+```ts
+const identityStore: IdentityStore = {
+  // Required for merging; one atomic UPDATE in SQL
+  async reassignByUserId(fromUserId, toUserId) {
+    await sql`UPDATE identities SET user_id = ${toUserId} WHERE user_id = ${fromUserId}`
+  },
+  // ...
+}
+
+const userStore: UserStore = {
+  // Migrate app data keyed by the absorbed user id, then dispose of the row.
+  // The library never deletes user records.
+  async onMerge(fromUser, intoUser) {
+    await moveAppDataOwnedBy(fromUser.id, intoUser.id)
+    await sql`DELETE FROM users WHERE id = ${fromUser.id}`
+  },
+  // ...
+}
+```
+
+Once your `onMerge` deletes (or disables) the absorbed user, its outstanding sessions die on their next request — session verification re-checks `UserStore.findById` every time, so no token-revocation machinery is needed.
+
+`Auth.mergeUsers(fromUserId, intoUserId)` is also public for server-side use — it is mechanism only, so guard it with checks equivalent to the built-in flow's.
+
+The example app's dashboard implements the whole flow — method list, add-email/add-phone forms, and the merge prompt — in [`examples/react-router/app/routes/dashboard.tsx`](./examples/react-router/app/routes/dashboard.tsx).
+
+Unlinking (removing a sign-in method) is not built in yet; see [#71](https://github.com/activescott/auth/issues/71).
+
 ## Architecture
 
 ```mermaid
@@ -272,7 +340,7 @@ flowchart LR
 
 You bring three adapters — `IdentityStore`, `UserStore`, and `ChallengeStore` — that read/write your database. The library handles challenges, cookies, provider routing, and session verification (and cleans up after itself: challenges are single-use and expire).
 
-An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example.com")`) linked to one of your `User` records. One user can have multiple identities — the data model is ready for a future where a user signs in via email _and_ their phone number.
+An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example.com")`) linked to one of your `User` records. One user can have multiple identities — sign in via email _and_ a phone number _and_ passkeys — and can add more while signed in (see [Linking identities & account merge](#linking-identities--account-merge)).
 
 ## Packages
 
