@@ -45,8 +45,15 @@ export interface SmtpConfig {
  * Email template customization
  */
 export interface EmailTemplateConfig {
-  /** Email subject line */
+  /** Email subject line for sign-in emails */
   subject?: string
+  /**
+   * Subject line for link-mode confirmations (a signed-in user adding this
+   * address to their account; default "Confirm your email"). Kept separate
+   * from `subject` because a link recipient did not ask to sign in — a
+   * "Sign in" subject there reads like a request they never made.
+   */
+  linkSubject?: string
   /** Application name shown in email */
   appName?: string
   /** Primary brand color (hex) */
@@ -73,4 +80,11 @@ export interface EmailTransport {
 export interface SendMagicLinkOptions {
   /** One-time code to include in the email alongside the link */
   code?: string
+  /**
+   * Which flow this email confirms: an ordinary sign-in, or a signed-in
+   * user linking this address to their account (`mode: "link"`).
+   * Transports use it to word the message accordingly; absent means
+   * "sign-in".
+   */
+  purpose?: "sign-in" | "link"
 }

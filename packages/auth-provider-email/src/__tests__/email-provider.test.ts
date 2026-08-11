@@ -596,3 +596,54 @@ describe("EmailProvider link mode", () => {
     expect(html).toContain("Confirm link")
   })
 })
+
+describe("EmailProvider transport purpose", () => {
+  let provider: EmailProvider
+  let challengeStore: InMemoryChallengeStore
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    provider = createProvider()
+    challengeStore = new InMemoryChallengeStore()
+  })
+
+  afterEach(() => {
+    challengeStore.destroy()
+  })
+
+  it("should send sign-in initiates with purpose sign-in", async () => {
+    const context = createMockContext(challengeStore)
+
+    await provider.initiate(createInitiateRequest(), context)
+
+    expect(mockTransport.sendMagicLink).toHaveBeenCalledWith(
+      TEST_EMAIL,
+      expect.any(String),
+      expect.anything(),
+      expect.objectContaining({ purpose: "sign-in" }),
+    )
+  })
+
+  it("should send link initiates with purpose link", async () => {
+    const context = createMockContext(challengeStore, {
+      getSession: vi.fn().mockResolvedValue({
+        user: { id: "user-2" },
+        identity: createMockIdentity({ userId: "user-2" }),
+      }),
+    })
+
+    const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ email: TEST_EMAIL, mode: "link" }).toString(),
+    })
+    await provider.initiate(request, context)
+
+    expect(mockTransport.sendMagicLink).toHaveBeenCalledWith(
+      TEST_EMAIL,
+      expect.any(String),
+      expect.anything(),
+      expect.objectContaining({ purpose: "link" }),
+    )
+  })
+})

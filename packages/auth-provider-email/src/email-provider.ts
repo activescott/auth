@@ -155,7 +155,8 @@ export class EmailProvider implements AuthProvider {
         email,
         magicLink,
         this.config,
-        { code },
+        // A link email is worded as a confirmation, not a sign-in request
+        { code, purpose: linkUserId ? "link" : "sign-in" },
       )
 
       if (!sent) {
