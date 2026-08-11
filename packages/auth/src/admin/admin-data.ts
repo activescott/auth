@@ -14,7 +14,7 @@ import type {
  * `Date`, and a half-serialized shape is worse than one that is honest about
  * it.
  *
- * `Identity.metadata` is deliberately absent. It is provider-owned and
+ * `Identity.providerState` is deliberately absent. It is provider-owned and
  * documented as possibly sensitive — the passkey provider keeps credential
  * public keys there — so nothing derived from it is exposed beyond the
  * last-used timestamp below.
@@ -163,18 +163,21 @@ function toIdentityRow(identity: Identity): AdminIdentityRow {
     identifier: identity.identifier,
     createdAt: identity.createdAt.toISOString(),
     verifiedAt: identity.verifiedAt?.toISOString(),
-    lastUsedAt: readLastUsedAt(identity.metadata),
+    lastUsedAt: readLastUsedAt(identity.providerState),
   }
 }
 
 /**
- * Read a provider's own last-use timestamp out of identity metadata. The
- * passkey provider records `lastUsedAt` there on every assertion, which is
- * more precise than `verifiedAt` for credentials used outside a sign-in.
+ * Read a provider's own last-use timestamp out of the identity's provider
+ * state. The passkey provider records `lastUsedAt` there on every assertion,
+ * which is more precise than `verifiedAt` for credentials used outside a
+ * sign-in.
  * Anything that is not a parseable date is ignored rather than displayed.
  */
-function readLastUsedAt(metadata: Record<string, unknown>): string | undefined {
-  const value = metadata["lastUsedAt"]
+function readLastUsedAt(
+  providerState: Record<string, unknown>,
+): string | undefined {
+  const value = providerState["lastUsedAt"]
   if (typeof value !== "string") return undefined
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()

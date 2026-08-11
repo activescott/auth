@@ -39,7 +39,7 @@ function createIdentity(overrides: Partial<Identity> = {}): Identity {
     userId: "user-1",
     provider: "email",
     identifier: "alice@example.com",
-    metadata: {},
+    providerState: {},
     createdAt: new Date("2024-01-01T00:00:00.000Z"),
     ...overrides,
   }
@@ -180,13 +180,13 @@ describe("createAdminData.listUsers", () => {
     expect(page.users[0]?.lastLoginAt).toBeUndefined()
   })
 
-  it("never exposes identity metadata, only a lastUsedAt derived from it", async () => {
+  it("never exposes identity provider state, only a lastUsedAt derived from it", async () => {
     const { auth } = createTestAuth({
       users: [{ id: "user-1" }],
       identities: [
         createIdentity({
           provider: "passkey",
-          metadata: {
+          providerState: {
             publicKey: "SECRET-CREDENTIAL-PUBLIC-KEY",
             counter: 7,
             lastUsedAt: "2024-04-01T00:00:00.000Z",
@@ -207,7 +207,9 @@ describe("createAdminData.listUsers", () => {
   it("ignores an unparseable lastUsedAt rather than displaying it", async () => {
     const { auth } = createTestAuth({
       users: [{ id: "user-1" }],
-      identities: [createIdentity({ metadata: { lastUsedAt: "not a date" } })],
+      identities: [
+        createIdentity({ providerState: { lastUsedAt: "not a date" } }),
+      ],
     })
     trackAuth(auth)
 
@@ -333,7 +335,6 @@ describe("Auth.describeConfig", () => {
     expect(stores.capabilities).toEqual({
       listUsers: true,
       findByUserIds: true,
-      deleteIdentity: false,
     })
     expect(stores.userStore).toBe("(object literal)")
   })

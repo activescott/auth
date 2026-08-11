@@ -22,7 +22,7 @@ function createMockIdentity(overrides: Partial<Identity> = {}): Identity {
     userId: "user-1",
     provider: "sms",
     identifier: "+14155550100",
-    metadata: {},
+    providerState: {},
     createdAt: new Date(),
     ...overrides,
   }
@@ -209,7 +209,7 @@ describe("authenticateWithIdentifier", () => {
       userId: "user-1",
       provider: "sms",
       identifier: "+14155550100",
-      metadata: {},
+      providerState: {},
     })
   })
 
@@ -363,7 +363,7 @@ describe("completeLinkVerification", () => {
       userId: "user-1",
       provider: "sms",
       identifier: "+14155550100",
-      metadata: {},
+      providerState: {},
     })
     // No user was created or resolved from the identifier
     expect(context.userStore.create).not.toHaveBeenCalled()
