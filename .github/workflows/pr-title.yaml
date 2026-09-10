@@ -1,0 +1,31 @@
+name: PR Title
+
+# Squash merges use the PR title as the commit subject on main, and
+# simple-release derives the version bump from that subject — so the title
+# must pass the same commitlint rules the commit-msg hook enforces on branch
+# commits. Runs on every PR and re-runs when the title is edited.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint PR title against commitlint.config.js
+        # The title goes through an env var, not template interpolation into
+        # the script, so a title containing shell metacharacters cannot
+        # inject commands.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | npx commitlint

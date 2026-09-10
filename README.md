@@ -426,6 +426,7 @@ Enforced locally by a `husky` `commit-msg` hook running `commitlint` (see `commi
   - `auth-provider-email`
   - `auth-adapter-react-router`
   - `examples` — for changes under `examples/` (no release, since example workspaces are `private`)
+  - `ci` — for repo infrastructure (workflows, commitlint, release script; matches no package path, so never releases)
 - **Breaking changes** use `!` after the scope or a `BREAKING CHANGE:` footer.
 
 Examples:
@@ -449,6 +450,10 @@ Because release versioning is driven by individual commits, **squash-merging a m
   2. **Split into one PR per package**, each squash-mergeable.
 
 The most common pattern here is option 2 — one PR per package keeps reviews focused and release notes clean.
+
+Squash merges use the PR title as the commit subject, so the title must itself
+be a conventional commit in the rules above — the PR Title workflow lints it
+with the same `commitlint.config.js`, and re-runs when the title is edited.
 
 ### Version bump rules
 
