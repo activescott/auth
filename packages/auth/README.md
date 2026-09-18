@@ -196,6 +196,25 @@ abuse: {
 
 Implement `BotCheckProvider` (`{ id, verify({ request, body, ip, providerId }) }`) to add your own.
 
+## Logging
+
+Redirect destinations reach the library from `?redirectTo=`, form fields, and the `Referer` header. One that names another origin or another scheme is declined and a configured path is used instead, which is otherwise invisible to your app: a stale link or a proxy rewriting `Referer` shows up only as users landing somewhere unexpected. Give the library somewhere to say so:
+
+```ts
+const auth = new Auth({
+  // ...
+  logger: console, // or { warn: (message, context) => log.warn(context, message) }
+})
+```
+
+Each declined destination logs one WARN naming the parameter it came from and that value's origin. The value itself is never logged, because a magic-link URL carries a single-use key in its query:
+
+```
+[auth] redirect destination declined, using fallback { source: 'redirectTo', fallback: '/', reason: 'other-origin', origin: 'https://other.example' }
+```
+
+`logger` is optional and nothing is logged through it when it is absent. Providers receive it as `AuthContext.logger`, and framework adapters read it off the `Auth` instance (`auth.getLogger()`), so configuring it here covers the whole flow. Abuse blocks are separate: those always go to `console.warn`, plus `abuse.onBlocked` if you set it.
+
 ## License
 
 MIT

@@ -413,6 +413,16 @@ export interface SessionConfig {
 }
 
 /**
+ * Where the library reports conditions the application should know about but
+ * that are not errors: currently a redirect destination it declined to use.
+ * `console` satisfies this, so `logger: console` works; wrap loggers whose
+ * argument order differs (pino takes the object first).
+ */
+export interface AuthLogger {
+  warn(message: string, context?: Record<string, unknown>): void
+}
+
+/**
  * Core auth configuration
  */
 export interface AuthConfig {
@@ -434,6 +444,9 @@ export interface AuthConfig {
    * only needed to tune limits, supply shared storage, add a hosted bot check,
    * or turn it off. */
   abuse?: AbuseConfig
+  /** Where to report conditions worth a WARN — see {@link AuthLogger}.
+   * Nothing is logged through it when absent. */
+  logger?: AuthLogger
   /** Callback URLs configuration */
   callbacks?: {
     /** URL to redirect to after successful authentication */
@@ -533,6 +546,11 @@ export interface AuthContext {
    * have parsed and normalized the recipient (email address, phone number)
    * and before sending anything to it. */
   abuse?: AbuseContext
+  /** The application's logger, if it configured one. Providers pass it to
+   * utilities that take an {@link AuthLogger} — e.g.
+   * `resolveRedirectTarget` — so a declined redirect destination is visible
+   * in the app's own logs. */
+  logger?: AuthLogger
 }
 
 /**

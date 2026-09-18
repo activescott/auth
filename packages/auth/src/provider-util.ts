@@ -1,6 +1,7 @@
 import type {
   AuthContext,
   AuthInitResult,
+  AuthLogger,
   AuthResult,
   Challenge,
 } from "./types.js"
@@ -69,6 +70,38 @@ export function isBrowserFormPost(request: Request): boolean {
 const REDIRECT_PROTOCOLS = new Set(["http:", "https:"])
 
 /**
+ * Reporting options for {@link resolveRedirectTarget}. Without a logger the
+ * function is silent.
+ */
+export interface ResolveRedirectOptions {
+  /** Where to report a declined destination, from `AuthConfig.logger` */
+  logger?: AuthLogger
+  /** Which parameter the candidate arrived in, e.g. "redirectTo", "Referer" */
+  source?: string
+}
+
+/**
+ * Report a destination that was declined. The candidate can carry a
+ * single-use link key or an OTP in its query, so only its origin is logged,
+ * never the value itself. `fallback` is omitted when empty: callers pass ""
+ * to mean "no destination requested" and pick a default of their own.
+ */
+function warnDeclined(
+  options: ResolveRedirectOptions | undefined,
+  fallback: string,
+  detail: Record<string, unknown>,
+): void {
+  options?.logger?.warn(
+    "[auth] redirect destination declined, using fallback",
+    {
+      source: options.source ?? "unknown",
+      ...(fallback ? { fallback } : {}),
+      ...detail,
+    },
+  )
+}
+
+/**
  * Resolve a redirect destination against the origin the request arrived on.
  * Returns the destination as `pathname + search + hash` when it lands on
  * that same origin, and `fallback` when it names another origin, uses
@@ -80,9 +113,17 @@ const REDIRECT_PROTOCOLS = new Set(["http:", "https:"])
  * through `URL` also covers the forms that read as relative but are not:
  * `//host`, `/\host` and `\/host` all land on another origin.
  *
+ * Pass `options.logger` (the app's `AuthConfig.logger`) to hear about it: a
+ * destination that names another origin is usually a stale link or a
+ * misconfigured proxy, and silently landing somewhere else is hard to
+ * diagnose from the app's side. Each declined candidate warns once, with the
+ * parameter it came from and its origin. A missing or empty candidate is not
+ * a declined one and logs nothing.
+ *
  * @param candidate - the requested destination
  * @param requestUrl - the URL of the request being answered (`request.url`)
  * @param fallback - where to go instead; typically a configured path
+ * @param options - where to report a declined destination
  *
  * @example
  * ```typescript
@@ -90,6 +131,7 @@ const REDIRECT_PROTOCOLS = new Set(["http:", "https:"])
  *   new URL(request.url).searchParams.get("redirectTo"),
  *   request.url,
  *   "/dashboard",
+ *   { logger: context.logger, source: "redirectTo" },
  * )
  * ```
  */
@@ -97,6 +139,7 @@ export function resolveRedirectTarget(
   candidate: string | null | undefined,
   requestUrl: string,
   fallback: string,
+  options?: ResolveRedirectOptions,
 ): string {
   if (!candidate) return fallback
 
@@ -106,11 +149,25 @@ export function resolveRedirectTarget(
     base = new URL(requestUrl)
     target = new URL(candidate, base)
   } catch {
+    warnDeclined(options, fallback, { reason: "unparseable" })
     return fallback
   }
 
-  if (!REDIRECT_PROTOCOLS.has(target.protocol)) return fallback
-  if (target.origin !== base.origin) return fallback
+  if (!REDIRECT_PROTOCOLS.has(target.protocol)) {
+    // target.origin is "null" for these, so report the scheme instead
+    warnDeclined(options, fallback, {
+      reason: "scheme",
+      scheme: target.protocol,
+    })
+    return fallback
+  }
+  if (target.origin !== base.origin) {
+    warnDeclined(options, fallback, {
+      reason: "other-origin",
+      origin: target.origin,
+    })
+    return fallback
+  }
 
   return `${target.pathname}${target.search}${target.hash}`
 }
@@ -118,15 +175,20 @@ export function resolveRedirectTarget(
 /**
  * Where to send the browser back after a form post: the submitting page
  * (Referer) with the given query params merged in, falling back to
- * /login. A Referer naming another origin takes the fallback.
+ * /login. A Referer naming another origin takes the fallback, and is
+ * reported through `logger` when one is passed.
  */
 export function buildReturnUrl(
   request: Request,
   params: Record<string, string>,
+  logger?: AuthLogger,
 ): string {
   const referer = request.headers.get("referer")
   const url = new URL(
-    resolveRedirectTarget(referer, request.url, "/login"),
+    resolveRedirectTarget(referer, request.url, "/login", {
+      logger,
+      source: "Referer",
+    }),
     request.url,
   )
   for (const [name, value] of Object.entries(params)) {
@@ -149,10 +211,11 @@ export function initiateAccepted(
   request: Request,
   message: string,
   setCookies: string[] = [],
+  logger?: AuthLogger,
 ): AuthInitResult | Response {
   if (isBrowserFormPost(request)) {
     const headers = new Headers({
-      Location: buildReturnUrl(request, { sent: "1" }),
+      Location: buildReturnUrl(request, { sent: "1" }, logger),
     })
     for (const cookie of setCookies) {
       headers.append("Set-Cookie", cookie)
