@@ -139,6 +139,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 Use `optionalAuth(request)` instead if the route should render for both signed-in and signed-out users.
 
+A check that has to be current on every request (an account you just blocked, one still waiting for approval) goes in `onSessionVerified`, which runs inside all three of `getSession`, `requireAuth` and `optionalAuth` and can return or throw a `Response` to bounce the request. Pair it with `session: { cacheTtlMs: 0 }` on the `Auth` config so the user it sees is what your store says now rather than what it said up to two minutes ago. See [the adapter README](./packages/auth-adapter-react-router#per-request-checks).
+
 ### Step 6 — Keep active visitors signed in (optional)
 
 Sessions expire `maxAge` after they are issued, even for someone who uses the app daily. Pass `session: { renewAfter: "7d" }` to `createAuthHandlers` and call `renewSessionCookie(request, user)` from your root loader: it returns a `Set-Cookie` value once the session passes that age and null while it is still fresh. Idle sessions keep expiring at `maxAge`. See [the adapter README](./packages/auth-adapter-react-router#rolling-sessions) for the loader.
