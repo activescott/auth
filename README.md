@@ -5,7 +5,7 @@
 
 Framework-agnostic direct authentication, deliberately small: single-use magic links and one-time codes via email and SMS, and passkeys (WebAuthn). No third-party identity providers. Runs on Node and edge runtimes (e.g. Cloudflare Workers).
 
-Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbot.com](https://tinkerbellbot.com).
+Used in production by [ramblefeed.com](https://ramblefeed.com), [tinkerbellbot.com](https://tinkerbellbot.com) and [fernfiles.com](https://fernfiles.com).
 
 ## Why direct, passwordless authentication?
 
