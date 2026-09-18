@@ -43,7 +43,7 @@
     "nodemailer": "^9.1.1"
   },
   "peerDependencies": {
-    "@activescott/auth": "^5.0.0"
+    "@activescott/auth": "^5.0.1"
   },
   "devDependencies": {
     "@activescott/auth": "*",
