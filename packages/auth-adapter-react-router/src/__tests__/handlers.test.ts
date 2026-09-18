@@ -385,6 +385,43 @@ describe("createAuthHandlers", () => {
       expect(response.status).toBe(302)
       expect(response.headers.get("Location")).toBe("/settings")
     })
+
+    it("should reduce an absolute same-origin redirectTo to a path", async () => {
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider))
+
+      const request = new Request(
+        `${TEST_BASE_URL}/auth/email/verify?redirectTo=${encodeURIComponent(
+          `${TEST_BASE_URL}/settings?tab=email`,
+        )}`,
+      )
+      const response = await handlers.handleAuth({ request })
+
+      expect(response.headers.get("Location")).toBe("/settings?tab=email")
+    })
+
+    it.each([
+      ["another origin", "https://other.example/x"],
+      ["protocol-relative", "//other.example"],
+      ["backslash-prefixed", "/\\other.example"],
+      ["javascript:", "javascript:alert(1)"],
+    ])(
+      "should use successRedirect when redirectTo names %s",
+      async (_label, redirectTo) => {
+        const provider = createTestProvider()
+        const handlers = createAuthHandlers(createRealAuth(provider), {
+          successRedirect: "/dashboard",
+        })
+
+        const request = new Request(
+          `${TEST_BASE_URL}/auth/email/verify?redirectTo=${encodeURIComponent(redirectTo)}`,
+        )
+        const response = await handlers.handleAuth({ request })
+
+        expect(response.status).toBe(302)
+        expect(response.headers.get("Location")).toBe("/dashboard")
+      },
+    )
   })
 
   describe("logout", () => {
