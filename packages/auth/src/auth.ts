@@ -183,8 +183,9 @@ export class Auth {
     const url = new URL(request.url)
     const path = url.pathname
 
-    // Route format: /auth/{provider}/{action}
-    const match = path.match(/\/auth\/([^/]+)\/([^/]+)/)
+    // Route format: /auth/{provider}/{action}, anchored so only the
+    // documented mounting dispatches and /anything/auth/email/verify is a 404
+    const match = path.match(/^\/auth\/([^/]+)\/([^/]+)\/?$/)
 
     if (!match) {
       return new Response("Not Found", { status: 404 })
