@@ -51,6 +51,6 @@
     "@activescott/auth": "*",
     "@types/node": "^22",
     "typescript": "^5.7.2",
-    "vitest": "^4.0.16"
+    "vitest": "^4.1.11"
   }
 }

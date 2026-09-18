@@ -40,7 +40,7 @@
     "directory": "packages/auth-provider-email"
   },
   "dependencies": {
-    "nodemailer": "^9.0.3"
+    "nodemailer": "^9.1.1"
   },
   "peerDependencies": {
     "@activescott/auth": "^5.0.0"
@@ -50,6 +50,6 @@
     "@types/nodemailer": "^8.0.0",
     "@types/node": "^22",
     "typescript": "^5.7.2",
-    "vitest": "^4.0.16"
+    "vitest": "^4.1.11"
   }
 }
