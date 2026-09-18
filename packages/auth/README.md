@@ -68,6 +68,8 @@ npm install @activescott/auth
 | `AuthUser`, `Identity`, `Session`, `AuthResult`, `AuthInitResult` | Core data types.                                                                                                      |
 | `AuthErrors`, `getAuthErrorMessage`, `AUTH_ERROR_CODES`           | Structured error helpers.                                                                                             |
 
+Plus the `@activescott/auth/admin` subpath: admin dashboard data and the admin allowlist check (see [Admin subpath](#admin-subpath)).
+
 ## Data model
 
 You bring three adapters — `IdentityStore`, `UserStore`, and `ChallengeStore` — that read/write your database. The library handles challenges, cookies, provider routing, and session verification.
@@ -195,6 +197,29 @@ abuse: {
 ```
 
 Implement `BotCheckProvider` (`{ id, verify({ request, body, ip, providerId }) }`) to add your own.
+
+## Admin subpath
+
+`@activescott/auth/admin` is what the admin dashboard is built from, with no framework in it:
+
+| Export                         | Purpose                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------ |
+| `createAdminData(auth)`        | `{ listUsers, describeConfig }` over your stores, as plain serializable rows.        |
+| `createAdminPredicate(admins)` | Builds the allowlist check from a delimited string, an array, or your own predicate. |
+| `isAdminUser(auth, user)`      | Answers that check for one user against `AUTH_ADMIN_IDENTIFIERS`.                    |
+
+The allowlist is email addresses and E.164 phone numbers, separated by commas or whitespace, matched against **every** identity a user owns. An allowlisted address therefore admits its owner even when they signed in by SMS. An empty or missing allowlist admits nobody.
+
+```ts
+import { isAdminUser } from "@activescott/auth/admin"
+
+const session = await auth.verifySession(request)
+if (!session || !(await isAdminUser(auth, session.user))) {
+  return new Response("Not Found", { status: 404 })
+}
+```
+
+`isAdminUser` reads the environment allowlist and loads the user's identities on each call. When the list comes from somewhere else, build the check with `createAdminPredicate(admins)` and hand it the user's identities yourself (`identityStore.findByUserId(user.id)`). The React Router adapter's dashboard uses these, so a page you gate yourself and the dashboard agree on who is an admin.
 
 ## Logging
 
