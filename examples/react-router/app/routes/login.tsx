@@ -184,6 +184,8 @@ function EmailLogin({ sent, antiBot }: LoginFormProps) {
           id="email"
           name="email"
           type="email"
+          pattern=".+@.+\..+"
+          title="Enter a full email address, e.g. name@example.com"
           // "webauthn" lets the browser offer passkeys in the autofill
           // dropdown on this field (conditional UI)
           autoComplete="username webauthn"
