@@ -83,6 +83,7 @@ export {
   parseRequestBody,
   isBrowserFormPost,
   buildReturnUrl,
+  resolveRedirectTarget,
   buildChallengeCookie,
   buildChallengeClearingCookie,
   readCookie,
