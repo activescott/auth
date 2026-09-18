@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.2.0](https://github.com/activescott/auth/compare/auth@5.1.0...auth@5.2.0) (2026-09-18)
+
+### Features
+
+* make the session cache TTL configurable ([8ab4eaa](https://github.com/activescott/auth/commit/8ab4eaad71e9f0580ccd690fb9d0af3adec5f2fd))
+
 ## [5.1.0](https://github.com/activescott/auth/compare/auth@5.0.0...auth@5.1.0) (2026-09-18)
 
 ### Features
