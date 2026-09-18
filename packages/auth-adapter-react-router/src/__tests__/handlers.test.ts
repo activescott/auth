@@ -520,4 +520,112 @@ describe("createAuthHandlers", () => {
       ).rejects.toThrow("no active session")
     })
   })
+
+  describe("renewSessionCookie", () => {
+    const SECONDS_PER_DAY = 86400
+    const identity = createMockIdentity()
+
+    // A session issued `ageDays` ago that still resolves to a user.
+    function createAgingAuth(ageDays: number): Auth {
+      const issuedAt =
+        Math.floor(Date.now() / 1000) - Math.round(ageDays * SECONDS_PER_DAY)
+      return createMockAuth({
+        getSessionManager: vi.fn().mockReturnValue({
+          getSession: vi.fn().mockResolvedValue({
+            userId: "user-1",
+            identifier: "user@example.com",
+            provider: "email",
+            issuedAt,
+            expiresAt: issuedAt + 30 * SECONDS_PER_DAY,
+          }),
+        }),
+        verifySession: vi.fn().mockResolvedValue({
+          user: { id: "user-1" },
+          identity,
+        }),
+      })
+    }
+
+    function createHandlers(auth: Auth, renewAfter = "7d") {
+      return createAuthHandlers(auth, { session: { renewAfter } })
+    }
+
+    const request = new Request(TEST_BASE_URL, {
+      headers: { Cookie: "auth_session=token" },
+    })
+
+    it("should return a cookie once the session is older than renewAfter", async () => {
+      const mockAuth = createAgingAuth(10)
+      const handlers = createHandlers(mockAuth)
+
+      const cookie = await handlers.renewSessionCookie(request, {
+        id: "user-1",
+      })
+
+      expect(cookie).toContain("auth_session=")
+      expect(mockAuth.createSessionCookie).toHaveBeenCalledWith(
+        { id: "user-1" },
+        identity,
+      )
+    })
+
+    it("should return null while the session is still fresh", async () => {
+      const mockAuth = createAgingAuth(2)
+      const handlers = createHandlers(mockAuth)
+
+      const cookie = await handlers.renewSessionCookie(request, {
+        id: "user-1",
+      })
+
+      expect(cookie).toBeNull()
+      expect(mockAuth.createSessionCookie).not.toHaveBeenCalled()
+    })
+
+    it("should not verify the session when it is still fresh", async () => {
+      const mockAuth = createAgingAuth(2)
+      const handlers = createHandlers(mockAuth)
+
+      await handlers.renewSessionCookie(request, { id: "user-1" })
+
+      expect(mockAuth.verifySession).not.toHaveBeenCalled()
+    })
+
+    it("should return null when there is no session", async () => {
+      const mockAuth = createMockAuth({
+        getSessionManager: vi.fn().mockReturnValue({
+          getSession: vi.fn().mockResolvedValue(null),
+        }),
+      })
+      const handlers = createHandlers(mockAuth)
+
+      expect(await handlers.renewSessionCookie(request, { id: "user-1" })).toBe(
+        null,
+      )
+    })
+
+    it("should return null when the session no longer resolves to a user", async () => {
+      const mockAuth = createAgingAuth(10)
+      mockAuth.verifySession = vi.fn().mockResolvedValue(null)
+      const handlers = createHandlers(mockAuth)
+
+      expect(await handlers.renewSessionCookie(request, { id: "user-1" })).toBe(
+        null,
+      )
+      expect(mockAuth.createSessionCookie).not.toHaveBeenCalled()
+    })
+
+    it("should throw when renewAfter was not configured", async () => {
+      const handlers = createAuthHandlers(createAgingAuth(10))
+
+      await expect(
+        handlers.renewSessionCookie(request, { id: "user-1" }),
+      ).rejects.toThrow("session.renewAfter")
+    })
+
+    it("should reject an unparseable renewAfter at construction", () => {
+      expect(() => createHandlers(createMockAuth(), "7 days")).toThrow(
+        "Invalid session.renewAfter",
+      )
+    })
+  })
 })

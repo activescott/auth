@@ -139,6 +139,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 Use `optionalAuth(request)` instead if the route should render for both signed-in and signed-out users.
 
+### Step 6 — Keep active visitors signed in (optional)
+
+Sessions expire `maxAge` after they are issued, even for someone who uses the app daily. Pass `session: { renewAfter: "7d" }` to `createAuthHandlers` and call `renewSessionCookie(request, user)` from your root loader: it returns a `Set-Cookie` value once the session passes that age and null while it is still fresh. Idle sessions keep expiring at `maxAge`. See [the adapter README](./packages/auth-adapter-react-router#rolling-sessions) for the loader.
+
 ---
 
 For a richer pattern — extending `AuthUser` with your own user fields and getting a typed `requireAuth<TUser>` via `mapUser` — see the production usage in ramblefeed (referenced in [`examples/react-router/README.md`](./examples/react-router/README.md)).
