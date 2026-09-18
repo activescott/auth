@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      # Production dependency bumps use "fix" so the release tooling
+      # (bumpStrict conventional-commits) cuts a patch release.
+      # Dev dependency bumps stay "chore" so no release is published.
+      prefix: "fix"
+      prefix-development: "chore"
+      include: "scope"
