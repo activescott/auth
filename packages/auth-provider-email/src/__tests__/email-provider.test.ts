@@ -239,6 +239,46 @@ describe("EmailProvider", () => {
       expect(result.success).toBe(false)
     })
 
+    it("should reject a dotless domain without writing to the store or sending", async () => {
+      const result = await provider.initiate(
+        createInitiateRequest("scott@willeke"),
+        context,
+      )
+
+      if (result instanceof Response) throw new Error("expected result")
+      expect(result.success).toBe(false)
+      if (result.success) return
+      expect(result.error.code).toBe("INVALID_CREDENTIALS")
+      expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
+      expect(context.identityStore.create).not.toHaveBeenCalled()
+    })
+
+    it("should accept a dotless domain when allowDotlessDomain is set", async () => {
+      const localhostProvider = new EmailProvider(
+        {
+          smtp: { host: "smtp.test.com", port: 587, user: "u", pass: "p" },
+          from: "test@example.com",
+          allowDotlessDomain: true,
+        },
+        mockTransport,
+      )
+
+      const result = await localhostProvider.initiate(
+        createInitiateRequest("admin@localhost"),
+        context,
+      )
+
+      if (result instanceof Response || !result.success) {
+        throw new Error("initiate failed")
+      }
+      expect(mockTransport.sendMagicLink).toHaveBeenCalledWith(
+        "admin@localhost",
+        expect.any(String),
+        expect.anything(),
+        expect.anything(),
+      )
+    })
+
     it("should redirect browser form posts back to the submitting page", async () => {
       const request = createInitiateRequest(TEST_EMAIL, {
         Accept: "text/html",
