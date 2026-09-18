@@ -172,6 +172,49 @@ describe("EmailProvider", () => {
       },
     )
 
+    it("should report a dropped redirectTo to the configured logger", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          email: TEST_EMAIL,
+          redirectTo: "https://other.example/x",
+        }).toString(),
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        source: "redirectTo",
+        reason: "other-origin",
+        origin: "https://other.example",
+      })
+    })
+
+    it("should not log a redirectTo it carries into the link", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          email: TEST_EMAIL,
+          redirectTo: "/dashboard?link=email",
+        }).toString(),
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).not.toHaveBeenCalled()
+    })
+
     it("should reject a missing email", async () => {
       const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
         method: "POST",
@@ -262,6 +305,24 @@ describe("EmailProvider", () => {
       const html = await page.text()
       expect(html).toContain(`action=""`)
       expect(html).not.toContain("other.example")
+    })
+
+    it("should report the confirm page's dropped redirectTo to the logger", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      await provider.initiate(createInitiateRequest(), loggingContext)
+      const magicLink = `${lastMagicLink()}&redirectTo=${encodeURIComponent("https://other.example/x")}`
+
+      await provider.verify(new Request(magicLink), loggingContext)
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        source: "redirectTo",
+        reason: "other-origin",
+        origin: "https://other.example",
+      })
     })
 
     it("should redeem on POST and consume the challenge", async () => {
