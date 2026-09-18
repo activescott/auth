@@ -70,6 +70,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 | `createAuthHandlers`                   | Returns `{ handleAuth, getSession, requireAuth, optionalAuth, refreshSessionCookie, logout }`. |
 | `createAdminHandlers` (from `./admin`) | Returns `{ requireAdmin, adminUsersLoader, adminConfigLoader }`.                               |
 | `AdminUsersPage`, `AdminConfigPage`    | The admin pages, from `./admin`.                                                               |
+| `useTurnstile` (from `./turnstile`)    | Renders a Cloudflare Turnstile widget and reports when it has a token.                         |
 
 Login pages need no action of their own: post the email form directly to `/auth/email/initiate` (the provider redirects back with `?sent=1`) and the code form to `/auth/email/verify`.
 
@@ -106,6 +107,34 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
 The users page needs `UserStore.listUsers`, which is optional and which your application implements; put anything you want as an extra column into each user's `metadata` and describe it with `metadataColumns`. Access is an allowlist of email addresses and phone numbers (`AUTH_ADMIN_IDENTIFIERS` by default) that admits nobody when unset; non-admins get a 404.
 
 Full walkthrough: [Admin dashboard](https://github.com/activescott/auth#admin-dashboard).
+
+## Turnstile widget
+
+If you protect the initiate endpoints with [`TurnstileBotCheck`](https://www.npmjs.com/package/@activescott/auth-botcheck-turnstile), the form has to wait for the widget. Turnstile issues its token asynchronously and can take seconds on a slow phone; a form submitted before then posts no `cf-turnstile-response` and the server rejects the sign-in as `missing_token` after the user already believes it worked. `useTurnstile` renders the widget and tells you when it is safe to submit:
+
+```tsx
+import { useTurnstile } from "@activescott/auth-adapter-react-router/turnstile"
+
+export default function Login({ loaderData }: Route.ComponentProps) {
+  const turnstile = useTurnstile({ siteKey: loaderData.turnstileSiteKey })
+
+  return (
+    <Form method="post" action="/auth/email/initiate" reloadDocument>
+      <input name="email" type="email" required />
+      {turnstile.widget}
+      <button type="submit" disabled={!turnstile.ready}>
+        {turnstile.ready ? "Send magic link" : "Verifying you're human…"}
+      </button>
+    </Form>
+  )
+}
+```
+
+`ready` starts false, flips true when the widget issues a token, and goes back to false if that token expires, errors, or times out. Pass `siteKey: null` where Turnstile is not configured (dev, e2e) and `ready` is true from the first render with nothing rendered, so one form covers both.
+
+The widget is created with Cloudflare's explicit-render API rather than the `class="cf-turnstile"` markup from their docs, which only gets scanned when their script loads: a login page reached by client-side navigation would otherwise get no widget at all and could never become ready. Either way the widget puts the token in a hidden `cf-turnstile-response` input, so the form posts it with everything else.
+
+This is at the `./turnstile` subpath for the same reason the admin pages are at `./admin`: the main entry stays React-free.
 
 ## Documentation & example
 

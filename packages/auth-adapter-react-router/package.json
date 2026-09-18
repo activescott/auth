@@ -13,6 +13,10 @@
     "./admin": {
       "types": "./dist/admin/index.d.ts",
       "import": "./dist/admin/index.js"
+    },
+    "./turnstile": {
+      "types": "./dist/turnstile.d.ts",
+      "import": "./dist/turnstile.js"
     }
   },
   "files": [
@@ -53,6 +57,7 @@
     "@types/node": "^22",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "jsdom": "^28.1.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router": "^8.3.0",

@@ -48,6 +48,7 @@ Source map for what lives where (not in README):
 - `packages/auth-botcheck-turnstile/src/turnstile-bot-check.ts` — Cloudflare Turnstile `BotCheckProvider` (raw fetch, zero deps). Hosted bot checks each get their own package so consumers don't install vendors they don't use.
 - `packages/auth/src/admin/admin-data.ts` — framework-agnostic admin dashboard data (`createAdminData`), exported at the `@activescott/auth/admin` subpath. Reads `UserStore.listUsers` / `IdentityStore.findByUserIds` (both optional) and `Auth.describeConfig()`. Never copies `Identity.providerState` into its output.
 - `packages/auth-adapter-react-router/src/handlers.ts` — `createAuthHandlers` and friends.
+- `packages/auth-adapter-react-router/src/turnstile.tsx` — `useTurnstile`, the client half of the Turnstile contract, at the `./turnstile` subpath. Renders the widget with Cloudflare's explicit-render API and reports `ready` so forms can gate submit on the token. React lives here rather than in `auth-botcheck-turnstile`, which is framework-agnostic and stays that way.
 - `packages/auth-adapter-react-router/src/admin/` — the admin dashboard's React pages and allowlist gate, at the `./admin` subpath so the main entry stays React-free. Still imports nothing from `react-router` (links go through an optional `linkComponent` prop), which is what keeps one build working on v7 and v8.
 - `examples/react-router/` — runnable example app (email + SMS sign-in on tabbed login page); its Playwright e2e suite is nested workspace `examples/react-router/tests`.
 
