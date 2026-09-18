@@ -7,8 +7,8 @@ import {
   listSignInMethods,
   createLoginFormFields,
 } from "~/lib/auth.server"
-import { AntiBotFields } from "~/components/anti-bot-fields"
 import { CodeForm } from "~/components/code-form"
+import { useAntiBotFields } from "~/hooks/use-anti-bot-fields"
 import type { Route } from "./+types/dashboard"
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -155,6 +155,8 @@ function verifyAction(provider: "email" | "sms"): string {
 }
 
 function AddEmail({ sent, antiBot }: AddMethodProps) {
+  const { ready, fields } = useAntiBotFields(antiBot)
+
   return (
     <div className="mt-2">
       <Form
@@ -163,7 +165,7 @@ function AddEmail({ sent, antiBot }: AddMethodProps) {
         reloadDocument
         className="flex flex-col gap-3"
       >
-        <AntiBotFields {...antiBot} />
+        {fields}
         {/* mode=link is what makes this attach to the signed-in account
             instead of starting a new sign-in */}
         <input type="hidden" name="mode" value="link" />
@@ -183,9 +185,14 @@ function AddEmail({ sent, antiBot }: AddMethodProps) {
         />
         <button
           type="submit"
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          disabled={!ready}
+          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:bg-gray-400"
         >
-          {sent ? "Resend" : "Send confirmation"}
+          {!ready
+            ? "Verifying you're human…"
+            : sent
+              ? "Resend"
+              : "Send confirmation"}
         </button>
       </Form>
 
@@ -205,6 +212,7 @@ function AddEmail({ sent, antiBot }: AddMethodProps) {
 
 function AddPhone({ sent, antiBot }: AddMethodProps) {
   const [nationalNumber, setNationalNumber] = useState("")
+  const { ready, fields } = useAntiBotFields(antiBot)
 
   return (
     <div className="mt-2">
@@ -214,7 +222,7 @@ function AddPhone({ sent, antiBot }: AddMethodProps) {
         reloadDocument
         className="flex flex-col gap-3"
       >
-        <AntiBotFields {...antiBot} />
+        {fields}
         <input type="hidden" name="mode" value="link" />
         <label htmlFor="link-phone">Mobile phone number to add</label>
         <div className="flex rounded border focus-within:ring-2 focus-within:ring-blue-600">
@@ -236,9 +244,14 @@ function AddPhone({ sent, antiBot }: AddMethodProps) {
         <input type="hidden" name="phone" value={`+1${nationalNumber}`} />
         <button
           type="submit"
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          disabled={!ready}
+          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:bg-gray-400"
         >
-          {sent ? "Resend code" : "Text me a code"}
+          {!ready
+            ? "Verifying you're human…"
+            : sent
+              ? "Resend code"
+              : "Text me a code"}
         </button>
       </Form>
 

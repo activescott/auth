@@ -111,7 +111,9 @@ Abuse protection is already on with no configuration: per-IP and per-recipient r
 
 3. Restart `npm run dev` — the keys are read at startup.
 
-The widget now renders in both sign-in forms (`app/components/anti-bot-fields.tsx`) and the server verifies the token before sending anything. With no keys set, Turnstile stays off and the example runs exactly as before.
+The widget now renders in both sign-in forms (`app/hooks/use-anti-bot-fields.tsx`) and the server verifies the token before sending anything. With no keys set, Turnstile stays off and the example runs exactly as before.
+
+Turnstile issues its token asynchronously, sometimes seconds after the page settles on a slow phone, so the hook also reports a `ready` flag and the forms keep their submit button disabled until it flips. Without that gate a fast user posts before the token exists and the server rejects the sign-in as `missing_token` — no email, no code, and an error redirect that is easy to miss. The gate is the whole reason the hook exists; see [`@activescott/auth-adapter-react-router/turnstile`](../../packages/auth-adapter-react-router/README.md#turnstile-widget).
 
 ### Seeing each path
 

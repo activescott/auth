@@ -2,9 +2,9 @@ import { useEffect, useState } from "react"
 import { Form, redirect } from "react-router"
 import { getAuthErrorMessage } from "@activescott/auth"
 import { createLoginFormFields, getSession } from "~/lib/auth.server"
-import { AntiBotFields } from "~/components/anti-bot-fields"
 import { CodeForm } from "~/components/code-form"
 import { TabLink } from "~/components/tab-link"
+import { useAntiBotFields } from "~/hooks/use-anti-bot-fields"
 import { usePreservedInput } from "~/hooks/use-preserved-input"
 import type { Route } from "./+types/login"
 
@@ -165,6 +165,7 @@ function PasskeyLogin() {
 
 function EmailLogin({ sent, antiBot }: LoginFormProps) {
   const [email, setEmail, saveEmail] = usePreservedInput("login.email")
+  const { ready, fields } = useAntiBotFields(antiBot)
 
   return (
     <>
@@ -178,7 +179,7 @@ function EmailLogin({ sent, antiBot }: LoginFormProps) {
         className="flex flex-col gap-3"
         onSubmit={saveEmail}
       >
-        <AntiBotFields {...antiBot} />
+        {fields}
         <label htmlFor="email">Email</label>
         <input
           id="email"
@@ -192,11 +193,18 @@ function EmailLogin({ sent, antiBot }: LoginFormProps) {
           onChange={(event) => setEmail(event.target.value)}
           className="border p-2 rounded"
         />
+        {/* Disabled until the bot check has what it needs — see
+            useAntiBotFields */}
         <button
           type="submit"
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          disabled={!ready}
+          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:bg-gray-400"
         >
-          {sent ? "Resend" : "Send magic link"}
+          {!ready
+            ? "Verifying you're human…"
+            : sent
+              ? "Resend"
+              : "Send magic link"}
         </button>
       </Form>
 
@@ -231,6 +239,7 @@ function SmsLogin({ sent, antiBot }: LoginFormProps) {
   // US/Canada numbers (fixed +1) — adapt the prefix for your market.
   const [nationalNumber, setNationalNumber, savePhone] =
     usePreservedInput("login.phone")
+  const { ready, fields } = useAntiBotFields(antiBot)
 
   return (
     <>
@@ -244,7 +253,7 @@ function SmsLogin({ sent, antiBot }: LoginFormProps) {
         className="flex flex-col gap-3"
         onSubmit={savePhone}
       >
-        <AntiBotFields {...antiBot} />
+        {fields}
         <label htmlFor="phone">Mobile phone number</label>
         <div className="flex rounded border focus-within:ring-2 focus-within:ring-blue-600">
           <span className="flex items-center px-3 bg-gray-100 text-gray-600 border-r rounded-l select-none">
@@ -265,9 +274,14 @@ function SmsLogin({ sent, antiBot }: LoginFormProps) {
         <input type="hidden" name="phone" value={`+1${nationalNumber}`} />
         <button
           type="submit"
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          disabled={!ready}
+          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:bg-gray-400"
         >
-          {sent ? "Resend code" : "Text me a code"}
+          {!ready
+            ? "Verifying you're human…"
+            : sent
+              ? "Resend code"
+              : "Text me a code"}
         </button>
       </Form>
 
