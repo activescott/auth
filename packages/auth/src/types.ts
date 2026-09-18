@@ -410,6 +410,16 @@ export interface SessionConfig {
   issuer?: string
   /** JWT audience claim */
   audience?: string
+  /**
+   * How long `verifySession` may answer from its in-process cache of verified
+   * sessions before reading the user and identity from your stores again, in
+   * milliseconds. Defaults to two minutes. `0` turns the cache off, so every
+   * request reads the stores and a user you delete or block stops being
+   * authenticated on their next request — the reason to pay for it. The cache
+   * also holds a bounded number of entries, so a large number of concurrent
+   * sessions evicts the oldest rather than growing without limit.
+   */
+  cacheTtlMs?: number
 }
 
 /**

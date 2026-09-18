@@ -98,6 +98,24 @@ const auth = new Auth({
 
 Then call `auth.handleRequest(request)` from your framework's routing layer (or use a framework adapter), and `auth.verifySession(request)` to check the session cookie on protected routes.
 
+## Session cache
+
+`verifySession` keeps each verified session in memory for two minutes, so a page whose loaders each ask who is signed in costs one pair of store reads instead of one per loader. What you pay for it is staleness: for up to two minutes after you block or delete someone, their requests still verify.
+
+`session.cacheTtlMs` is that window in milliseconds, and `0` turns the cache off so every request reads your stores:
+
+```ts
+session: {
+  secret: process.env.JWT_SECRET!,
+  maxAge: "30d",
+  cookieName: "session",
+  cookie: { secure: true, sameSite: "lax", path: "/" },
+  cacheTtlMs: 0, // block a user, and their next request is signed out
+}
+```
+
+With the cache on, it holds at most 10,000 sessions and evicts the oldest past that, so a burst of sign-ins between sweeps cannot grow it without limit. Nothing is shared between instances: an entry is only ever a repeat of what that process's stores just said.
+
 ## ChallengeStore
 
 Every sign-in attempt is backed by a server-side challenge: magic links and one-time codes store the hashed secret, an attempt counter, and an expiry; passkey ceremonies record the WebAuthn challenge so it is redeemable exactly once. That state lives in the `challengeStore`, which is why it is a required part of the `Auth` config.

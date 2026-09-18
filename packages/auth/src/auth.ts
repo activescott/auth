@@ -18,6 +18,7 @@ import type {
 } from "./types.js"
 import { REDACTED } from "./types.js"
 import { SessionManager } from "./session/session-manager.js"
+import { SessionCache } from "./session/session-cache.js"
 import { AuthenticationError, AuthErrors } from "./errors.js"
 import { AbuseGuard } from "./abuse/abuse-guard.js"
 import {
@@ -33,8 +34,6 @@ import {
 // Time constants
 const MS_PER_SECOND = 1000
 const SECONDS_PER_MINUTE = 60
-/** Default session cache TTL in minutes */
-const DEFAULT_CACHE_TTL_MINUTES = 2
 /** Interval between cache cleanups in minutes */
 const CACHE_CLEANUP_INTERVAL_MINUTES = 5
 
@@ -57,62 +56,6 @@ function describeStoreType(store: object): string {
 }
 
 /**
- * In-memory cache for session verification to reduce DB queries
- */
-interface SessionCacheEntry {
-  user: AuthUser | null
-  identity: Identity | null
-  timestamp: number
-}
-
-class SessionCache {
-  private cache = new Map<string, SessionCacheEntry>()
-  private readonly ttl: number
-
-  public constructor(
-    ttlMs: number = DEFAULT_CACHE_TTL_MINUTES *
-      SECONDS_PER_MINUTE *
-      MS_PER_SECOND,
-  ) {
-    this.ttl = ttlMs
-  }
-
-  public get(token: string): SessionCacheEntry | undefined {
-    const entry = this.cache.get(token)
-    if (!entry) return undefined
-
-    // Check if expired
-    if (Date.now() - entry.timestamp > this.ttl) {
-      this.cache.delete(token)
-      return undefined
-    }
-
-    return entry
-  }
-
-  public set(
-    token: string,
-    user: AuthUser | null,
-    identity: Identity | null,
-  ): void {
-    this.cache.set(token, {
-      user,
-      identity,
-      timestamp: Date.now(),
-    })
-  }
-
-  public cleanup(): void {
-    const now = Date.now()
-    for (const [token, entry] of this.cache.entries()) {
-      if (now - entry.timestamp > this.ttl) {
-        this.cache.delete(token)
-      }
-    }
-  }
-}
-
-/**
  * Main authentication class that orchestrates providers
  */
 export class Auth {
@@ -124,7 +67,7 @@ export class Auth {
 
   public constructor(private readonly config: AuthConfig) {
     this.sessionManager = new SessionManager(config.session)
-    this.sessionCache = new SessionCache()
+    this.sessionCache = new SessionCache(config.session.cacheTtlMs)
     this.abuseGuard = new AbuseGuard(config.abuse, config.session.secret)
 
     // Register providers
@@ -132,11 +75,13 @@ export class Auth {
       this.providers.set(provider.id, provider)
     }
 
-    // Start cache cleanup interval
-    this.cleanupInterval = setInterval(
-      () => this.sessionCache.cleanup(),
-      CACHE_CLEANUP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
-    )
+    // Start cache cleanup interval. Nothing to sweep when the cache is off.
+    if (this.sessionCache.enabled) {
+      this.cleanupInterval = setInterval(
+        () => this.sessionCache.cleanup(),
+        CACHE_CLEANUP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
+      )
+    }
   }
 
   /**
