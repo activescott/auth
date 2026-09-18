@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import { createAuthHandlers } from "../handlers.js"
 import { Auth, InMemoryChallengeStore } from "@activescott/auth"
-import type { AuthProvider, AuthUser, Identity } from "@activescott/auth"
+import type {
+  AuthLogger,
+  AuthProvider,
+  AuthUser,
+  Identity,
+} from "@activescott/auth"
 
 const TEST_BASE_URL = "https://example.com"
 
@@ -212,8 +217,9 @@ describe("createAuthHandlers", () => {
       }
     }
 
-    function createRealAuth(provider: AuthProvider): Auth {
+    function createRealAuth(provider: AuthProvider, logger?: AuthLogger): Auth {
       const realAuth = new Auth({
+        logger,
         session: {
           secret: "test-secret",
           maxAge: "7d",
@@ -384,6 +390,78 @@ describe("createAuthHandlers", () => {
 
       expect(response.status).toBe(302)
       expect(response.headers.get("Location")).toBe("/settings")
+    })
+
+    it("should reduce an absolute same-origin redirectTo to a path", async () => {
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider))
+
+      const request = new Request(
+        `${TEST_BASE_URL}/auth/email/verify?redirectTo=${encodeURIComponent(
+          `${TEST_BASE_URL}/settings?tab=email`,
+        )}`,
+      )
+      const response = await handlers.handleAuth({ request })
+
+      expect(response.headers.get("Location")).toBe("/settings?tab=email")
+    })
+
+    it.each([
+      ["another origin", "https://other.example/x"],
+      ["protocol-relative", "//other.example"],
+      ["backslash-prefixed", "/\\other.example"],
+      ["javascript:", "javascript:alert(1)"],
+    ])(
+      "should use successRedirect when redirectTo names %s",
+      async (_label, redirectTo) => {
+        const provider = createTestProvider()
+        const handlers = createAuthHandlers(createRealAuth(provider), {
+          successRedirect: "/dashboard",
+        })
+
+        const request = new Request(
+          `${TEST_BASE_URL}/auth/email/verify?redirectTo=${encodeURIComponent(redirectTo)}`,
+        )
+        const response = await handlers.handleAuth({ request })
+
+        expect(response.status).toBe(302)
+        expect(response.headers.get("Location")).toBe("/dashboard")
+      },
+    )
+
+    it("should report a declined redirectTo to the configured logger", async () => {
+      const warn = vi.fn()
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider, { warn }), {
+        successRedirect: "/dashboard",
+      })
+
+      const request = new Request(
+        `${TEST_BASE_URL}/auth/email/verify?redirectTo=${encodeURIComponent(
+          "https://other.example/x",
+        )}`,
+      )
+      await handlers.handleAuth({ request })
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        source: "redirectTo",
+        reason: "other-origin",
+        origin: "https://other.example",
+      })
+    })
+
+    it("should not log a redirectTo it honors", async () => {
+      const warn = vi.fn()
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider, { warn }))
+
+      const request = new Request(
+        `${TEST_BASE_URL}/auth/email/verify?redirectTo=/settings`,
+      )
+      await handlers.handleAuth({ request })
+
+      expect(warn).not.toHaveBeenCalled()
     })
   })
 

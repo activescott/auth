@@ -193,6 +193,15 @@ describe("Auth", () => {
       expect(response.status).toBe(404)
     })
 
+    it("should return 404 when the auth route is not at the path root", async () => {
+      auth = new Auth(createAuthConfig())
+
+      const request = new Request(`${TEST_BASE_URL}/anything/auth/email/verify`)
+      const response = await auth.handleRequest(request)
+
+      expect(response.status).toBe(404)
+    })
+
     it("should return 404 for unknown action when provider has no handleAction", async () => {
       auth = new Auth(createAuthConfig())
 

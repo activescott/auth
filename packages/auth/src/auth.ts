@@ -4,6 +4,7 @@ import type {
   AuthContext,
   AuthError,
   AuthInitResult,
+  AuthLogger,
   AuthProvider,
   AuthResponders,
   AuthResult,
@@ -183,8 +184,9 @@ export class Auth {
     const url = new URL(request.url)
     const path = url.pathname
 
-    // Route format: /auth/{provider}/{action}
-    const match = path.match(/\/auth\/([^/]+)\/([^/]+)/)
+    // Route format: /auth/{provider}/{action}, anchored so only the
+    // documented mounting dispatches and /anything/auth/email/verify is a 404
+    const match = path.match(/^\/auth\/([^/]+)\/([^/]+)\/?$/)
 
     if (!match) {
       return new Response("Not Found", { status: 404 })
@@ -393,6 +395,15 @@ export class Auth {
   }
 
   /**
+   * The application's logger, or undefined when none is configured. For
+   * framework adapters, which resolve redirect destinations of their own and
+   * should report a declined one to the same place the library does.
+   */
+  public getLogger(): AuthLogger | undefined {
+    return this.config.logger
+  }
+
+  /**
    * Get the configured stores.
    * `createContext` exposes the same objects but needs a Request; this is for
    * callers that operate outside a provider flow, such as the admin dashboard.
@@ -463,6 +474,7 @@ export class Auth {
       challengeStore: this.config.challengeStore,
       getSession: (sessionRequest) => this.verifySession(sessionRequest),
       abuse: this.abuseGuard.contextFor(request),
+      logger: this.config.logger,
     }
   }
 
@@ -557,7 +569,9 @@ export class Auth {
     if (isBrowserFormPost(request)) {
       // The submitting page's URL still carries the ?error=IDENTITY_CONFLICT
       // that prompted the merge; drop it so the outcome reads as resolved.
-      const returnUrl = new URL(buildReturnUrl(request, { merged: "1" }))
+      const returnUrl = new URL(
+        buildReturnUrl(request, { merged: "1" }, this.config.logger),
+      )
       returnUrl.searchParams.delete("error")
       const headers = new Headers({ Location: returnUrl.toString() })
       headers.append("Set-Cookie", clearingCookie)
@@ -611,6 +625,8 @@ export class Auth {
     const accepted = initiateAccepted(
       request,
       provider.initiateSentMessage ?? DEFAULT_SENT_MESSAGE,
+      [],
+      this.config.logger,
     )
     return accepted instanceof Response
       ? accepted

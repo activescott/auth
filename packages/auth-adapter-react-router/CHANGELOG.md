@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.1.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.0.0...auth-adapter-react-router@2.1.0) (2026-09-18)
+
+### Features
+
+* log a redirectTo the adapter declines ([1d5e7e1](https://github.com/activescott/auth/commit/1d5e7e17a8891b566bd0053273ea8fcd9a33a03b))
+
+### Bug Fixes
+
+* validate redirectTo before redirecting ([d73fb9c](https://github.com/activescott/auth/commit/d73fb9ccd0c3b4f26a2995bad509b92c4c96d6cc))
+
 ## [2.0.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.3.0...auth-adapter-react-router@2.0.0) (2026-08-11)
 
 ### ⚠ BREAKING CHANGES

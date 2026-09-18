@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.2.0](https://github.com/activescott/auth/compare/auth-provider-sms@2.1.0...auth-provider-sms@2.2.0) (2026-09-18)
+
+### Features
+
+* log a Referer the provider cannot return to ([7384533](https://github.com/activescott/auth/commit/7384533ab82ddc68e5ada9b3107d61878f57bff3))
+
 ## [2.1.0](https://github.com/activescott/auth/compare/auth-provider-sms@2.0.0...auth-provider-sms@2.1.0) (2026-08-11)
 
 ### Features

@@ -1,3 +1,4 @@
+import { resolveRedirectTarget } from "@activescott/auth"
 import type { Auth, AuthUser, Identity, AuthError } from "@activescott/auth"
 
 /**
@@ -104,13 +105,18 @@ export function createAuthHandlers<TUser = AuthUser>(
           )
 
           // ?redirectTo= on the verify URL (saved during the login flow)
-          // wins over the configured default
-          const redirectToParameter = new URL(
+          // wins over the configured default, as long as it names a page on
+          // this app. Anything else falls through to successRedirect, and is
+          // reported to the app's logger when it configured one.
+          const requestedRedirect = resolveRedirectTarget(
+            new URL(successRequest.url).searchParams.get("redirectTo"),
             successRequest.url,
-          ).searchParams.get("redirectTo")
+            "",
+            { logger: auth.getLogger(), source: "redirectTo" },
+          )
           let redirectUrl: string
-          if (redirectToParameter) {
-            redirectUrl = redirectToParameter
+          if (requestedRedirect) {
+            redirectUrl = requestedRedirect
           } else if (typeof successRedirect === "function") {
             redirectUrl = successRedirect(result.user, result.identity)
           } else {
