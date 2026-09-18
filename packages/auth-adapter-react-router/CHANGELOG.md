@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.2.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.1.0...auth-adapter-react-router@2.2.0) (2026-09-18)
+
+### Features
+
+* add rolling session renewal ([#108](https://github.com/activescott/auth/issues/108)) ([368fbb1](https://github.com/activescott/auth/commit/368fbb1795ba632bfcc8cfbb5e0fffb038c61bf2))
+
 ## [2.1.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.0.0...auth-adapter-react-router@2.1.0) (2026-09-18)
 
 ### Features
