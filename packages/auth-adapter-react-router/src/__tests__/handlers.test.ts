@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { createAuthHandlers } from "../handlers.js"
+import { createAuthHandlers, type AuthHandlers } from "../handlers.js"
 import { Auth, InMemoryChallengeStore } from "@activescott/auth"
 import type {
   AuthLogger,
@@ -179,6 +179,148 @@ describe("createAuthHandlers", () => {
       const session = await handlers.getSession(request)
 
       expect(session?.user.email).toBe("user@example.com")
+    })
+  })
+
+  describe("onSessionVerified", () => {
+    /** Auth with a live session, and the three ways an app reads one */
+    function signedInAuth(): Auth {
+      return createMockAuth({
+        verifySession: vi.fn().mockResolvedValue({
+          user: { id: "user-1" },
+          identity: createMockIdentity(),
+        }),
+      })
+    }
+
+    const entryPoints = [
+      [
+        "requireAuth",
+        (handlers: AuthHandlers, request: Request) =>
+          handlers.requireAuth(request),
+      ],
+      [
+        "optionalAuth",
+        (handlers: AuthHandlers, request: Request) =>
+          handlers.optionalAuth(request),
+      ],
+      [
+        "getSession",
+        (handlers: AuthHandlers, request: Request) =>
+          handlers.getSession(request),
+      ],
+    ] as const
+
+    it.each(entryPoints)("should run in %s", async (_name, call) => {
+      const onSessionVerified = vi.fn()
+      const handlers = createAuthHandlers(signedInAuth(), {
+        onSessionVerified,
+      })
+      const request = new Request(`${TEST_BASE_URL}/dashboard`)
+
+      await call(handlers, request)
+
+      expect(onSessionVerified).toHaveBeenCalledTimes(1)
+      expect(onSessionVerified).toHaveBeenCalledWith(
+        { user: { id: "user-1" }, identity: expect.anything() },
+        request,
+      )
+    })
+
+    it.each(entryPoints)(
+      "should bounce %s with a Response the hook throws",
+      async (_name, call) => {
+        const handlers = createAuthHandlers(signedInAuth(), {
+          onSessionVerified: () => {
+            throw new Response(null, {
+              status: 302,
+              headers: { Location: "/waitlist" },
+            })
+          },
+        })
+
+        try {
+          await call(handlers, new Request(`${TEST_BASE_URL}/dashboard`))
+          expect.fail("Should have thrown")
+        } catch (error) {
+          const response = error as Response
+          expect(response.status).toBe(302)
+          expect(response.headers.get("Location")).toBe("/waitlist")
+        }
+      },
+    )
+
+    it.each(entryPoints)(
+      "should bounce %s with a Response the hook returns",
+      async (_name, call) => {
+        const handlers = createAuthHandlers(signedInAuth(), {
+          onSessionVerified: () => new Response("Blocked", { status: 403 }),
+        })
+
+        try {
+          await call(handlers, new Request(`${TEST_BASE_URL}/dashboard`))
+          expect.fail("Should have thrown")
+        } catch (error) {
+          expect((error as Response).status).toBe(403)
+        }
+      },
+    )
+
+    it("should not run when there is no session", async () => {
+      const onSessionVerified = vi.fn()
+      const handlers = createAuthHandlers(createMockAuth(), {
+        onSessionVerified,
+      })
+
+      expect(await handlers.optionalAuth(new Request(TEST_BASE_URL))).toBeNull()
+      expect(onSessionVerified).not.toHaveBeenCalled()
+    })
+
+    it("should see the user mapUser produced", async () => {
+      const onSessionVerified =
+        vi.fn<(session: { user: { email: string } }) => void>()
+      const handlers = createAuthHandlers<{ id: string; email: string }>(
+        signedInAuth(),
+        {
+          mapUser: (user, identity) => ({
+            id: user.id,
+            email: identity.identifier,
+          }),
+          onSessionVerified,
+        },
+      )
+
+      await handlers.requireAuth(new Request(`${TEST_BASE_URL}/dashboard`))
+
+      expect(onSessionVerified.mock.calls[0]?.[0].user.email).toBe(
+        "user@example.com",
+      )
+    })
+
+    it("should let the session through when the hook returns nothing", async () => {
+      const handlers = createAuthHandlers(signedInAuth(), {
+        onSessionVerified: async () => {
+          await Promise.resolve()
+        },
+      })
+
+      const user = await handlers.requireAuth(
+        new Request(`${TEST_BASE_URL}/dashboard`),
+      )
+
+      expect(user.id).toBe("user-1")
+    })
+  })
+
+  describe("clearSessionCookie", () => {
+    it("should return the header that expires the session cookie", () => {
+      const mockAuth = createMockAuth()
+      const handlers = createAuthHandlers(mockAuth)
+
+      expect(handlers.clearSessionCookie()).toBe(
+        "auth_session=; Max-Age=0; Path=/; HttpOnly",
+      )
+      expect(mockAuth.destroySessionCookie).toHaveBeenCalledTimes(1)
     })
   })
 
