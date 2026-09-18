@@ -30,7 +30,7 @@ export interface SessionCacheEntry {
  * instances, which is fine because an entry is only ever a repeat of what the
  * stores just said.
  *
- * A TTL of 0 (or less) turns it off entirely — `get` always misses and `set`
+ * A TTL of 0 (or less) turns it off entirely. `get` always misses and `set`
  * stores nothing.
  */
 export class SessionCache {
@@ -100,8 +100,10 @@ export class SessionCache {
 
   /**
    * Make room for one more entry: drop what has expired, and if that was not
-   * enough, drop the oldest. Entries are never rewritten on a read, so Map
-   * insertion order is write order and the front of the map is the oldest.
+   * enough, drop the front of the map. That is approximately oldest-first:
+   * re-setting an existing key keeps its original position, so a rewritten
+   * entry can be evicted before older ones. The only cost is an extra store
+   * read.
    */
   private evict(): void {
     this.cleanup()

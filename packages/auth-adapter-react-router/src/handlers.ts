@@ -67,7 +67,7 @@ export interface CreateAuthHandlersOptions<TUser = AuthUser> {
    */
   session?: SessionRenewalOptions
   /**
-   * Last word on whether a verified session may proceed — see
+   * Last word on whether a verified session may proceed. See
    * {@link OnSessionVerified}. Runs in `getSession`, `requireAuth` and
    * `optionalAuth`, after `mapUser`.
    */
