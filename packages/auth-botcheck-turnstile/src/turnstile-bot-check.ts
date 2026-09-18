@@ -58,6 +58,11 @@ interface SiteVerifyResponse {
  * <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
  * <div class="cf-turnstile" data-sitekey="YOUR_SITE_KEY"></div>
  * ```
+ *
+ * The token is issued asynchronously, so the form must keep its submit
+ * control disabled until the widget's `data-callback` fires or it will post
+ * without one and be rejected here as `missing_token`. See the README, or
+ * `useTurnstile` in `@activescott/auth-adapter-react-router/turnstile`.
  */
 export class TurnstileBotCheck implements BotCheckProvider {
   public readonly id = "turnstile"

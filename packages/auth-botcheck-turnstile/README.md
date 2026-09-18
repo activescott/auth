@@ -40,7 +40,16 @@ be, and the rejection is logged with the reason Cloudflare returned.
 ## Client
 
 Render the widget inside the login form so the browser posts the
-`cf-turnstile-response` field along with the address:
+`cf-turnstile-response` field along with the address.
+
+**The form must wait for the token.** Turnstile runs its challenge
+asynchronously and can take several seconds on a slow phone or a slow network.
+A form submitted before the widget finishes posts no `cf-turnstile-response`,
+this check rejects it as `missing_token`, and no email or code is sent. From
+the user's side sign-in has silently stopped working: nothing arrives, and the
+error redirect is easy to miss. Keep the submit button disabled until the
+widget's `data-callback` fires, and disable it again on
+`data-expired-callback`:
 
 ```html
 <script
@@ -51,10 +60,28 @@ Render the widget inside the login form so the browser posts the
 
 <form method="post" action="/auth/email/initiate">
   <input type="email" name="email" required />
-  <div class="cf-turnstile" data-sitekey="YOUR_SITE_KEY"></div>
-  <button type="submit">Send magic link</button>
+  <div
+    class="cf-turnstile"
+    data-sitekey="YOUR_SITE_KEY"
+    data-callback="turnstileDone"
+    data-expired-callback="turnstileExpired"
+  ></div>
+  <button type="submit" id="submit" disabled>Send magic link</button>
 </form>
+
+<script>
+  function turnstileDone() {
+    document.getElementById("submit").disabled = false
+  }
+  function turnstileExpired() {
+    document.getElementById("submit").disabled = true
+  }
+</script>
 ```
+
+React Router applications can skip the wiring. `useTurnstile` from
+[`@activescott/auth-adapter-react-router/turnstile`](https://www.npmjs.com/package/@activescott/auth-adapter-react-router)
+renders the widget and returns the `ready` flag to gate the button on.
 
 ## Configuration
 
