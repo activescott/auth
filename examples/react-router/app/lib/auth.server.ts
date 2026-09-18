@@ -2,6 +2,7 @@ import {
   Auth,
   InMemoryChallengeStore,
   buildReturnUrl,
+  resolveRedirectTarget,
   createFormToken,
   type AuthUser,
   type Identity,
@@ -435,9 +436,14 @@ const handlers = createAuthHandlers(auth, {
   // When the verify URL carries ?redirectTo= (the dashboard's link flows set
   // it), errors go there instead: the magic-link confirm page's Referer is
   // the confirm page itself, so buildReturnUrl would strand the error on a
-  // dead URL.
+  // dead URL. resolveRedirectTarget keeps that destination on this app,
+  // since the query param arrives from the browser.
   errorRedirect: (error, request) => {
-    const redirectTo = new URL(request.url).searchParams.get("redirectTo")
+    const redirectTo = resolveRedirectTarget(
+      new URL(request.url).searchParams.get("redirectTo"),
+      request.url,
+      "",
+    )
     if (redirectTo) {
       const url = new URL(redirectTo, request.url)
       url.searchParams.set("error", error.code)
