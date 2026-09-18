@@ -330,14 +330,14 @@ export async function authenticateWithIdentifier(
     })
   }
 
-  await context.identityStore.update(identity.id, {
+  const verified = await context.identityStore.update(identity.id, {
     verifiedAt: new Date(),
   })
 
   return {
     success: true,
     user,
-    identity,
+    identity: verified,
   }
 }
 
