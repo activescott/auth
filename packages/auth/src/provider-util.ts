@@ -65,22 +65,70 @@ export function isBrowserFormPost(request: Request): boolean {
   )
 }
 
+/** Schemes a redirect destination may use */
+const REDIRECT_PROTOCOLS = new Set(["http:", "https:"])
+
+/**
+ * Resolve a redirect destination against the origin the request arrived on.
+ * Returns the destination as `pathname + search + hash` when it lands on
+ * that same origin, and `fallback` when it names another origin, uses
+ * another scheme, is empty, or does not parse.
+ *
+ * Destinations reach the library from query parameters, form fields and the
+ * Referer header, so the value is whatever the browser was handed, and the
+ * app's own pages are the only thing it can be answered with. Resolving
+ * through `URL` also covers the forms that read as relative but are not:
+ * `//host`, `/\host` and `\/host` all land on another origin.
+ *
+ * @param candidate - the requested destination
+ * @param requestUrl - the URL of the request being answered (`request.url`)
+ * @param fallback - where to go instead; typically a configured path
+ *
+ * @example
+ * ```typescript
+ * const destination = resolveRedirectTarget(
+ *   new URL(request.url).searchParams.get("redirectTo"),
+ *   request.url,
+ *   "/dashboard",
+ * )
+ * ```
+ */
+export function resolveRedirectTarget(
+  candidate: string | null | undefined,
+  requestUrl: string,
+  fallback: string,
+): string {
+  if (!candidate) return fallback
+
+  let base: URL
+  let target: URL
+  try {
+    base = new URL(requestUrl)
+    target = new URL(candidate, base)
+  } catch {
+    return fallback
+  }
+
+  if (!REDIRECT_PROTOCOLS.has(target.protocol)) return fallback
+  if (target.origin !== base.origin) return fallback
+
+  return `${target.pathname}${target.search}${target.hash}`
+}
+
 /**
  * Where to send the browser back after a form post: the submitting page
  * (Referer) with the given query params merged in, falling back to
- * /login.
+ * /login. A Referer naming another origin takes the fallback.
  */
 export function buildReturnUrl(
   request: Request,
   params: Record<string, string>,
 ): string {
   const referer = request.headers.get("referer")
-  let url: URL
-  try {
-    url = new URL(referer ?? "/login", request.url)
-  } catch {
-    url = new URL("/login", request.url)
-  }
+  const url = new URL(
+    resolveRedirectTarget(referer, request.url, "/login"),
+    request.url,
+  )
   for (const [name, value] of Object.entries(params)) {
     url.searchParams.set(name, value)
   }

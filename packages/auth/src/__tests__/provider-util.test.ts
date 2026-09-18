@@ -10,6 +10,7 @@ import {
   authenticateWithIdentifier,
   completeLinkVerification,
   linkUserIdFromChallenge,
+  resolveRedirectTarget,
 } from "../provider-util.js"
 import type { AuthContext, Identity } from "../types.js"
 import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
@@ -111,6 +112,69 @@ describe("buildReturnUrl", () => {
     const url = new URL(buildReturnUrl(request, { error: "RATE_LIMITED" }))
     expect(url.pathname).toBe("/login")
     expect(url.searchParams.get("error")).toBe("RATE_LIMITED")
+  })
+
+  it("should fall back to /login when the referer is another origin", () => {
+    const request = new Request(TEST_URL, {
+      headers: { Referer: "https://other.example/login" },
+    })
+    const url = new URL(buildReturnUrl(request, { error: "RATE_LIMITED" }))
+    expect(url.origin).toBe("https://example.com")
+    expect(url.pathname).toBe("/login")
+  })
+})
+
+describe("resolveRedirectTarget", () => {
+  const FALLBACK = "/dashboard"
+
+  it("should keep a same-origin path with its query and hash", () => {
+    expect(
+      resolveRedirectTarget("/settings?tab=email#top", TEST_URL, FALLBACK),
+    ).toBe("/settings?tab=email#top")
+  })
+
+  it("should reduce an absolute same-origin URL to a path", () => {
+    expect(
+      resolveRedirectTarget(
+        "https://example.com/settings?tab=email",
+        TEST_URL,
+        FALLBACK,
+      ),
+    ).toBe("/settings?tab=email")
+  })
+
+  it("should use the fallback for another origin", () => {
+    expect(
+      resolveRedirectTarget("https://other.example/x", TEST_URL, FALLBACK),
+    ).toBe(FALLBACK)
+  })
+
+  it("should use the fallback for a protocol-relative destination", () => {
+    expect(resolveRedirectTarget("//other.example", TEST_URL, FALLBACK)).toBe(
+      FALLBACK,
+    )
+  })
+
+  it("should use the fallback for a backslash-prefixed destination", () => {
+    expect(resolveRedirectTarget("/\\other.example", TEST_URL, FALLBACK)).toBe(
+      FALLBACK,
+    )
+    expect(resolveRedirectTarget("\\/other.example", TEST_URL, FALLBACK)).toBe(
+      FALLBACK,
+    )
+  })
+
+  it("should use the fallback for a javascript: destination", () => {
+    expect(
+      resolveRedirectTarget("javascript:alert(1)", TEST_URL, FALLBACK),
+    ).toBe(FALLBACK)
+  })
+
+  it("should use the fallback for empty and unparseable input", () => {
+    expect(resolveRedirectTarget(undefined, TEST_URL, FALLBACK)).toBe(FALLBACK)
+    expect(resolveRedirectTarget(null, TEST_URL, FALLBACK)).toBe(FALLBACK)
+    expect(resolveRedirectTarget("", TEST_URL, FALLBACK)).toBe(FALLBACK)
+    expect(resolveRedirectTarget("/ok", "not a url", FALLBACK)).toBe(FALLBACK)
   })
 })
 
