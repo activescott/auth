@@ -132,6 +132,46 @@ describe("EmailProvider", () => {
       expect(typeof challenge?.data?.hashedKey).toBe("string")
     })
 
+    it("should carry a same-origin redirectTo into the magic link", async () => {
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          email: TEST_EMAIL,
+          redirectTo: "/dashboard?link=email",
+        }).toString(),
+      })
+
+      await provider.initiate(request, context)
+
+      const link = new URL(lastMagicLink())
+      expect(link.searchParams.get("redirectTo")).toBe("/dashboard?link=email")
+    })
+
+    it.each([
+      ["another origin", "https://other.example/x"],
+      ["protocol-relative", "//other.example"],
+      ["backslash-prefixed", "/\\other.example"],
+      ["javascript:", "javascript:alert(1)"],
+    ])(
+      "should drop a redirectTo naming %s from the magic link",
+      async (_label, redirectTo) => {
+        const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            email: TEST_EMAIL,
+            redirectTo,
+          }).toString(),
+        })
+
+        await provider.initiate(request, context)
+
+        const link = new URL(lastMagicLink())
+        expect(link.searchParams.get("redirectTo")).toBeNull()
+      },
+    )
+
     it("should reject a missing email", async () => {
       const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
         method: "POST",
@@ -211,6 +251,17 @@ describe("EmailProvider", () => {
       // A scanner can GET repeatedly; the link must survive
       const second = await provider.verify(new Request(magicLink), context)
       expect(second instanceof Response).toBe(true)
+    })
+
+    it("should drop a redirectTo naming another origin from the confirm page form", async () => {
+      await provider.initiate(createInitiateRequest(), context)
+      const magicLink = `${lastMagicLink()}&redirectTo=${encodeURIComponent("https://other.example/x")}`
+
+      const page = await provider.verify(new Request(magicLink), context)
+      if (!(page instanceof Response)) throw new Error("expected page")
+      const html = await page.text()
+      expect(html).toContain(`action=""`)
+      expect(html).not.toContain("other.example")
     })
 
     it("should redeem on POST and consume the challenge", async () => {

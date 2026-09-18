@@ -18,6 +18,7 @@ import {
   parseRequestBody,
   isBrowserFormPost,
   buildReturnUrl,
+  resolveRedirectTarget,
   buildChallengeCookie,
   buildChallengeClearingCookie,
   readCookie,
@@ -122,8 +123,13 @@ export class EmailProvider implements AuthProvider {
         return initiateAccepted(request, this.initiateSentMessage)
       }
 
-      const redirectTo =
-        typeof body.redirectTo === "string" ? body.redirectTo : undefined
+      // Only a destination on this app's own origin rides into the link
+      const resolvedRedirect = resolveRedirectTarget(
+        typeof body.redirectTo === "string" ? body.redirectTo : undefined,
+        context.baseUrl,
+        "",
+      )
+      const redirectTo = resolvedRedirect || undefined
 
       const challengeId = crypto.randomUUID()
       const linkKey = this.generateLinkKey()
@@ -257,7 +263,11 @@ export class EmailProvider implements AuthProvider {
     if ("error" in challenge) return { success: false, error: challenge.error }
 
     const url = new URL(request.url)
-    const redirectTo = url.searchParams.get("redirectTo")
+    const redirectTo = resolveRedirectTarget(
+      url.searchParams.get("redirectTo"),
+      request.url,
+      "",
+    )
     const appName = this.config.template?.appName ?? "App"
     const primaryColor = this.config.template?.primaryColor ?? "#6366f1"
 
