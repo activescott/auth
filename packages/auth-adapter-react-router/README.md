@@ -63,13 +63,36 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 ```
 
+## Rolling sessions
+
+A session expires `maxAge` after it was issued, whether or not the visitor is still using the app. Set `session.renewAfter` and call `renewSessionCookie` from your root loader to re-issue the cookie once it passes that age, so people who keep visiting stay signed in and idle sessions still expire on schedule:
+
+```ts
+export const { renewSessionCookie, ...handlers } = createAuthHandlers(auth, {
+  session: { renewAfter: "7d" }, // well inside the "30d" maxAge
+})
+
+// app/root.tsx
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await optionalAuth(request)
+  const loaderData = { user }
+
+  const cookie = user && (await renewSessionCookie(request, user))
+  return cookie
+    ? data(loaderData, { headers: { "Set-Cookie": cookie } })
+    : loaderData
+}
+```
+
+`renewSessionCookie` returns null when the session is still fresh, so the common case sets no header. It throws if you call it without configuring `session.renewAfter`. To update the session because the user's own data changed (a new handle, say) rather than because it is old, use `refreshSessionCookie`, which re-issues unconditionally.
+
 ## API
 
-| Export                                 | Purpose                                                                                        |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `createAuthHandlers`                   | Returns `{ handleAuth, getSession, requireAuth, optionalAuth, refreshSessionCookie, logout }`. |
-| `createAdminHandlers` (from `./admin`) | Returns `{ requireAdmin, adminUsersLoader, adminConfigLoader }`.                               |
-| `AdminUsersPage`, `AdminConfigPage`    | The admin pages, from `./admin`.                                                               |
+| Export                                 | Purpose                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `createAuthHandlers`                   | Returns `{ handleAuth, getSession, requireAuth, optionalAuth, renewSessionCookie, refreshSessionCookie, logout }`. |
+| `createAdminHandlers` (from `./admin`) | Returns `{ requireAdmin, adminUsersLoader, adminConfigLoader }`.                                                   |
+| `AdminUsersPage`, `AdminConfigPage`    | The admin pages, from `./admin`.                                                                                   |
 
 Login pages need no action of their own: post the email form directly to `/auth/email/initiate` (the provider redirects back with `?sent=1`) and the code form to `/auth/email/verify`.
 

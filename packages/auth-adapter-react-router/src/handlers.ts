@@ -1,5 +1,21 @@
-import { resolveRedirectTarget } from "@activescott/auth"
+import { parseDuration, resolveRedirectTarget } from "@activescott/auth"
 import type { Auth, AuthUser, Identity, AuthError } from "@activescott/auth"
+
+const MS_PER_SECOND = 1000
+
+/**
+ * Rolling-session settings for {@link AuthHandlers.renewSessionCookie}
+ */
+export interface SessionRenewalOptions {
+  /**
+   * How old a session may get before `renewSessionCookie` re-issues it, as a
+   * duration string like `"7d"` (same format as `SessionConfig.maxAge`).
+   * Somewhere well inside `maxAge`: a session older than `maxAge` is already
+   * gone, and renewing on every request re-signs a JWT the visitor did not
+   * need.
+   */
+  renewAfter: string
+}
 
 /**
  * Options for creating auth handlers
@@ -24,6 +40,11 @@ export interface CreateAuthHandlersOptions<TUser = AuthUser> {
    * If provided, requireAuth and optionalAuth will return TUser instead of AuthUser.
    */
   mapUser?: (user: AuthUser, identity: Identity) => TUser
+  /**
+   * Rolling sessions. Required by `renewSessionCookie`, which throws
+   * without it.
+   */
+  session?: SessionRenewalOptions
 }
 
 /**
@@ -44,6 +65,10 @@ export interface AuthHandlers<TUser = AuthUser> {
   getSession: (request: Request) => Promise<AuthSession<TUser> | null>
   requireAuth: (request: Request, redirectTo?: string) => Promise<TUser>
   optionalAuth: (request: Request) => Promise<TUser | null>
+  renewSessionCookie: (
+    request: Request,
+    user: AuthUser,
+  ) => Promise<string | null>
   refreshSessionCookie: (
     request: Request,
     updatedUser: AuthUser,
@@ -80,10 +105,22 @@ export function createAuthHandlers<TUser = AuthUser>(
     errorRedirect = "/login",
     loginUrl = "/login",
     mapUser,
+    session: sessionOptions,
   } = options
 
   // Default mapper returns user as-is (safe when TUser = AuthUser)
   const userMapper = mapUser ?? ((user: AuthUser) => user as unknown as TUser)
+
+  // Parse the renewal threshold once, at startup: a typo here would
+  // otherwise read as zero and renew the cookie on every single request.
+  const renewAfterSeconds = sessionOptions
+    ? parseDuration(sessionOptions.renewAfter)
+    : 0
+  if (sessionOptions && renewAfterSeconds <= 0) {
+    throw new Error(
+      `Invalid session.renewAfter ${JSON.stringify(sessionOptions.renewAfter)}: expected a duration like "7d"`,
+    )
+  }
 
   return {
     /**
@@ -189,9 +226,58 @@ export function createAuthHandlers<TUser = AuthUser>(
     },
 
     /**
+     * Rolling sessions: re-issue the session cookie once it is older than
+     * `session.renewAfter`, so someone who keeps using the app stays signed
+     * in while an idle session still expires at `maxAge`. Returns null when
+     * the session is still fresh, when there is no session, and when the
+     * session no longer resolves to a user (blocked, deleted); pass the
+     * cookie to `Set-Cookie` when you get one.
+     *
+     * Call it from the root loader, which every navigation runs.
+     *
+     * @param request - The current request
+     * @param user - The user to encode, normally the one you just loaded
+     * @returns A Set-Cookie header value, or null to leave the cookie alone
+     * @throws Error if `session.renewAfter` was not configured
+     *
+     * @example
+     * ```typescript
+     * // In your root loader, after loading the session user:
+     * const cookie = user && (await renewSessionCookie(request, user))
+     * if (cookie) {
+     *   return data(loaderData, { headers: { "Set-Cookie": cookie } })
+     * }
+     * return loaderData
+     * ```
+     */
+    async renewSessionCookie(
+      request: Request,
+      user: AuthUser,
+    ): Promise<string | null> {
+      if (renewAfterSeconds <= 0) {
+        throw new Error(
+          "Cannot renew session: pass session.renewAfter to createAuthHandlers",
+        )
+      }
+
+      // The raw session carries issuedAt, which verifySession drops. Read it
+      // first so a fresh session costs one signature check and nothing else.
+      const current = await auth.getSessionManager().getSession(request)
+      if (!current) return null
+      const ageSeconds =
+        Math.floor(Date.now() / MS_PER_SECOND) - current.issuedAt
+      if (ageSeconds < renewAfterSeconds) return null
+
+      const session = await auth.verifySession(request)
+      if (!session) return null
+      return auth.createSessionCookie(user, session.identity)
+    },
+
+    /**
      * Refresh the session cookie with updated user data.
      * Use this when user profile data changes (e.g., handle, display name)
-     * to update the session without requiring re-authentication.
+     * to update the session without requiring re-authentication. To extend a
+     * session that is merely getting old, use `renewSessionCookie`.
      *
      * @param request - The current request (to get existing session/identity)
      * @param updatedUser - The user object with updated fields
