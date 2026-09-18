@@ -261,6 +261,42 @@ describe("SmsProvider", () => {
       expect(location).toContain("sent=1")
       expect(result.headers.get("Set-Cookie")).toContain("auth_sms_challenge=")
     })
+
+    it("should report a Referer it cannot return to", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = createInitiateRequest(TEST_PHONE, {
+        Accept: "text/html",
+        Referer: "https://other.example/login",
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        source: "Referer",
+        reason: "other-origin",
+        origin: "https://other.example",
+        fallback: "/login",
+      })
+    })
+
+    it("should not log a Referer on this origin", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = createInitiateRequest(TEST_PHONE, {
+        Accept: "text/html",
+        Referer: `${TEST_BASE_URL}/login`,
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).not.toHaveBeenCalled()
+    })
   })
 
   describe("verify", () => {
