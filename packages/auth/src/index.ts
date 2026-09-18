@@ -9,6 +9,7 @@ export type {
   AuthInitResult,
   AuthError,
   AuthErrorCode,
+  AuthLogger,
   AuthResponders,
   IdentityStore,
   UserStore,
@@ -95,6 +96,7 @@ export {
   MERGE_TICKET_COOKIE_NAME,
   MERGE_TICKET_TYPE,
 } from "./provider-util.js"
+export type { ResolveRedirectOptions } from "./provider-util.js"
 
 // Errors
 export {

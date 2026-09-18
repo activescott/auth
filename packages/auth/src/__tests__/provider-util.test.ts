@@ -178,6 +178,131 @@ describe("resolveRedirectTarget", () => {
   })
 })
 
+describe("resolveRedirectTarget logging", () => {
+  const FALLBACK = "/dashboard"
+
+  function recordingLogger(): {
+    warn: (message: string, context?: Record<string, unknown>) => void
+    calls: { message: string; context?: Record<string, unknown> }[]
+  } {
+    const calls: { message: string; context?: Record<string, unknown> }[] = []
+    return {
+      calls,
+      warn: (message, context) => calls.push({ message, context }),
+    }
+  }
+
+  it("should warn once with the source and the origin of the declined value", () => {
+    const logger = recordingLogger()
+    expect(
+      resolveRedirectTarget("https://other.example/x", TEST_URL, FALLBACK, {
+        logger,
+        source: "redirectTo",
+      }),
+    ).toBe(FALLBACK)
+    expect(logger.calls).toHaveLength(1)
+    expect(logger.calls[0]?.context).toMatchObject({
+      source: "redirectTo",
+      reason: "other-origin",
+      origin: "https://other.example",
+      fallback: FALLBACK,
+    })
+  })
+
+  it("should keep the declined value's path and query out of the log", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget(
+      "https://other.example/collect?key=s3cret-link-key",
+      TEST_URL,
+      FALLBACK,
+      { logger, source: "redirectTo" },
+    )
+    expect(JSON.stringify(logger.calls)).not.toContain("s3cret-link-key")
+  })
+
+  it("should leave the fallback out when the caller has none yet", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget("https://other.example/x", TEST_URL, "", {
+      logger,
+      source: "redirectTo",
+    })
+    expect(logger.calls[0]?.context).not.toHaveProperty("fallback")
+  })
+
+  it("should report the scheme when that is what was wrong", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget("javascript:alert(1)", TEST_URL, FALLBACK, {
+      logger,
+      source: "redirectTo",
+    })
+    expect(logger.calls[0]?.context).toMatchObject({
+      reason: "scheme",
+      scheme: "javascript:",
+    })
+  })
+
+  it("should warn for an unparseable value", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget("/ok", "not a url", FALLBACK, { logger })
+    expect(logger.calls[0]?.context).toMatchObject({ reason: "unparseable" })
+  })
+
+  it("should stay quiet for a destination on this origin", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget("/settings?tab=email", TEST_URL, FALLBACK, { logger })
+    resolveRedirectTarget("https://example.com/settings", TEST_URL, FALLBACK, {
+      logger,
+    })
+    expect(logger.calls).toEqual([])
+  })
+
+  it("should stay quiet when there is no destination to decline", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget(undefined, TEST_URL, FALLBACK, { logger })
+    resolveRedirectTarget(null, TEST_URL, FALLBACK, { logger })
+    resolveRedirectTarget("", TEST_URL, FALLBACK, { logger })
+    expect(logger.calls).toEqual([])
+  })
+
+  it("should log nowhere when no logger is configured", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      expect(
+        resolveRedirectTarget("https://other.example/x", TEST_URL, FALLBACK),
+      ).toBe(FALLBACK)
+      expect(
+        resolveRedirectTarget("https://other.example/x", TEST_URL, FALLBACK, {
+          source: "redirectTo",
+        }),
+      ).toBe(FALLBACK)
+      expect(consoleWarn).not.toHaveBeenCalled()
+    } finally {
+      consoleWarn.mockRestore()
+    }
+  })
+
+  it("should name the Referer as the source from buildReturnUrl", () => {
+    const logger = recordingLogger()
+    const request = new Request(TEST_URL, {
+      headers: { Referer: "https://other.example/login" },
+    })
+    const url = new URL(buildReturnUrl(request, { sent: "1" }, logger))
+    expect(url.pathname).toBe("/login")
+    expect(logger.calls).toHaveLength(1)
+    expect(logger.calls[0]?.context).toMatchObject({
+      source: "Referer",
+      reason: "other-origin",
+      origin: "https://other.example",
+    })
+  })
+
+  it("should stay quiet from buildReturnUrl when there is no Referer", () => {
+    const logger = recordingLogger()
+    buildReturnUrl(new Request(TEST_URL), { sent: "1" }, logger)
+    expect(logger.calls).toEqual([])
+  })
+})
+
 describe("challenge cookies", () => {
   it("should build a scoped HttpOnly cookie, Secure on https", () => {
     const cookie = buildChallengeCookie(
