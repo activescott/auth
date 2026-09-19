@@ -77,12 +77,52 @@ const DEFAULT_ERROR_MESSAGE =
  */
 export function getAuthErrorMessage(
   code: string,
-  defaultMessage: string = DEFAULT_ERROR_MESSAGE,
+  defaultMessage?: string,
+): string
+/**
+ * Get a user-friendly error message for an auth error code, consulting the
+ * application's own messages first. That is where codes the library does not
+ * know go (an initiate gate's `?error=blocked`, say) and where a built-in
+ * message is reworded, so the app does not need a wrapper around this
+ * function.
+ *
+ * @param code - The error code string (may come from URL params, etc.)
+ * @param overrides - Messages by code; they win over the built-in ones
+ * @param defaultMessage - Optional custom default message for unrecognized codes
+ * @returns The user-friendly error message
+ *
+ * @example
+ * ```typescript
+ * const message = getAuthErrorMessage(errorCode, {
+ *   blocked: "Your account has been blocked.",
+ * })
+ * ```
+ */
+export function getAuthErrorMessage(
+  code: string,
+  overrides: Readonly<Record<string, string>>,
+  defaultMessage?: string,
+): string
+export function getAuthErrorMessage(
+  code: string,
+  overridesOrDefault?: Readonly<Record<string, string>> | string,
+  defaultMessage?: string,
 ): string {
+  const overrides =
+    typeof overridesOrDefault === "string" ? undefined : overridesOrDefault
+  const fallback =
+    (typeof overridesOrDefault === "string"
+      ? overridesOrDefault
+      : defaultMessage) ?? DEFAULT_ERROR_MESSAGE
+
+  // Own keys only: `code` usually comes from the URL
+  if (overrides && Object.hasOwn(overrides, code)) {
+    return overrides[code] as string
+  }
   if (code in AUTH_ERROR_MESSAGES) {
     return AUTH_ERROR_MESSAGES[code as AuthErrorCode]
   }
-  return defaultMessage
+  return fallback
 }
 
 /**
