@@ -55,6 +55,7 @@ export class EmailProvider implements AuthProvider {
   public readonly name = "Email"
   public readonly initiateSentMessage =
     "Magic link sent. Please check your email."
+  public readonly consultsInitiateGate = true
 
   private transport: EmailTransport
 
@@ -131,6 +132,15 @@ export class EmailProvider implements AuthProvider {
           context.logger,
         )
       }
+
+      // The application's own policy (allowlist, invite-only beta) sees the
+      // address only now that it is validated, so it never acts on a malformed one.
+      const gated = await context.gate?.check({
+        provider: this.id,
+        identifier: email,
+        mode: linkUserId ? "link" : "signin",
+      })
+      if (gated) return gated
 
       // Only a destination on this app's own origin rides into the link
       const resolvedRedirect = resolveRedirectTarget(

@@ -417,6 +417,8 @@ The cleanest reference is the email provider itself: [`packages/auth-provider-em
 
 `Auth.handleRequest` dispatches strictly from your `getRoutes()` table: each route's `handler` kind picks the entry point (`"initiate"` runs the abuse guard first, `"verify"` feeds the adapter's session/redirect flow, `"action"` calls your `handleAction`), and any method+path you did not declare is a 404.
 
+If your provider sends to a user-supplied identifier, call `context.gate?.check({ provider, identifier, mode })` once the identifier is validated and return its answer when there is one, then set `consultsInitiateGate = true` — otherwise apps that configure an [initiate gate](./packages/auth/README.md#initiate-gate) cannot use your provider.
+
 `describe()` is what the [admin dashboard](#admin-dashboard)'s configuration page displays for your provider. Only your provider knows which of its settings are secret, so redaction is its job: omit API keys, passwords, tokens, and signing secrets rather than masking them. Return `{ settings: {} }` if there is nothing worth showing.
 
 ## Release process

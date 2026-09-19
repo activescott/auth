@@ -3,8 +3,8 @@
  * redemption flow.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { InMemoryChallengeStore } from "@activescott/auth"
-import type { AuthContext, Identity } from "@activescott/auth"
+import { Auth, InMemoryChallengeStore } from "@activescott/auth"
+import type { AuthContext, Identity, InitiateGate } from "@activescott/auth"
 import { EmailProvider } from "../email-provider.js"
 import type { EmailTransport } from "../types.js"
 
@@ -797,5 +797,145 @@ describe("EmailProvider transport purpose", () => {
       expect.anything(),
       expect.objectContaining({ purpose: "link" }),
     )
+  })
+})
+
+describe("EmailProvider behind an initiate gate", () => {
+  let auth: Auth | undefined
+
+  afterEach(() => {
+    auth?.destroy()
+  })
+
+  function createGatedAuth(onInitiate: InitiateGate["onInitiate"]): Auth {
+    const identity = createMockIdentity()
+    return new Auth({
+      session: {
+        secret: "test-session-secret",
+        maxAge: "7d",
+        cookieName: "auth_session",
+        cookie: { secure: false, sameSite: "lax" },
+      },
+      userStore: {
+        findById: vi.fn().mockResolvedValue({ id: "user-1" }),
+        create: vi.fn().mockResolvedValue({ id: "user-1" }),
+        onMerge: vi.fn(),
+      },
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([identity]),
+        create: vi.fn().mockResolvedValue(identity),
+        update: vi.fn().mockResolvedValue(identity),
+        delete: vi.fn(),
+        reassignByUserId: vi.fn(),
+      },
+      challengeStore: new InMemoryChallengeStore(),
+      providers: [createProvider()],
+      gate: { onInitiate },
+    })
+  }
+
+  function formPost(body: Record<string, string>, cookie?: string): Request {
+    return new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "text/html",
+        Referer: `${TEST_BASE_URL}/login`,
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      body: new URLSearchParams(body).toString(),
+    })
+  }
+
+  beforeEach(() => {
+    vi.mocked(mockTransport.sendMagicLink).mockClear()
+  })
+
+  it.each(["not-an-email", "user@localhost", ""])(
+    "rejects %j before the gate is called",
+    async (email) => {
+      const onInitiate = vi.fn().mockReturnValue("allow")
+      auth = createGatedAuth(onInitiate)
+
+      const response = await auth.handleRequest(formPost({ email }))
+
+      expect(response.status).toBe(302)
+      expect(response.headers.get("Location")).toContain(
+        "error=INVALID_CREDENTIALS",
+      )
+      expect(onInitiate).not.toHaveBeenCalled()
+      expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
+    },
+  )
+
+  it("hands the gate the normalized address in signin mode, then sends", async () => {
+    const onInitiate = vi.fn().mockReturnValue("allow")
+    auth = createGatedAuth(onInitiate)
+
+    const response = await auth.handleRequest(
+      formPost({ email: "  User@Example.COM " }),
+    )
+
+    expect(onInitiate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "email",
+        identifier: "user@example.com",
+        mode: "signin",
+      }),
+    )
+    expect(response.headers.get("Location")).toContain("sent=1")
+    expect(mockTransport.sendMagicLink).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports link mode for a signed-in link request", async () => {
+    const onInitiate = vi.fn().mockReturnValue("allow")
+    auth = createGatedAuth(onInitiate)
+    const cookie = await auth.createSessionCookie(
+      { id: "user-1" },
+      createMockIdentity(),
+    )
+
+    await auth.handleRequest(
+      formPost(
+        { email: "second@example.com", mode: "link" },
+        cookie.split(";")[0],
+      ),
+    )
+
+    expect(onInitiate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: "second@example.com",
+        mode: "link",
+      }),
+    )
+  })
+
+  it("sends nothing when the gate redirects", async () => {
+    auth = createGatedAuth(() => ({ redirect: "/waitlist" }))
+
+    const response = await auth.handleRequest(
+      formPost({ email: "stranger@example.com" }),
+    )
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get("Location")).toBe("/waitlist")
+    expect(response.headers.get("Set-Cookie")).toBeNull()
+    expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
+  })
+
+  it("sends nothing when the gate returns an error", async () => {
+    auth = createGatedAuth(() => ({
+      error: { code: "INVALID_CREDENTIALS", message: "Invite only" },
+    }))
+
+    const response = await auth.handleRequest(
+      formPost({ email: "stranger@example.com" }),
+    )
+
+    expect(response.headers.get("Location")).toBe(
+      `${TEST_BASE_URL}/login?error=INVALID_CREDENTIALS`,
+    )
+    expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
   })
 })
