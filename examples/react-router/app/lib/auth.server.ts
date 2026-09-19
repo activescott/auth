@@ -3,7 +3,6 @@ import {
   InMemoryChallengeStore,
   buildReturnUrl,
   resolveRedirectTarget,
-  createFormToken,
   type AuthUser,
   type Identity,
   type IdentityStore,
@@ -26,13 +25,15 @@ import {
 } from "@activescott/auth-sms-twilio"
 import {
   PasskeyProvider,
-  listPasskeys as listStoredPasskeys,
-  type PasskeySummary,
+  listPasskeys,
 } from "@activescott/auth-provider-passkey"
 import { CaptureEmailTransport } from "@activescott/auth-provider-email/testing"
 import { CaptureSmsTransport } from "@activescott/auth-provider-sms/testing"
 import { TurnstileBotCheck } from "@activescott/auth-botcheck-turnstile"
-import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
+import {
+  createAuthHandlers,
+  createAuthPageLoaders,
+} from "@activescott/auth-adapter-react-router"
 import { createAdminHandlers } from "@activescott/auth-adapter-react-router/admin"
 
 /** Set TURNSTILE_SECRET_KEY (and TURNSTILE_SITE_KEY) to turn Turnstile on */
@@ -180,36 +181,6 @@ const identityStore: IdentityStore = {
  */
 const SESSION_SECRET =
   process.env.JWT_SECRET ?? "dev-only-session-secret-do-not-use-in-production"
-
-/**
- * The signed-in user's passkeys for the dashboard list. Passkeys are
- * ordinary identity rows ({provider: "passkey"}); the provider package's
- * listPasskeys validates each row's credential state and returns plain JSON
- * for the loader. A restart wipes the in-memory store, orphaning any
- * passkeys saved in the browser/password manager for localhost (delete
- * those there when it happens).
- */
-export function listPasskeys(userId: string): Promise<PasskeySummary[]> {
-  return listStoredPasskeys(identityStore, userId)
-}
-
-/**
- * The signed-in user's email and phone sign-in methods for the dashboard
- * list. Passkeys are identity rows too but have their own section (see
- * listPasskeys).
- */
-export async function listSignInMethods(
-  userId: string,
-): Promise<{ provider: string; identifier: string; createdAt: string }[]> {
-  const all = await identityStore.findByUserId(userId)
-  return all
-    .filter((identity) => identity.provider !== "passkey")
-    .map((identity) => ({
-      provider: identity.provider,
-      identifier: identity.identifier,
-      createdAt: identity.createdAt.toISOString(),
-    }))
-}
 
 /**
  * SMTP is considered configured when SMTP_HOST is set (see .env.example).
@@ -467,16 +438,15 @@ export const { requireAdmin, adminUsersLoader, adminConfigLoader } =
   })
 
 /**
- * Anti-bot form fields for the login page, minted per render: a signed
- * timestamp the form-token check reads to reject submissions faster than a
- * human could type, plus the Turnstile site key when Turnstile is configured.
+ * Loaders for the login page and the dashboard's sign-in methods section.
+ * They read what the providers put in the query string on the way back
+ * (?sent=1, ?error=, ?add=, ?merged=1), mint the form token the abuse checks
+ * compare against submit time, and list the user's sign-in methods; the
+ * pages keep their own markup. listPasskeys comes from the passkey package,
+ * so an app without passkeys never installs it.
  */
-export async function createLoginFormFields(): Promise<{
-  formToken: string
-  turnstileSiteKey: string | null
-}> {
-  return {
-    formToken: await createFormToken(SESSION_SECRET),
-    turnstileSiteKey: process.env.TURNSTILE_SITE_KEY ?? null,
-  }
-}
+export const { signInLoader, profileAuthLoader } = createAuthPageLoaders(auth, {
+  // Public half of the Turnstile pair; unset leaves the widget off
+  turnstileSiteKey: process.env.TURNSTILE_SITE_KEY,
+  listPasskeys,
+})

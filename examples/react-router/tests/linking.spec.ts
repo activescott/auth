@@ -11,7 +11,7 @@ const E2E_SECRET =
  */
 async function addPhoneFromDashboard(page: Page, phone: string): Promise<void> {
   const nationalNumber = phone.replace(/^\+1/, "")
-  await page.goto("/dashboard?link=sms")
+  await page.goto("/dashboard?add=sms")
   await page.getByLabel(/mobile phone number to add/i).fill(nationalNumber)
   await waitForMinimumFormFill(page)
   await page.getByRole("button", { name: /text me a code/i }).click()
