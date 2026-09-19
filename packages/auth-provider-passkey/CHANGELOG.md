@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.1.0](https://github.com/activescott/auth/compare/auth-provider-passkey@2.0.0...auth-provider-passkey@2.1.0) (2026-09-19)
+
+### Features
+
+* add appUrl, browser client, and listPasskeys ([#114](https://github.com/activescott/auth/issues/114)) ([ab1b62d](https://github.com/activescott/auth/commit/ab1b62d221b3efe52ca091426a606fcd64f7b5db))
+
 ## [2.0.0](https://github.com/activescott/auth/compare/auth-provider-passkey@1.0.0...auth-provider-passkey@2.0.0) (2026-08-11)
 
 ### ⚠ BREAKING CHANGES
