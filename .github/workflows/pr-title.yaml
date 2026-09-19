@@ -1,8 +1,8 @@
 name: PR Title
 
 # Squash merges use the PR title as the commit subject on main, and
-# simple-release derives the version bump from that subject — so the title
-# must pass the same commitlint rules the commit-msg hook enforces on branch
+# simple-release derives the version bump from that subject. The title must
+# pass the same commitlint rules the commit-msg hook enforces on branch
 # commits. Runs on every PR and re-runs when the title is edited.
 on:
   pull_request:
