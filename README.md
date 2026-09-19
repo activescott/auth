@@ -126,6 +126,8 @@ export const action = ({ request }: Route.ActionArgs) => handleAuth({ request })
 
 The login page needs no action — its forms post directly to the auth routes: the email form to `/auth/email/initiate` (redirects back with `?sent=1` and sets the challenge cookie) and the code form to `/auth/email/verify`. `logout.tsx` action/loader calls `logout()`. See the example for the full files.
 
+The adapter's `signInLoader` and its hooks (Turnstile, passkeys, code autofill) carry the page logic, so your login and profile pages are only markup. See [Sign-in and profile pages](./packages/auth-adapter-react-router#sign-in-and-profile-pages).
+
 ### Step 5 — Protect routes with `requireAuth`
 
 In any loader:
