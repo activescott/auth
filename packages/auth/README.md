@@ -319,7 +319,7 @@ createAuthHandlers(auth, {
 })
 ```
 
-For the dashboard, render approve and block buttons in `AdminUsersPage`'s `rowActions` as forms posting `userId` and `intent` (`"approve"` or `"block"`) to your admin route, and in that route's action call `waitlist.handleAdminAction(await request.formData())` after checking the caller is an admin. `waitlist.approve(userId)` and `waitlist.block(userId)` do the same from your own code. The [example app](../../examples/react-router/app/routes/admin.users.tsx) has the whole flow.
+For the dashboard, render approve and block buttons in `AdminUsersPage`'s `rowActions` as forms posting `userId` and `intent` (`"approve"` or `"block"`) to your admin route, and in that route's action call `waitlist.handleAdminAction(await request.formData())` after checking the caller is an admin. `waitlist.approve(userId)` and `waitlist.block(userId)` do the same from your own code. The form has no CSRF token of its own; it relies on the session cookie being `SameSite=Lax` or stricter, as the example configures. The [example app](../../examples/react-router/app/routes/admin.users.tsx) has the whole flow.
 
 ## License
 

@@ -214,6 +214,38 @@ describe("createWaitlist onInitiate", () => {
     expect(autoApprove).not.toHaveBeenCalled()
   })
 
+  it("never asks autoApprove about a blocked user that userStore.create returns", async () => {
+    // Apps that upsert users by email hand back an existing user from create
+    // when that user has no identity for this provider yet
+    const autoApprove = vi.fn().mockReturnValue(true)
+    const { waitlist, userStore, statuses } = setup({ autoApprove })
+    statuses.set("existing", "BLOCKED")
+    vi.mocked(userStore.create).mockResolvedValueOnce({ id: "existing" })
+
+    expect(await waitlist.onInitiate(signin("mallory@example.com"))).toEqual({
+      redirect: "/waitlist",
+    })
+    expect(autoApprove).not.toHaveBeenCalled()
+    expect(statuses.get("existing")).toBe("BLOCKED")
+  })
+
+  it("does not re-announce a waiting user that userStore.create returns", async () => {
+    const notify = vi.fn()
+    const autoApprove = vi.fn().mockReturnValue(false)
+    const { waitlist, userStore, approvalStore, statuses } = setup({
+      autoApprove,
+      notify,
+    })
+    statuses.set("existing", "PENDING")
+    vi.mocked(userStore.create).mockResolvedValueOnce({ id: "existing" })
+
+    expect(await waitlist.onInitiate(signin("pending@example.com"))).toEqual({
+      redirect: "/waitlist",
+    })
+    expect(approvalStore.setApprovalStatus).not.toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
+  })
+
   it("keeps a waiting user waiting when autoApprove says no", async () => {
     const autoApprove = vi.fn().mockReturnValue(false)
     const { waitlist, seed } = setup({ autoApprove })

@@ -182,9 +182,9 @@ export function createWaitlist(config: WaitlistConfig): Waitlist {
 
       const { provider, identifier } = input
       const { userId, isNewUser } = await findOrCreateUser(provider, identifier)
-      const status = isNewUser
-        ? null
-        : await approvalStore.getApprovalStatus(userId)
+      // Read even for a new identity: a userStore that upserts by email can
+      // hand back an existing user, who may already be BLOCKED
+      const status = await approvalStore.getApprovalStatus(userId)
 
       if (status === "APPROVED") return "allow"
       if (status === "BLOCKED") return { redirect: blockedUrl }
