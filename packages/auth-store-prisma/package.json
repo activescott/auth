@@ -1,7 +1,7 @@
 {
-  "name": "@activescott/auth",
-  "version": "5.2.1",
-  "description": "Framework-agnostic authentication with provider pattern for magic links, OAuth, and more",
+  "name": "@activescott/auth-store-prisma",
+  "version": "0.1.0",
+  "description": "Prisma IdentityStore for @activescott/auth",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,10 +9,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./admin": {
-      "types": "./dist/admin/admin-data.d.ts",
-      "import": "./dist/admin/admin-data.js"
     }
   },
   "files": [
@@ -28,21 +24,22 @@
   "keywords": [
     "auth",
     "authentication",
-    "magic-link",
-    "jwt",
-    "session"
+    "prisma",
+    "identity",
+    "store"
   ],
   "author": "Scott Willeke",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/activescott/auth.git",
-    "directory": "packages/auth"
+    "directory": "packages/auth-store-prisma"
   },
-  "dependencies": {
-    "jose": "^6.2.6"
+  "peerDependencies": {
+    "@activescott/auth": ">=5.0.0"
   },
   "devDependencies": {
+    "@activescott/auth": "*",
     "@types/node": "^22",
     "typescript": "^5.7.2",
     "vitest": "^4.1.11"
