@@ -40,6 +40,7 @@ Source map for what lives where (not in README):
 - `packages/auth/src/session/session-manager.ts` — `SessionManager`: issues/verifies JWT cookie sessions.
 - `packages/auth/src/types.ts` — contracts: `AuthProvider`, `IdentityStore`, `UserStore`, `AuthUser`, `Identity`, `Session`.
 - `packages/auth/src/errors.ts` — `AuthErrors`.
+- `packages/auth/src/initiate-gate.ts` — `AuthConfig.gate` (`onInitiate`): app policy on who may start a sign-in or link. Providers consult it through `context.gate.check` after validating the identifier; `Auth`'s constructor refuses providers with an initiate route that don't set `consultsInitiateGate`.
 - `packages/auth/src/otp.ts` — one-time-code generation + shared `verifyOtpChallenge` redemption flow; `src/provider-util.ts` — helpers for provider authors (body parsing, challenge cookies, `authenticateWithIdentifier`, and its link-mode counterpart `completeLinkVerification` — identity linking + the merge ticket it mints on IDENTITY_CONFLICT; `Auth.mergeUsers` and the generic `link-merge` action live in `src/auth.ts`).
 - `packages/auth-provider-email/src/email-provider.ts` — email magic link + code provider; `src/transports/` holds `EmailTransport` implementations (Nodemailer SMTP).
 - `packages/auth-provider-sms/src/sms-provider.ts` — SMS one-time-code provider (vendor-neutral; `SmsTransport` interface, `ConsoleTransport` for dev). Also accepts a `VerificationTransport` (`src/types.ts`) where the vendor owns the code — that path stores no `hashedCode` and redeems via `redeemVendorChallenge` instead of `verifyOtpChallenge`.

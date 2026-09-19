@@ -63,6 +63,7 @@ npm install @activescott/auth
 | `IdentityStore`, `UserStore`                                      | Interfaces you implement to plug in your database.                                                                    |
 | `ChallengeStore`, `InMemoryChallengeStore`                        | Storage for short-lived, single-use challenges (see below).                                                           |
 | `AbuseConfig`, `RateLimitStore`, `InMemoryRateLimitStore`         | Abuse protection for the initiate endpoints — on by default (see below).                                              |
+| `InitiateGate`                                                    | Your own policy on who may start a sign-in or link (see below).                                                       |
 | `BotCheckProvider`, `createFormToken`, `FORM_TOKEN_FIELD`         | Bot-check interface and the login form's anti-bot fields.                                                             |
 | `generateOtpCode`, `hashOtpCode`, `verifyOtpCode`                 | One-time-code utilities used by OTP-capable providers.                                                                |
 | `AuthUser`, `Identity`, `Session`, `AuthResult`, `AuthInitResult` | Core data types.                                                                                                      |
@@ -215,6 +216,35 @@ abuse: {
 ```
 
 Implement `BotCheckProvider` (`{ id, verify({ request, body, ip, providerId }) }`) to add your own.
+
+## Initiate gate
+
+An invite-only beta, an allowlist, or a blocked domain is a rule about _who_ may be sent a sign-in message. Put it in `gate.onInitiate` rather than in a preamble in your auth route:
+
+```ts
+const auth = new Auth({
+  // ...
+  gate: {
+    async onInitiate({ provider, identifier, mode, request }) {
+      if (mode === "link") return "allow" // already signed in
+      if (await invites.has(provider, identifier)) return "allow"
+      return { redirect: "/waitlist" }
+    },
+  },
+})
+```
+
+The gate runs inside `handleRequest`, after the provider has parsed, normalized, and validated the identifier (`User@Example.com ` arrives as `user@example.com`, a phone number as E.164) and before anything is created or sent. A malformed identifier is rejected by the provider first, so the gate never acts on one. `mode` is `"signin"` or `"link"` (see [linking identities](../../README.md#linking-identities--account-merge)); `request` is a clone of the initiate request, for headers or cookies.
+
+Return one of:
+
+- `"allow"` — send as usual.
+- `{ redirect: "/waitlist" }` — send nothing and answer with a 302 to that URL, for every caller.
+- `{ error: AuthErrors.invalidCredentials({ reason: "Invite only" }) }` — send nothing and fail like any other initiate: a browser form post goes back to the submitting page with `?error=<code>`, a fetch caller gets the error as JSON.
+
+A gate that throws fails the initiate. Per-IP and per-recipient abuse limits run before the gate, so a throttled request still gets the silent "sent" answer.
+
+The built-in email and SMS providers consult the gate. With `gate` set, `new Auth` throws if any provider that serves an initiate route does not declare `consultsInitiateGate: true` — an older provider package would otherwise skip your policy without a trace. A custom provider opts in by calling `context.gate?.check({ provider, identifier, mode })` once its identifier is valid, returning the result when there is one, and setting `consultsInitiateGate = true`.
 
 ## Admin subpath
 

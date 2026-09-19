@@ -6,6 +6,7 @@ import type {
   AbuseContext,
   AbuseDescription,
 } from "./abuse/abuse-guard.js"
+import type { InitiateGate, InitiateGateContext } from "./initiate-gate.js"
 
 /**
  * Minimal user representation for authentication.
@@ -454,6 +455,12 @@ export interface AuthConfig {
    * only needed to tune limits, supply shared storage, add a hosted bot check,
    * or turn it off. */
   abuse?: AbuseConfig
+  /** Application policy on who may start a sign-in or link (an allowlist,
+   * an invite-only beta). Consulted inside `handleRequest` with the
+   * identifier the provider has already validated and normalized — see
+   * {@link InitiateGate}. Every provider serving an initiate route must set
+   * `consultsInitiateGate`, or the Auth constructor throws. */
+  gate?: InitiateGate
   /** Where to report conditions worth a WARN — see {@link AuthLogger}.
    * Nothing is logged through it when absent. */
   logger?: AuthLogger
@@ -556,6 +563,10 @@ export interface AuthContext {
    * have parsed and normalized the recipient (email address, phone number)
    * and before sending anything to it. */
   abuse?: AbuseContext
+  /** The application's initiate gate, present when `AuthConfig.gate` is set.
+   * Providers call `gate.check` right after `abuse.checkIdentifier` and
+   * return its answer when there is one. */
+  gate?: InitiateGateContext
   /** The application's logger, if it configured one. Providers pass it to
    * utilities that take an {@link AuthLogger} — e.g.
    * `resolveRedirectTarget` — so a declined redirect destination is visible
@@ -614,6 +625,14 @@ export interface AuthProvider {
    * abusive initiate, so a blocked caller cannot tell the two apart.
    */
   readonly initiateSentMessage?: string
+
+  /**
+   * True when `initiate` calls `context.gate.check` for every identifier
+   * before sending to it. With `AuthConfig.gate` set, Auth refuses to start
+   * if a provider serving an initiate route does not declare this, so an
+   * older provider cannot silently skip the application's gate.
+   */
+  readonly consultsInitiateGate?: boolean
 
   /**
    * Initialize authentication flow.
