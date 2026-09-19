@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.2.1](https://github.com/activescott/auth/compare/auth@5.2.0...auth@5.2.1) (2026-09-19)
+
+### Bug Fixes
+
+* return the identity after the update ([#105](https://github.com/activescott/auth/issues/105)) ([8c043f4](https://github.com/activescott/auth/commit/8c043f4fd625a5ff52d14153e8c77333fd0753bf)), closes [#102](https://github.com/activescott/auth/issues/102)
+
 ## [5.2.0](https://github.com/activescott/auth/compare/auth@5.1.0...auth@5.2.0) (2026-09-18)
 
 ### Features

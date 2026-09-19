@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.4.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.3.0...auth-adapter-react-router@2.4.0) (2026-09-19)
+
+### Features
+
+* add e2e readback ([#115](https://github.com/activescott/auth/issues/115)) ([c980d33](https://github.com/activescott/auth/commit/c980d3318341e1920109dd2fe116bdbf0f97158c))
+
 ## [2.3.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.2.0...auth-adapter-react-router@2.3.0) (2026-09-18)
 
 ### Features
