@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.4.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.3.0...auth-adapter-react-router@2.4.0) (2026-09-19)
+
+### Features
+
+* add e2e readback ([#115](https://github.com/activescott/auth/issues/115)) ([c980d33](https://github.com/activescott/auth/commit/c980d3318341e1920109dd2fe116bdbf0f97158c))
+
+## [2.3.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.2.0...auth-adapter-react-router@2.3.0) (2026-09-18)
+
+### Features
+
+* add onSessionVerified ([c3705e5](https://github.com/activescott/auth/commit/c3705e5c86664dc11cfc614129382ede354faa58))
+
+## [2.2.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.1.0...auth-adapter-react-router@2.2.0) (2026-09-18)
+
+### Features
+
+* add rolling session renewal ([#108](https://github.com/activescott/auth/issues/108)) ([368fbb1](https://github.com/activescott/auth/commit/368fbb1795ba632bfcc8cfbb5e0fffb038c61bf2))
+
 ## [2.1.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.0.0...auth-adapter-react-router@2.1.0) (2026-09-18)
 
 ### Features

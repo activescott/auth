@@ -303,8 +303,8 @@ function Passkeys({
 
   async function handleClick() {
     try {
-      const { registerPasskey } = await import("~/lib/passkey.client")
-      await registerPasskey()
+      const { passkeys } = await import("~/lib/passkey.client")
+      await passkeys.registerPasskey()
       setStatus({ state: "added" })
       // Reload the loader data so the new passkey shows in the list
       await revalidator.revalidate()

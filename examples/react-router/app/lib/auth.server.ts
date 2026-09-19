@@ -26,7 +26,8 @@ import {
 } from "@activescott/auth-sms-twilio"
 import {
   PasskeyProvider,
-  parsePasskeyCredentialMetadata,
+  listPasskeys as listStoredPasskeys,
+  type PasskeySummary,
 } from "@activescott/auth-provider-passkey"
 import { CaptureEmailTransport } from "@activescott/auth-provider-email/testing"
 import { CaptureSmsTransport } from "@activescott/auth-provider-sms/testing"
@@ -182,36 +183,14 @@ const SESSION_SECRET =
 
 /**
  * The signed-in user's passkeys for the dashboard list. Passkeys are
- * ordinary identity rows ({provider: "passkey"}) whose provider-owned
- * providerState holds the credential state; a restart wipes the in-memory
- * store, orphaning any passkeys saved in the browser/password manager
- * for localhost (delete those there when it happens).
+ * ordinary identity rows ({provider: "passkey"}); the provider package's
+ * listPasskeys validates each row's credential state and returns plain JSON
+ * for the loader. A restart wipes the in-memory store, orphaning any
+ * passkeys saved in the browser/password manager for localhost (delete
+ * those there when it happens).
  */
-export async function listPasskeys(userId: string): Promise<
-  {
-    credentialId: string
-    nickname: string | null
-    synced: boolean
-    createdAt: string
-    lastUsedAt: string | null
-  }[]
-> {
-  const all = await identityStore.findByUserId(userId)
-  const passkeys = []
-  for (const identity of all) {
-    if (identity.provider !== "passkey") continue
-    const credential = parsePasskeyCredentialMetadata(identity.providerState)
-    if (!credential) continue
-    passkeys.push({
-      credentialId: identity.identifier,
-      nickname: credential.nickname ?? null,
-      // "multiDevice" = synced to a cloud keychain / password manager
-      synced: credential.deviceType === "multiDevice",
-      createdAt: identity.createdAt.toISOString(),
-      lastUsedAt: credential.lastUsedAt ?? null,
-    })
-  }
-  return passkeys
+export function listPasskeys(userId: string): Promise<PasskeySummary[]> {
+  return listStoredPasskeys(identityStore, userId)
 }
 
 /**
@@ -425,9 +404,12 @@ export const auth = new Auth({
     ),
     new PasskeyProvider({
       rpName: "RR Auth Example",
-      // rpID and expectedOrigin default to the request's hostname/origin,
-      // which suits dev and e2e on localhost. Set both explicitly in
-      // production (passkeys are bound to the domain they were created on).
+      // Passkeys are bound to the domain they were created on, so in
+      // production set APP_URL to your canonical URL: rpID and
+      // expectedOrigin then come from it rather than from each request's
+      // Host, which a proxy can rewrite. Unset (dev, e2e), both derive from
+      // the request, which suits localhost.
+      appUrl: process.env.APP_URL,
       challengeSecret: SESSION_SECRET,
     }),
   ],
