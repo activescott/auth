@@ -89,11 +89,11 @@ function PasskeyLogin() {
     if (!OFFER_PASSKEY_AUTOFILL) return
 
     async function offerPasskeyAutofill() {
-      const { signInWithPasskey, isConditionalUIAvailable } =
+      const { passkeys, isConditionalUIAvailable } =
         await import("~/lib/passkey.client")
       if (!(await isConditionalUIAvailable())) return
       try {
-        await signInWithPasskey(true)
+        await passkeys.signInWithPasskey({ conditional: true })
         // Full page load: fresh server render with the new session
         window.location.assign("/dashboard")
       } catch (caught) {
@@ -125,12 +125,12 @@ function PasskeyLogin() {
   async function handleClick() {
     setError(null)
     try {
-      const { signInWithPasskey } = await import("~/lib/passkey.client")
+      const { passkeys } = await import("~/lib/passkey.client")
       // Starting the modal ceremony aborts the pending conditional one
       // (required by WebAuthn). Because of the 1Password abort bug cited
       // above, 1Password may show its "encountered a problem" toast on
       // this path even when sign-in succeeds — not fixable site-side.
-      await signInWithPasskey()
+      await passkeys.signInWithPasskey()
       // Full page load: fresh server render with the new session
       window.location.assign("/dashboard")
     } catch (caught) {

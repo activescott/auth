@@ -776,6 +776,7 @@ describe("describe", () => {
   it("reports null for the request-derived settings when they are unset", () => {
     const settings = createProvider().provider.describe().settings
 
+    expect(settings.appUrl).toBeNull()
     expect(settings.rpID).toBeNull()
     expect(settings.expectedOrigin).toBeNull()
   })
@@ -785,5 +786,137 @@ describe("describe", () => {
 
     expect(Object.keys(settings)).not.toContain("challengeSecret")
     expect(JSON.stringify(settings)).not.toContain(CHALLENGE_SECRET)
+  })
+})
+
+describe("appUrl", () => {
+  const APP_URL = "https://app.example.com/some/path"
+  // What a proxy that rewrites Host might present; appUrl must win over it
+  const REQUEST_BASE_URL = "http://internal.example:8080"
+
+  it("binds every ceremony to the appUrl hostname and origin, not the request's", async () => {
+    const { provider, webauthn } = createProvider({ appUrl: APP_URL })
+    const context = createContext({ baseUrl: REQUEST_BASE_URL })
+
+    const registerOptions = await provider.handleAction(
+      "register-options",
+      postRequest("register-options", {}),
+      context,
+    )
+    await provider.handleAction(
+      "register-verify",
+      postRequest(
+        "register-verify",
+        registrationBody(),
+        challengeCookieFrom(registerOptions),
+      ),
+      context,
+    )
+    const authenticateOptions = await provider.handleAction(
+      "authenticate-options",
+      postRequest("authenticate-options", {}),
+      context,
+    )
+    await provider.handleAction(
+      "authenticate-verify",
+      postRequest(
+        "authenticate-verify",
+        authenticationBody(),
+        challengeCookieFrom(authenticateOptions),
+      ),
+      context,
+    )
+
+    expect(webauthn.generateRegistrationOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ rpID: "app.example.com" }),
+    )
+    expect(webauthn.verifyRegistrationResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedOrigin: "https://app.example.com",
+        expectedRPID: "app.example.com",
+      }),
+    )
+    expect(webauthn.generateAuthenticationOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ rpID: "app.example.com" }),
+    )
+    expect(webauthn.verifyAuthenticationResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedOrigin: "https://app.example.com",
+        expectedRPID: "app.example.com",
+      }),
+    )
+  })
+
+  it("lets an explicit rpID and expectedOrigin override appUrl", async () => {
+    const { provider, webauthn } = createProvider({
+      appUrl: APP_URL,
+      rpID: "example.com",
+      expectedOrigin: "https://www.example.com",
+    })
+    const { authCookie, context } = await registeredCredentialSetup()
+
+    await provider.handleAction(
+      "authenticate-verify",
+      postRequest("authenticate-verify", authenticationBody(), authCookie),
+      context,
+    )
+
+    expect(webauthn.verifyAuthenticationResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedOrigin: "https://www.example.com",
+        expectedRPID: "example.com",
+      }),
+    )
+  })
+
+  it("keeps the port in expectedOrigin but not in rpID", async () => {
+    const { provider, webauthn } = createProvider({
+      appUrl: "http://localhost:5173",
+    })
+
+    await provider.handleAction(
+      "authenticate-options",
+      postRequest("authenticate-options", {}),
+      createContext(),
+    )
+
+    expect(webauthn.generateAuthenticationOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ rpID: "localhost" }),
+    )
+    expect(provider.describe().settings.expectedOrigin).toBe(
+      "http://localhost:5173",
+    )
+  })
+
+  it("derives from the request when unset", async () => {
+    const { provider, webauthn } = createProvider()
+
+    await provider.handleAction(
+      "authenticate-options",
+      postRequest("authenticate-options", {}),
+      createContext({ baseUrl: REQUEST_BASE_URL }),
+    )
+
+    expect(webauthn.generateAuthenticationOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ rpID: "internal.example" }),
+    )
+  })
+
+  it.each([
+    ["not a URL", "myapp.example"],
+    ["an empty string", ""],
+    ["a non-http(s) URL", "ftp://myapp.example"],
+    ["an opaque-origin URL", "data:text/plain,hi"],
+  ])("throws at construction when appUrl is %s", (_label, appUrl) => {
+    expect(() => createProvider({ appUrl })).toThrow(TypeError)
+  })
+
+  it("reports appUrl and the rpID and expectedOrigin it resolves to", () => {
+    const settings = createProvider({ appUrl: APP_URL }).provider.describe()
+      .settings
+
+    expect(settings.appUrl).toBe(APP_URL)
+    expect(settings.rpID).toBe("app.example.com")
+    expect(settings.expectedOrigin).toBe("https://app.example.com")
   })
 })

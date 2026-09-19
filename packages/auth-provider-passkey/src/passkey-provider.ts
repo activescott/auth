@@ -4,7 +4,6 @@ import type {
   AuthInitResult,
   AuthProvider,
   AuthResult,
-  Identity,
   ProviderDescription,
   ProviderRoute,
 } from "@activescott/auth"
@@ -31,6 +30,7 @@ import { signChallengeToken, verifyChallengeToken } from "./challenge-token.js"
 import { base64urlToUint8Array, uint8ArrayToBase64url } from "./base64url.js"
 import type { PasskeyCredentialMetadata } from "./credential-metadata.js"
 import { parsePasskeyCredentialMetadata } from "./credential-metadata.js"
+import { findPasskeyCredentials } from "./list-passkeys.js"
 import type { PasskeyProviderConfig, WebAuthnServer } from "./types.js"
 
 const MS_PER_SECOND = 1000
@@ -73,10 +73,16 @@ export class PasskeyProvider implements AuthProvider {
   public readonly id = "passkey"
   public readonly name = "Passkey"
 
+  /** Parsed config.appUrl; undefined derives the relying party per request */
+  private readonly appUrl: URL | undefined
+
   public constructor(
     private readonly config: PasskeyProviderConfig,
     private readonly webauthn: WebAuthnServer = defaultWebAuthn,
-  ) {}
+  ) {
+    this.appUrl =
+      config.appUrl === undefined ? undefined : parseAppUrl(config.appUrl)
+  }
 
   /**
    * Alias for the authenticate-options action so the provider satisfies
@@ -173,16 +179,18 @@ export class PasskeyProvider implements AuthProvider {
    * Non-secret settings for the admin dashboard, with defaults resolved.
    *
    * `challengeSecret` is omitted: it signs the challenge cookie, so leaking it
-   * would let anyone mint challenges. `rpID` and `expectedOrigin` read as null
-   * when unset because they then default to the request's hostname and origin,
-   * which vary per request and are not a configured value.
+   * would let anyone mint challenges. `rpID` and `expectedOrigin` resolve
+   * through `appUrl`, and read as null when neither is set because they then
+   * default to the request's hostname and origin, which vary per request and
+   * are not a configured value.
    */
   public describe(): ProviderDescription {
     return {
       settings: {
         rpName: this.config.rpName,
-        rpID: this.config.rpID ?? null,
-        expectedOrigin: this.config.expectedOrigin ?? null,
+        appUrl: this.config.appUrl ?? null,
+        rpID: this.configuredRpID() ?? null,
+        expectedOrigin: this.configuredOrigin() ?? null,
         challengeExpiry:
           this.config.challengeExpiry ?? DEFAULT_CHALLENGE_EXPIRY,
         challengeCookieName:
@@ -202,7 +210,10 @@ export class PasskeyProvider implements AuthProvider {
     const session = await this.requireSession(request, context)
     if (session instanceof Response) return session
 
-    const existing = await this.findPasskeyIdentities(context, session.user.id)
+    const existing = await findPasskeyCredentials(
+      context.identityStore,
+      session.user.id,
+    )
 
     const options = await this.webauthn.generateRegistrationOptions({
       rpName: this.config.rpName,
@@ -440,27 +451,6 @@ export class PasskeyProvider implements AuthProvider {
   }
 
   /**
-   * A user's passkey identities with their validated credential state;
-   * identities whose provider state fails validation are skipped
-   */
-  private async findPasskeyIdentities(
-    context: AuthContext,
-    userId: string,
-  ): Promise<{ identity: Identity; credential: PasskeyCredentialMetadata }[]> {
-    const identities = await context.identityStore.findByUserId(userId)
-    const result: {
-      identity: Identity
-      credential: PasskeyCredentialMetadata
-    }[] = []
-    for (const identity of identities) {
-      if (identity.provider !== this.id) continue
-      const credential = parsePasskeyCredentialMetadata(identity.providerState)
-      if (credential) result.push({ identity, credential })
-    }
-    return result
-  }
-
-  /**
    * Resolve the session or produce the 401/configuration error response
    */
   private async requireSession(
@@ -574,11 +564,21 @@ export class PasskeyProvider implements AuthProvider {
   }
 
   private rpID(context: AuthContext): string {
-    return this.config.rpID ?? new URL(context.baseUrl).hostname
+    return this.configuredRpID() ?? new URL(context.baseUrl).hostname
   }
 
   private expectedOrigin(context: AuthContext): string {
-    return this.config.expectedOrigin ?? new URL(context.baseUrl).origin
+    return this.configuredOrigin() ?? new URL(context.baseUrl).origin
+  }
+
+  /** Explicit rpID, else the appUrl hostname; undefined derives per request */
+  private configuredRpID(): string | undefined {
+    return this.config.rpID ?? this.appUrl?.hostname
+  }
+
+  /** Explicit expectedOrigin, else the appUrl origin; undefined derives per request */
+  private configuredOrigin(): string | undefined {
+    return this.config.expectedOrigin ?? this.appUrl?.origin
   }
 
   private clearingCookie(context: AuthContext): string {
@@ -588,6 +588,28 @@ export class PasskeyProvider implements AuthProvider {
   private cookieName(): string {
     return this.config.challengeCookieName ?? DEFAULT_CHALLENGE_COOKIE_NAME
   }
+}
+
+/**
+ * Parse PasskeyProviderConfig.appUrl, throwing on anything that is not an
+ * absolute http(s) URL: other schemes have an opaque "null" origin, which
+ * no browser ceremony would ever match.
+ */
+function parseAppUrl(appUrl: string): URL {
+  let url: URL
+  try {
+    url = new URL(appUrl)
+  } catch {
+    throw new TypeError(
+      `PasskeyProvider appUrl is not a valid URL: ${JSON.stringify(appUrl)}`,
+    )
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new TypeError(
+      `PasskeyProvider appUrl must be an http(s) URL: ${JSON.stringify(appUrl)}`,
+    )
+  }
+  return url
 }
 
 /**
