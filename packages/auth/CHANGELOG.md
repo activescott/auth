@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.3.0](https://github.com/activescott/auth/compare/auth@5.2.1...auth@5.3.0) (2026-09-19)
+
+### Features
+
+* add gate.onInitiate for app sign-in policy ([#113](https://github.com/activescott/auth/issues/113)) ([bbd68ce](https://github.com/activescott/auth/commit/bbd68ce3a61e854411cbe5fcf58baab62cd1589f)), closes [#100](https://github.com/activescott/auth/issues/100)
+
 ## [5.2.1](https://github.com/activescott/auth/compare/auth@5.2.0...auth@5.2.1) (2026-09-19)
 
 ### Bug Fixes
