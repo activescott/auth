@@ -132,6 +132,89 @@ describe("EmailProvider", () => {
       expect(typeof challenge?.data?.hashedKey).toBe("string")
     })
 
+    it("should carry a same-origin redirectTo into the magic link", async () => {
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          email: TEST_EMAIL,
+          redirectTo: "/dashboard?link=email",
+        }).toString(),
+      })
+
+      await provider.initiate(request, context)
+
+      const link = new URL(lastMagicLink())
+      expect(link.searchParams.get("redirectTo")).toBe("/dashboard?link=email")
+    })
+
+    it.each([
+      ["another origin", "https://other.example/x"],
+      ["protocol-relative", "//other.example"],
+      ["backslash-prefixed", "/\\other.example"],
+      ["javascript:", "javascript:alert(1)"],
+    ])(
+      "should drop a redirectTo naming %s from the magic link",
+      async (_label, redirectTo) => {
+        const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            email: TEST_EMAIL,
+            redirectTo,
+          }).toString(),
+        })
+
+        await provider.initiate(request, context)
+
+        const link = new URL(lastMagicLink())
+        expect(link.searchParams.get("redirectTo")).toBeNull()
+      },
+    )
+
+    it("should report a dropped redirectTo to the configured logger", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          email: TEST_EMAIL,
+          redirectTo: "https://other.example/x",
+        }).toString(),
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        source: "redirectTo",
+        reason: "other-origin",
+        origin: "https://other.example",
+      })
+    })
+
+    it("should not log a redirectTo it carries into the link", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          email: TEST_EMAIL,
+          redirectTo: "/dashboard?link=email",
+        }).toString(),
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).not.toHaveBeenCalled()
+    })
+
     it("should reject a missing email", async () => {
       const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
         method: "POST",
@@ -154,6 +237,46 @@ describe("EmailProvider", () => {
 
       if (result instanceof Response) throw new Error("expected result")
       expect(result.success).toBe(false)
+    })
+
+    it("should reject a dotless domain without writing to the store or sending", async () => {
+      const result = await provider.initiate(
+        createInitiateRequest("scott@willeke"),
+        context,
+      )
+
+      if (result instanceof Response) throw new Error("expected result")
+      expect(result.success).toBe(false)
+      if (result.success) return
+      expect(result.error.code).toBe("INVALID_CREDENTIALS")
+      expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
+      expect(context.identityStore.create).not.toHaveBeenCalled()
+    })
+
+    it("should accept a dotless domain when allowDotlessDomain is set", async () => {
+      const localhostProvider = new EmailProvider(
+        {
+          smtp: { host: "smtp.test.com", port: 587, user: "u", pass: "p" },
+          from: "test@example.com",
+          allowDotlessDomain: true,
+        },
+        mockTransport,
+      )
+
+      const result = await localhostProvider.initiate(
+        createInitiateRequest("admin@localhost"),
+        context,
+      )
+
+      if (result instanceof Response || !result.success) {
+        throw new Error("initiate failed")
+      }
+      expect(mockTransport.sendMagicLink).toHaveBeenCalledWith(
+        "admin@localhost",
+        expect.any(String),
+        expect.anything(),
+        expect.anything(),
+      )
     })
 
     it("should redirect browser form posts back to the submitting page", async () => {
@@ -211,6 +334,35 @@ describe("EmailProvider", () => {
       // A scanner can GET repeatedly; the link must survive
       const second = await provider.verify(new Request(magicLink), context)
       expect(second instanceof Response).toBe(true)
+    })
+
+    it("should drop a redirectTo naming another origin from the confirm page form", async () => {
+      await provider.initiate(createInitiateRequest(), context)
+      const magicLink = `${lastMagicLink()}&redirectTo=${encodeURIComponent("https://other.example/x")}`
+
+      const page = await provider.verify(new Request(magicLink), context)
+      if (!(page instanceof Response)) throw new Error("expected page")
+      const html = await page.text()
+      expect(html).toContain(`action=""`)
+      expect(html).not.toContain("other.example")
+    })
+
+    it("should report the confirm page's dropped redirectTo to the logger", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      await provider.initiate(createInitiateRequest(), loggingContext)
+      const magicLink = `${lastMagicLink()}&redirectTo=${encodeURIComponent("https://other.example/x")}`
+
+      await provider.verify(new Request(magicLink), loggingContext)
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        source: "redirectTo",
+        reason: "other-origin",
+        origin: "https://other.example",
+      })
     })
 
     it("should redeem on POST and consume the challenge", async () => {

@@ -5,7 +5,7 @@
 
 Framework-agnostic direct authentication, deliberately small: single-use magic links and one-time codes via email and SMS, and passkeys (WebAuthn). No third-party identity providers. Runs on Node and edge runtimes (e.g. Cloudflare Workers).
 
-Used in production by [ramblefeed.com](https://ramblefeed.com) and [tinkerbellbot.com](https://tinkerbellbot.com).
+Used in production by [ramblefeed.com](https://ramblefeed.com), [tinkerbellbot.com](https://tinkerbellbot.com) and [fernfiles.com](https://fernfiles.com).
 
 ## Why direct, passwordless authentication?
 
@@ -139,6 +139,12 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 Use `optionalAuth(request)` instead if the route should render for both signed-in and signed-out users.
 
+A check that has to be current on every request (an account you just blocked, one still waiting for approval) goes in `onSessionVerified`, which runs inside all three of `getSession`, `requireAuth` and `optionalAuth` and can return or throw a `Response` to bounce the request. Pair it with `session: { cacheTtlMs: 0 }` on the `Auth` config so the user it sees is what your store says now rather than what it said up to two minutes ago. See [the adapter README](./packages/auth-adapter-react-router#per-request-checks).
+
+### Step 6 — Keep active visitors signed in (optional)
+
+Sessions expire `maxAge` after they are issued, even for someone who uses the app daily. Pass `session: { renewAfter: "7d" }` to `createAuthHandlers` and call `renewSessionCookie(request, user)` from your root loader: it returns a `Set-Cookie` value once the session passes that age and null while it is still fresh. Idle sessions keep expiring at `maxAge`. See [the adapter README](./packages/auth-adapter-react-router#rolling-sessions) for the loader.
+
 ---
 
 For a richer pattern — extending `AuthUser` with your own user fields and getting a typed `requireAuth<TUser>` via `mapUser` — see the production usage in ramblefeed (referenced in [`examples/react-router/README.md`](./examples/react-router/README.md)).
@@ -250,7 +256,7 @@ The page stays read-only — the library never writes — but it does not have t
 
 Sort and pagination links start from the request's own query string and change only what they own, so your `?filter.*` and any other parameter survive a click. `loaderData.filter` tells you which filter is active, for marking the current tab.
 
-One caveat on `requireAdmin`: the allowlist check reads the session through `Auth.verifySession`, which caches for two minutes, so removing someone from the allowlist can take that long to take effect. Anything needing immediate revocation should enforce it in the `requireAuth` you pass in — that runs first and is yours to make uncached.
+One caveat on `requireAdmin`: the allowlist check reads the session through `Auth.verifySession`, which caches for two minutes by default, so removing someone from the allowlist can take that long to take effect. `session: { cacheTtlMs: 0 }` closes that window for every session check in the app; for revocation that only matters here, enforce it in the `requireAuth` you pass in, which runs first and is yours.
 
 The pages look presentable with no configuration, and there is no stylesheet to import: the built-in look is a set of `CSSProperties` applied as `style={...}`, using the CSS system palette (`Canvas`, `CanvasText`, `LinkText`) plus `color-scheme: light dark`, so the pages follow the reader's theme on their own. To dress them in your own design system, pass a `classNames` map — a slot you name gets your class **and no inline style**, so your Bootstrap or Tailwind rules are not competing with an inline style they could never outrank. `includeDefaultStyles={false}` drops the built-in look everywhere. `linkComponent` is optional: without it, sorting and paging use plain anchors and still work.
 

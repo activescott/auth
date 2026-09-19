@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+<!-- nodemailer 9.0.3 -> 9.1.1 (#81) is republished by the commit below;
+the original Dependabot commit was typed chore(deps) and never released. -->
+
+## [3.2.1](https://github.com/activescott/auth/compare/auth-provider-email@3.2.0...auth-provider-email@3.2.1) (2026-09-19)
+
+## [3.2.0](https://github.com/activescott/auth/compare/auth-provider-email@3.1.1...auth-provider-email@3.2.0) (2026-09-18)
+
+### Features
+
+* log a redirectTo the provider drops ([4c748d9](https://github.com/activescott/auth/commit/4c748d9487baeb3bb61975b718534e234eb3ed73))
+
+### Bug Fixes
+
+* keep the emailed link's redirectTo on this app ([f761200](https://github.com/activescott/auth/commit/f7612008ebc63ad8955f681baa4807825616dcf1))
+
+## [3.1.1](https://github.com/activescott/auth/compare/auth-provider-email@3.1.0...auth-provider-email@3.1.1) (2026-09-18)
+
+### Bug Fixes
+
+* republish nodemailer 9.1.1 dependency update ([b55fc68](https://github.com/activescott/auth/commit/b55fc68b4e4c50d7543ef34d8dd08b0ac8a92baa)), closes [#81](https://github.com/activescott/auth/issues/81)
+
 ## [3.1.0](https://github.com/activescott/auth/compare/auth-provider-email@3.0.0...auth-provider-email@3.1.0) (2026-08-11)
 
 ### Features

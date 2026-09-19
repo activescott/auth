@@ -1,6 +1,7 @@
 import type {
   AuthProvider,
   AuthContext,
+  AuthLogger,
   AuthResult,
   AuthInitResult,
   Challenge,
@@ -18,6 +19,7 @@ import {
   parseRequestBody,
   isBrowserFormPost,
   buildReturnUrl,
+  resolveRedirectTarget,
   buildChallengeCookie,
   buildChallengeClearingCookie,
   readCookie,
@@ -84,6 +86,7 @@ export class EmailProvider implements AuthProvider {
         return this.initiateFailure(
           request,
           AuthErrors.invalidCredentials({ reason: "Email is required" }),
+          context.logger,
         )
       }
 
@@ -93,6 +96,7 @@ export class EmailProvider implements AuthProvider {
         return this.initiateFailure(
           request,
           AuthErrors.invalidCredentials({ reason: "Invalid email format" }),
+          context.logger,
         )
       }
 
@@ -109,6 +113,7 @@ export class EmailProvider implements AuthProvider {
             AuthErrors.sessionInvalid({
               reason: "Sign in before linking an email address",
             }),
+            context.logger,
           )
         }
         linkUserId = session.user.id
@@ -119,11 +124,22 @@ export class EmailProvider implements AuthProvider {
       // spraying addresses learns nothing.
       const decision = await context.abuse?.checkIdentifier(this.id, email)
       if (decision?.allowed === false) {
-        return initiateAccepted(request, this.initiateSentMessage)
+        return initiateAccepted(
+          request,
+          this.initiateSentMessage,
+          [],
+          context.logger,
+        )
       }
 
-      const redirectTo =
-        typeof body.redirectTo === "string" ? body.redirectTo : undefined
+      // Only a destination on this app's own origin rides into the link
+      const resolvedRedirect = resolveRedirectTarget(
+        typeof body.redirectTo === "string" ? body.redirectTo : undefined,
+        context.baseUrl,
+        "",
+        { logger: context.logger, source: "redirectTo" },
+      )
+      const redirectTo = resolvedRedirect || undefined
 
       const challengeId = crypto.randomUUID()
       const linkKey = this.generateLinkKey()
@@ -163,6 +179,7 @@ export class EmailProvider implements AuthProvider {
         return this.initiateFailure(
           request,
           AuthErrors.providerError("Failed to send magic link email"),
+          context.logger,
         )
       }
 
@@ -173,9 +190,12 @@ export class EmailProvider implements AuthProvider {
         context.baseUrl,
       )
 
-      return initiateAccepted(request, this.initiateSentMessage, [
-        challengeCookie,
-      ])
+      return initiateAccepted(
+        request,
+        this.initiateSentMessage,
+        [challengeCookie],
+        context.logger,
+      )
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Error in email provider initiate:", error)
@@ -184,6 +204,7 @@ export class EmailProvider implements AuthProvider {
         AuthErrors.providerError(
           error instanceof Error ? error.message : "Unknown error",
         ),
+        context.logger,
       )
     }
   }
@@ -257,7 +278,12 @@ export class EmailProvider implements AuthProvider {
     if ("error" in challenge) return { success: false, error: challenge.error }
 
     const url = new URL(request.url)
-    const redirectTo = url.searchParams.get("redirectTo")
+    const redirectTo = resolveRedirectTarget(
+      url.searchParams.get("redirectTo"),
+      request.url,
+      "",
+      { logger: context.logger, source: "redirectTo" },
+    )
     const appName = this.config.template?.appName ?? "App"
     const primaryColor = this.config.template?.primaryColor ?? "#6366f1"
 
@@ -494,6 +520,7 @@ export class EmailProvider implements AuthProvider {
         "smtp.host": this.config.smtp.host,
         "smtp.port": this.config.smtp.port,
         "smtp.secure": this.config.smtp.secure ?? null,
+        allowDotlessDomain: this.config.allowDotlessDomain ?? false,
         transport: this.transport.constructor.name,
       },
     }
@@ -506,12 +533,13 @@ export class EmailProvider implements AuthProvider {
   private initiateFailure(
     request: Request,
     error: ReturnType<typeof AuthErrors.invalidCredentials>,
+    logger?: AuthLogger,
   ): AuthInitResult | Response {
     if (isBrowserFormPost(request)) {
       return new Response(null, {
         status: 302,
         headers: {
-          Location: buildReturnUrl(request, { error: error.code }),
+          Location: buildReturnUrl(request, { error: error.code }, logger),
         },
       })
     }
@@ -542,9 +570,14 @@ export class EmailProvider implements AuthProvider {
   }
 
   /**
-   * Basic email validation
+   * Basic email validation. Requires a dot in the domain (rejects typos
+   * like `scott@willeke`) unless `allowDotlessDomain` is set, for setups
+   * that sign in to a bare hostname like `user@localhost`.
    */
   private isValidEmail(email: string): boolean {
+    if (this.config.allowDotlessDomain) {
+      return /^[^\s@]+@[^\s@]+$/.test(email)
+    }
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   }
 }

@@ -410,6 +410,26 @@ export interface SessionConfig {
   issuer?: string
   /** JWT audience claim */
   audience?: string
+  /**
+   * How long `verifySession` may answer from its in-process cache of verified
+   * sessions before reading the user and identity from your stores again, in
+   * milliseconds. Defaults to two minutes. `0` turns the cache off, so every
+   * request reads the stores and a user you delete or block stops being
+   * authenticated on their next request. That is the reason to pay for it.
+   * The cache also holds a bounded number of entries, so a large number of
+   * concurrent sessions evicts the oldest rather than growing without limit.
+   */
+  cacheTtlMs?: number
+}
+
+/**
+ * Where the library reports conditions the application should know about but
+ * that are not errors: currently a redirect destination it declined to use.
+ * `console` satisfies this, so `logger: console` works; wrap loggers whose
+ * argument order differs (pino takes the object first).
+ */
+export interface AuthLogger {
+  warn(message: string, context?: Record<string, unknown>): void
 }
 
 /**
@@ -434,6 +454,9 @@ export interface AuthConfig {
    * only needed to tune limits, supply shared storage, add a hosted bot check,
    * or turn it off. */
   abuse?: AbuseConfig
+  /** Where to report conditions worth a WARN — see {@link AuthLogger}.
+   * Nothing is logged through it when absent. */
+  logger?: AuthLogger
   /** Callback URLs configuration */
   callbacks?: {
     /** URL to redirect to after successful authentication */
@@ -533,6 +556,11 @@ export interface AuthContext {
    * have parsed and normalized the recipient (email address, phone number)
    * and before sending anything to it. */
   abuse?: AbuseContext
+  /** The application's logger, if it configured one. Providers pass it to
+   * utilities that take an {@link AuthLogger} — e.g.
+   * `resolveRedirectTarget` — so a declined redirect destination is visible
+   * in the app's own logs. */
+  logger?: AuthLogger
 }
 
 /**

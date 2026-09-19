@@ -14,6 +14,14 @@ export interface EmailProviderConfig {
   template?: EmailTemplateConfig
   /** One-time code tuning */
   otp?: EmailOtpConfig
+  /**
+   * Accept addresses whose domain has no dot, e.g. `user@localhost`
+   * (default: false). Off by default because a dotless domain is
+   * usually a typo (a missing TLD) rather than a real destination; turn
+   * it on for intranet or dev setups that actually resolve `localhost`
+   * or a bare hostname.
+   */
+  allowDotlessDomain?: boolean
 }
 
 /**

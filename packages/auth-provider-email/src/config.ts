@@ -68,6 +68,7 @@ export function validateEmailConfig(
       maxAttempts: config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
       cookieName: config.otp?.cookieName ?? DEFAULT_OTP_COOKIE_NAME,
     },
+    allowDotlessDomain: config.allowDotlessDomain ?? false,
   }
 }
 

@@ -2,6 +2,7 @@ import {
   Auth,
   InMemoryChallengeStore,
   buildReturnUrl,
+  resolveRedirectTarget,
   createFormToken,
   type AuthUser,
   type Identity,
@@ -358,6 +359,14 @@ export const auth = new Auth({
   // hashed) between "send" and "verify". In-memory works for one server
   // process; use a DB/Redis-backed implementation for multiple instances.
   challengeStore: new InMemoryChallengeStore(),
+  // Where the library reports a redirect destination it declined — a stale
+  // ?redirectTo=, or a Referer from another origin — since landing on the
+  // fallback instead is otherwise invisible. A real app passes its own
+  // logger here.
+  logger: {
+    // eslint-disable-next-line no-console -- the example has no logger
+    warn: (message, logContext) => console.warn(message, logContext),
+  },
   // Abuse protection is on with no configuration at all: per-IP and
   // per-recipient rate limits backed by an in-memory counter store, plus the
   // form-token check the login form below feeds. Everything
@@ -435,15 +444,21 @@ const handlers = createAuthHandlers(auth, {
   // When the verify URL carries ?redirectTo= (the dashboard's link flows set
   // it), errors go there instead: the magic-link confirm page's Referer is
   // the confirm page itself, so buildReturnUrl would strand the error on a
-  // dead URL.
+  // dead URL. resolveRedirectTarget keeps that destination on this app,
+  // since the query param arrives from the browser.
   errorRedirect: (error, request) => {
-    const redirectTo = new URL(request.url).searchParams.get("redirectTo")
+    const redirectTo = resolveRedirectTarget(
+      new URL(request.url).searchParams.get("redirectTo"),
+      request.url,
+      "",
+      { logger: auth.getLogger(), source: "redirectTo" },
+    )
     if (redirectTo) {
       const url = new URL(redirectTo, request.url)
       url.searchParams.set("error", error.code)
       return url.toString()
     }
-    return buildReturnUrl(request, { error: error.code })
+    return buildReturnUrl(request, { error: error.code }, auth.getLogger())
   },
   loginUrl: "/login",
 })

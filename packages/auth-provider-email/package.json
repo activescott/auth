@@ -1,6 +1,6 @@
 {
   "name": "@activescott/auth-provider-email",
-  "version": "3.1.0",
+  "version": "3.2.1",
   "description": "Email magic link provider for @activescott/auth",
   "type": "module",
   "main": "./dist/index.js",
@@ -40,16 +40,16 @@
     "directory": "packages/auth-provider-email"
   },
   "dependencies": {
-    "nodemailer": "^9.0.3"
+    "nodemailer": "^9.1.1"
   },
   "peerDependencies": {
-    "@activescott/auth": "^5.0.0"
+    "@activescott/auth": "^5.0.1"
   },
   "devDependencies": {
     "@activescott/auth": "*",
     "@types/nodemailer": "^8.0.0",
     "@types/node": "^22",
     "typescript": "^5.7.2",
-    "vitest": "^4.0.16"
+    "vitest": "^4.1.11"
   }
 }

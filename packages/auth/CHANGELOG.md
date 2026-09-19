@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.2.0](https://github.com/activescott/auth/compare/auth@5.1.0...auth@5.2.0) (2026-09-18)
+
+### Features
+
+* make the session cache TTL configurable ([8ab4eaa](https://github.com/activescott/auth/commit/8ab4eaad71e9f0580ccd690fb9d0af3adec5f2fd))
+
+## [5.1.0](https://github.com/activescott/auth/compare/auth@5.0.0...auth@5.1.0) (2026-09-18)
+
+### Features
+
+* report a declined redirect destination to the app's logger ([f35afd2](https://github.com/activescott/auth/commit/f35afd2516ef1ab0be98475f2fcd14b759755c8d))
+
+### Bug Fixes
+
+* anchor the auth route match to the path root ([334aaee](https://github.com/activescott/auth/commit/334aaeed2a3ed0f840abdc4f04e1707f4325831b))
+* resolve redirect destinations against the request origin ([1764453](https://github.com/activescott/auth/commit/176445367e18087765d90f55ebfcc0f23f0edb20))
+
 ## [5.0.0](https://github.com/activescott/auth/compare/auth@4.1.0...auth@5.0.0) (2026-08-11)
 
 ### ⚠ BREAKING CHANGES
