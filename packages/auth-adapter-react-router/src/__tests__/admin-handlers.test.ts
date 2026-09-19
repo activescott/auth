@@ -434,4 +434,16 @@ describe("adminUsersLoader filtering", () => {
     expect(data.searchParams).toContain("tab=pending")
     expect(data.searchParams).toContain("filter.approvalStatus=PENDING")
   })
+
+  it("keeps React Router's data-request params out of the links", async () => {
+    const { adminUsersLoader } = createLoader()
+
+    const data = await adminUsersLoader({
+      request: new Request(
+        `${TEST_BASE_URL}/admin/users.data?index&tab=pending&_routes=root`,
+      ),
+    })
+
+    expect(data.searchParams).toBe("tab=pending")
+  })
 })

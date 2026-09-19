@@ -1,5 +1,6 @@
 import { parseDuration, resolveRedirectTarget } from "@activescott/auth"
 import type { Auth, AuthUser, Identity, AuthError } from "@activescott/auth"
+import { pageUrl } from "./page-url.js"
 
 const MS_PER_SECOND = 1000
 
@@ -258,7 +259,7 @@ export function createAuthHandlers<TUser = AuthUser>(
       const session = await verifiedSession(request)
 
       if (!session) {
-        const url = new URL(request.url)
+        const url = pageUrl(request)
         const returnTo = url.pathname + url.search
         const loginRedirect = `${redirectTo ?? loginUrl}?redirectTo=${encodeURIComponent(returnTo)}`
         throw redirect(loginRedirect)

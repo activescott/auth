@@ -96,6 +96,30 @@ describe("createAuthHandlers", () => {
         expect(response.headers.get("Location")).toContain("/custom-login")
       }
     })
+
+    it.each([
+      [
+        "a v8 data request",
+        "/docs/coach.data?tab=2&_routes=root,routes/docs",
+        "/docs/coach?tab=2",
+      ],
+      ["a v8 root data request", "/_.data?_routes=root", "/"],
+      ["a v7 root data request", "/_root.data", "/"],
+      ["a plain page request", "/docs/coach?tab=2", "/docs/coach?tab=2"],
+    ])(
+      "should return the visitor to the page, not %s",
+      async (_label, raw, page) => {
+        const handlers = createAuthHandlers(createMockAuth())
+
+        const thrown = await handlers
+          .requireAuth(new Request(`${TEST_BASE_URL}${raw}`))
+          .catch((error: unknown) => error)
+
+        expect((thrown as Response).headers.get("Location")).toBe(
+          `/login?redirectTo=${encodeURIComponent(page)}`,
+        )
+      },
+    )
   })
 
   describe("optionalAuth", () => {
