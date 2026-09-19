@@ -68,7 +68,7 @@ If you'd rather wire it into an existing app, the steps are:
 
 ### Step 1 — Implement `IdentityStore` and `UserStore`
 
-Two interfaces from `@activescott/auth` that read/write your database. Identities are `(provider, identifier)` rows; users are your own user records. See [`examples/react-router/app/lib/auth.server.ts`](./examples/react-router/app/lib/auth.server.ts) for in-memory versions you can replace with Prisma/Drizzle/Kysely/raw SQL/Redis/etc.
+Two interfaces from `@activescott/auth` that read/write your database. Identities are `(provider, identifier)` rows; users are your own user records. See [`examples/react-router/app/lib/auth.server.ts`](./examples/react-router/app/lib/auth.server.ts) for in-memory versions you can replace with Prisma/Drizzle/Kysely/raw SQL/Redis/etc. On Prisma, [`@activescott/auth-store-prisma`](./packages/auth-store-prisma) provides the `IdentityStore`.
 
 ### Step 2 — Configure `Auth` (server-only)
 
@@ -138,6 +138,12 @@ export async function loader({ request }: Route.LoaderArgs) {
 ```
 
 Use `optionalAuth(request)` instead if the route should render for both signed-in and signed-out users.
+
+A check that has to be current on every request (an account you just blocked, one still waiting for approval) goes in `onSessionVerified`, which runs inside all three of `getSession`, `requireAuth` and `optionalAuth` and can return or throw a `Response` to bounce the request. Pair it with `session: { cacheTtlMs: 0 }` on the `Auth` config so the user it sees is what your store says now rather than what it said up to two minutes ago. See [the adapter README](./packages/auth-adapter-react-router#per-request-checks).
+
+### Step 6 — Keep active visitors signed in (optional)
+
+Sessions expire `maxAge` after they are issued, even for someone who uses the app daily. Pass `session: { renewAfter: "7d" }` to `createAuthHandlers` and call `renewSessionCookie(request, user)` from your root loader: it returns a `Set-Cookie` value once the session passes that age and null while it is still fresh. Idle sessions keep expiring at `maxAge`. See [the adapter README](./packages/auth-adapter-react-router#rolling-sessions) for the loader.
 
 ---
 
@@ -250,7 +256,7 @@ The page stays read-only — the library never writes — but it does not have t
 
 Sort and pagination links start from the request's own query string and change only what they own, so your `?filter.*` and any other parameter survive a click. `loaderData.filter` tells you which filter is active, for marking the current tab.
 
-One caveat on `requireAdmin`: the allowlist check reads the session through `Auth.verifySession`, which caches for two minutes, so removing someone from the allowlist can take that long to take effect. Anything needing immediate revocation should enforce it in the `requireAuth` you pass in — that runs first and is yours to make uncached.
+One caveat on `requireAdmin`: the allowlist check reads the session through `Auth.verifySession`, which caches for two minutes by default, so removing someone from the allowlist can take that long to take effect. `session: { cacheTtlMs: 0 }` closes that window for every session check in the app; for revocation that only matters here, enforce it in the `requireAuth` you pass in, which runs first and is yours.
 
 The pages look presentable with no configuration, and there is no stylesheet to import: the built-in look is a set of `CSSProperties` applied as `style={...}`, using the CSS system palette (`Canvas`, `CanvasText`, `LinkText`) plus `color-scheme: light dark`, so the pages follow the reader's theme on their own. To dress them in your own design system, pass a `classNames` map — a slot you name gets your class **and no inline style**, so your Bootstrap or Tailwind rules are not competing with an inline style they could never outrank. `includeDefaultStyles={false}` drops the built-in look everywhere. `linkComponent` is optional: without it, sorting and paging use plain anchors and still work.
 
@@ -361,6 +367,7 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 | [`@activescott/auth-provider-passkey`](./packages/auth-provider-passkey)         | Passkey (WebAuthn) provider. Credentials are ordinary identity rows (no extra storage interface); zero-dependency browser client at the `/browser` subpath.                   |
 | [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transports: Messages API (SMS, or RCS via a Messaging Service) and Twilio Verify (no A2P 10DLC registration). Raw fetch, zero dependencies.                            |
 | [`@activescott/auth-botcheck-turnstile`](./packages/auth-botcheck-turnstile)     | Cloudflare Turnstile bot check for the initiate endpoints. Optional — the core's rate limits and form-token check need no third party. Raw fetch, zero dependencies.          |
+| [`@activescott/auth-store-prisma`](./packages/auth-store-prisma)                 | Prisma `IdentityStore`: `createPrismaIdentityStore({ model: prisma.identity, providerStateField })`. Typed structurally, so no dependency on `@prisma/client`.                |
 | [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v8 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`, and the admin dashboard at the `/admin` subpath.               |
 
 Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
@@ -426,6 +433,7 @@ Enforced locally by a `husky` `commit-msg` hook running `commitlint` (see `commi
   - `auth-provider-email`
   - `auth-adapter-react-router`
   - `examples` — for changes under `examples/` (no release, since example workspaces are `private`)
+  - `ci`, for repo infrastructure (workflows, commitlint, release script); it matches no package path, so it never releases
 - **Breaking changes** use `!` after the scope or a `BREAKING CHANGE:` footer.
 
 Examples:
@@ -449,6 +457,10 @@ Because release versioning is driven by individual commits, **squash-merging a m
   2. **Split into one PR per package**, each squash-mergeable.
 
 The most common pattern here is option 2 — one PR per package keeps reviews focused and release notes clean.
+
+Squash merges use the PR title as the commit subject, so the title must itself
+be a conventional commit under the rules above. The PR Title workflow lints it
+with the same `commitlint.config.js`, and re-runs when the title is edited.
 
 ### Version bump rules
 

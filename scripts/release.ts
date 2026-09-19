@@ -80,6 +80,10 @@ try {
       name: "@activescott/auth-botcheck-turnstile",
       dir: "packages/auth-botcheck-turnstile",
     },
+    "auth-store-prisma": {
+      name: "@activescott/auth-store-prisma",
+      dir: "packages/auth-store-prisma",
+    },
     "auth-adapter-react-router": {
       name: "@activescott/auth-adapter-react-router",
       dir: "packages/auth-adapter-react-router",

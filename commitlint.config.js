@@ -11,8 +11,12 @@ export default {
         "auth-provider-passkey",
         "auth-sms-twilio",
         "auth-botcheck-turnstile",
+        "auth-store-prisma",
         "auth-adapter-react-router",
         "examples",
+        // Repo infrastructure (workflows, commitlint, release script):
+        // matches no package path, so it never triggers a release.
+        "ci",
       ],
     ],
   },
