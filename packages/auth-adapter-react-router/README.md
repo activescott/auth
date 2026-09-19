@@ -116,12 +116,46 @@ export async function loader({ request }: Route.LoaderArgs) {
 | Export                                 | Purpose                                                                                                                                |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `createAuthHandlers`                   | Returns `{ handleAuth, getSession, requireAuth, optionalAuth, renewSessionCookie, refreshSessionCookie, clearSessionCookie, logout }`. |
+| `createAuthPageLoaders`                | Returns `{ signInLoader, profileAuthLoader, listSignInMethods }`. See [Sign-in and profile pages](#sign-in-and-profile-pages).         |
+| Hooks (from `./client`)                | `useTurnstile`, `usePasskeySignIn`, `useRegisterPasskey`, `useOtpAutoSubmit`, `usePreservedInput`.                                     |
 | `createAdminHandlers` (from `./admin`) | Returns `{ requireAdmin, adminUsersLoader, adminConfigLoader }`.                                                                       |
 | `AdminUsersPage`, `AdminConfigPage`    | The admin pages, from `./admin`.                                                                                                       |
 
 Login pages need no action of their own: post the email form directly to `/auth/email/initiate` (the provider redirects back with `?sent=1`) and the code form to `/auth/email/verify`.
 
 `createAuthHandlers<TUser>` is generic over your application's user type. Pass a `mapUser` to get a typed `requireAuth<TUser>` / `optionalAuth<TUser>` instead of the bare `AuthUser`.
+
+## Sign-in and profile pages
+
+The adapter ships the logic of a sign-in page and a profile page's sign-in methods section, and leaves the markup to you. The loaders run on the server and read what the providers put in the query string on the way back; the hooks run in the browser.
+
+```ts
+// app/lib/auth.server.ts
+import { createAuthPageLoaders } from "@activescott/auth-adapter-react-router"
+import { listPasskeys } from "@activescott/auth-provider-passkey" // only if you use passkeys
+
+export const { signInLoader, profileAuthLoader } = createAuthPageLoaders(auth, {
+  turnstileSiteKey: process.env.TURNSTILE_SITE_KEY,
+  listPasskeys,
+  errorMessages: { blocked: "Your account has been blocked." },
+})
+```
+
+`signInLoader(request)` returns `{ via, sent, error, errorCode, redirectTo, formToken, turnstileSiteKey }`: which provider's form to show, whether the message went out, the message for `?error=`, a same-origin `redirectTo` or null, and the signed form token the abuse checks expect under `FORM_TOKEN_FIELD`. `profileAuthLoader(userId, request)` returns `{ identities, passkeys, linkFlow }`, where `linkFlow` is the add-a-sign-in-method flow: the open form (`?add=`), `sent`, `linked`, `merged`, and `conflict`, the provider whose `link-merge` redeems the merge ticket after an `IDENTITY_CONFLICT`. It takes that provider from `?provider=`, else `?add=`, so put `?add=` in the verify step's `redirectTo`. `errorMessages` adds codes the library does not know, such as an initiate gate's, and rewords any it does; both loaders also take it per call.
+
+The hooks are at the `./client` subpath and need React, not React Router:
+
+| Hook                                           | For                                                                                                                                                   |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useTurnstile(siteKey)`                        | Renders the Turnstile widget into `containerRef` and reports `ready`; disable submit until then. Reports `"failed"` after 20 seconds without a token. |
+| `usePasskeySignIn({ client, redirectTo })`     | `signIn` for the passkey button; a full page load of `redirectTo` on success. `autofill: true` adds conditional UI.                                   |
+| `useRegisterPasskey({ client, onRegistered })` | `register` for "Add a passkey"; pass `useRevalidator().revalidate` as `onRegistered`.                                                                 |
+| `useOtpAutoSubmit(length)`                     | `inputProps` for the code field (autofill attributes included) that submit the form when the last digit lands.                                        |
+| `usePreservedInput(key)`                       | Keeps the typed address or number across the round trip through the auth routes, in sessionStorage.                                                   |
+
+The passkey hooks take `createPasskeyClient()` from `@activescott/auth-provider-passkey/browser` as `client`, so apps without passkeys never install the WebAuthn library. A Turnstile token matters more than it looks: a form posted without one is blocked, and the block answers exactly like a successful send, so the user waits for an email that never comes.
+
+[`examples/react-router`](https://github.com/activescott/auth/tree/main/examples/react-router) uses all of them: `app/routes/login.tsx` and `app/routes/dashboard.tsx`.
 
 ## Admin dashboard
 
