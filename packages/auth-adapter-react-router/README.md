@@ -155,6 +155,23 @@ The users page needs `UserStore.listUsers`, which is optional and which your app
 
 Full walkthrough: [Admin dashboard](https://github.com/activescott/auth#admin-dashboard).
 
+## E2e code readback
+
+`createCaptureReadbackLoader`, at the `./testing` subpath, is a resource-route loader that hands the last captured sign-in email or SMS to your e2e tests, so they can sign in without an inbox or a phone. Wrap your transports in `CaptureEmailTransport` / `CaptureSmsTransport` (from each provider's `/testing` subpath) under the same test-mode flag:
+
+```ts
+// app/routes/e2e.otp-code.tsx
+import { createCaptureReadbackLoader } from "@activescott/auth-adapter-react-router/testing"
+
+export const loader = createCaptureReadbackLoader({
+  transports: { email: captureEmailTransport, sms: captureSmsTransport },
+  enabled: process.env.E2E_TEST_MODE === "true",
+  secret: process.env.E2E_MAGIC_LINK_SECRET,
+})
+```
+
+Tests call `GET /e2e/otp-code?email=...` or `?phone=...` with the secret in an `x-e2e-secret` header. The captured codes are live credentials: the route answers a bare 404 unless `enabled` is exactly `true` and the secret matches, and creating it with `enabled` but no secret throws. Never set the flag in production.
+
 ## Documentation & example
 
 Full docs and a runnable React Router framework-mode example with Playwright tests live in the monorepo:
