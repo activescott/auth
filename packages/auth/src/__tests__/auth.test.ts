@@ -96,6 +96,16 @@ function createMockChallengeStore(): ChallengeStore {
   }
 }
 
+/** A request carrying a valid session cookie for the mock user */
+async function createSessionRequest(auth: Auth): Promise<Request> {
+  const cookie = await auth
+    .getSessionManager()
+    .createSessionCookie({ id: "user-1" }, createMockIdentity())
+  return new Request(TEST_BASE_URL, {
+    headers: { Cookie: cookie.split(";")[0] as string },
+  })
+}
+
 function createAuthConfig(overrides: Partial<AuthConfig> = {}): AuthConfig {
   const stores = createMockStores()
   return {
@@ -464,6 +474,53 @@ describe("Auth", () => {
       const result = await auth.verifySession(request)
 
       expect(result).toBeNull()
+    })
+
+    it("should reuse the cached session instead of reading the stores again", async () => {
+      const stores = createMockStores()
+      const config = createAuthConfig({
+        userStore: stores.userStore,
+        identityStore: stores.identityStore,
+      })
+      auth = new Auth(config)
+      const request = await createSessionRequest(auth)
+
+      await auth.verifySession(request)
+      await auth.verifySession(request)
+
+      expect(stores.userStore.findById).toHaveBeenCalledTimes(1)
+    })
+
+    it("should read the stores on every request when cacheTtlMs is 0", async () => {
+      const stores = createMockStores()
+      const config = createAuthConfig({
+        userStore: stores.userStore,
+        identityStore: stores.identityStore,
+      })
+      config.session.cacheTtlMs = 0
+      auth = new Auth(config)
+      const request = await createSessionRequest(auth)
+
+      await auth.verifySession(request)
+      await auth.verifySession(request)
+
+      expect(stores.userStore.findById).toHaveBeenCalledTimes(2)
+    })
+
+    it("should stop authenticating a deleted user on the next request when cacheTtlMs is 0", async () => {
+      const stores = createMockStores()
+      const config = createAuthConfig({
+        userStore: stores.userStore,
+        identityStore: stores.identityStore,
+      })
+      config.session.cacheTtlMs = 0
+      auth = new Auth(config)
+      const request = await createSessionRequest(auth)
+
+      expect(await auth.verifySession(request)).not.toBeNull()
+      vi.mocked(stores.userStore.findById).mockResolvedValue(null)
+
+      expect(await auth.verifySession(request)).toBeNull()
     })
   })
 

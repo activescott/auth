@@ -11,6 +11,7 @@ export default {
         "auth-provider-passkey",
         "auth-sms-twilio",
         "auth-botcheck-turnstile",
+        "auth-store-prisma",
         "auth-adapter-react-router",
         "examples",
       ],
