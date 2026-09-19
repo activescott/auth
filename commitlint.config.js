@@ -14,6 +14,9 @@ export default {
         "auth-store-prisma",
         "auth-adapter-react-router",
         "examples",
+        // Repo infrastructure (workflows, commitlint, release script):
+        // matches no package path, so it never triggers a release.
+        "ci",
       ],
     ],
   },
