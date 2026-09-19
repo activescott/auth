@@ -18,6 +18,27 @@ export interface SessionRenewalOptions {
 }
 
 /**
+ * Runs on every verified session, before `getSession`, `requireAuth` and
+ * `optionalAuth` hand it to your loader. Return or throw a `Response` to
+ * bounce the request with it (a redirect to a waitlist page, a logout);
+ * return nothing to let the session through.
+ *
+ * This is where a check that has to be current lives: whether the account is
+ * still approved, whether it was blocked a second ago. Pair it with
+ * `session.cacheTtlMs: 0` on `AuthConfig` so `session.user` is what your
+ * store says right now rather than what it said up to two minutes ago.
+ *
+ * It does not run in `renewSessionCookie` or `refreshSessionCookie`; those
+ * re-issue a cookie for a session a loader already accepted.
+ *
+ * @typeParam TUser - Your application's user type (defaults to AuthUser)
+ */
+export type OnSessionVerified<TUser = AuthUser> = (
+  session: AuthSession<TUser>,
+  request: Request,
+) => void | Response | Promise<void | Response>
+
+/**
  * Options for creating auth handlers
  * @typeParam TUser - Your application's user type (defaults to AuthUser)
  */
@@ -45,6 +66,12 @@ export interface CreateAuthHandlersOptions<TUser = AuthUser> {
    * without it.
    */
   session?: SessionRenewalOptions
+  /**
+   * Last word on whether a verified session may proceed. See
+   * {@link OnSessionVerified}. Runs in `getSession`, `requireAuth` and
+   * `optionalAuth`, after `mapUser`.
+   */
+  onSessionVerified?: OnSessionVerified<TUser>
 }
 
 /**
@@ -73,6 +100,7 @@ export interface AuthHandlers<TUser = AuthUser> {
     request: Request,
     updatedUser: AuthUser,
   ) => Promise<string>
+  clearSessionCookie: () => string
   logout: (redirectTo?: string) => Response
   getAuth: () => Auth
 }
@@ -106,10 +134,34 @@ export function createAuthHandlers<TUser = AuthUser>(
     loginUrl = "/login",
     mapUser,
     session: sessionOptions,
+    onSessionVerified,
   } = options
 
   // Default mapper returns user as-is (safe when TUser = AuthUser)
   const userMapper = mapUser ?? ((user: AuthUser) => user as unknown as TUser)
+
+  /**
+   * The one path to a session the app is allowed to act on: verify the
+   * cookie, map the user, then give `onSessionVerified` its veto. A hook that
+   * returns a Response is thrown, so returning and throwing one mean the same
+   * thing to the caller and the loader above never sees the session.
+   */
+  async function verifiedSession(
+    request: Request,
+  ): Promise<AuthSession<TUser> | null> {
+    const session = await auth.verifySession(request)
+    if (!session) return null
+
+    const mapped: AuthSession<TUser> = {
+      user: userMapper(session.user, session.identity),
+      identity: session.identity,
+    }
+    if (onSessionVerified) {
+      const bounce = await onSessionVerified(mapped, request)
+      if (bounce instanceof Response) throw bounce
+    }
+    return mapped
+  }
 
   // Parse the renewal threshold once, at startup: a typo here would
   // otherwise read as zero and renew the cookie on every single request.
@@ -188,22 +240,22 @@ export function createAuthHandlers<TUser = AuthUser>(
     /**
      * Get current session (returns null if not authenticated)
      * Returns both the mapped user and identity
+     *
+     * @throws Response whatever `onSessionVerified` returned or threw
      */
     async getSession(request: Request): Promise<AuthSession<TUser> | null> {
-      const session = await auth.verifySession(request)
-      if (!session) return null
-      return {
-        user: userMapper(session.user, session.identity),
-        identity: session.identity,
-      }
+      return verifiedSession(request)
     },
 
     /**
      * Require authentication - redirects to login if not authenticated
      * Returns the mapped user
+     *
+     * @throws Response the login redirect, or whatever `onSessionVerified`
+     * returned or threw
      */
     async requireAuth(request: Request, redirectTo?: string): Promise<TUser> {
-      const session = await auth.verifySession(request)
+      const session = await verifiedSession(request)
 
       if (!session) {
         const url = new URL(request.url)
@@ -212,17 +264,18 @@ export function createAuthHandlers<TUser = AuthUser>(
         throw redirect(loginRedirect)
       }
 
-      return userMapper(session.user, session.identity)
+      return session.user
     },
 
     /**
      * Optional authentication - returns null if not authenticated
      * Returns the mapped user or null
+     *
+     * @throws Response whatever `onSessionVerified` returned or threw
      */
     async optionalAuth(request: Request): Promise<TUser | null> {
-      const session = await auth.verifySession(request)
-      if (!session) return null
-      return userMapper(session.user, session.identity)
+      const session = await verifiedSession(request)
+      return session?.user ?? null
     },
 
     /**
@@ -304,6 +357,24 @@ export function createAuthHandlers<TUser = AuthUser>(
         throw new Error("Cannot refresh session: no active session found")
       }
       return auth.createSessionCookie(updatedUser, session.identity)
+    },
+
+    /**
+     * The `Set-Cookie` value that expires the session cookie, for when you
+     * want the header and not the redirect `logout` wraps it in: attaching it
+     * to a page you are already rendering, or to a Response you throw from
+     * `onSessionVerified`.
+     *
+     * @example
+     * ```typescript
+     * // In a loader that decided this session should not continue:
+     * throw redirect("/login", {
+     *   headers: { "Set-Cookie": clearSessionCookie() },
+     * })
+     * ```
+     */
+    clearSessionCookie(): string {
+      return auth.destroySessionCookie()
     },
 
     /**

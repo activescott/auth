@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.3.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.2.0...auth-adapter-react-router@2.3.0) (2026-09-18)
+
+### Features
+
+* add onSessionVerified ([c3705e5](https://github.com/activescott/auth/commit/c3705e5c86664dc11cfc614129382ede354faa58))
+
 ## [2.2.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.1.0...auth-adapter-react-router@2.2.0) (2026-09-18)
 
 ### Features
