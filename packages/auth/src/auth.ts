@@ -21,6 +21,7 @@ import { SessionManager } from "./session/session-manager.js"
 import { SessionCache } from "./session/session-cache.js"
 import { AuthenticationError, AuthErrors } from "./errors.js"
 import { AbuseGuard } from "./abuse/abuse-guard.js"
+import { initiateGateContextFor } from "./initiate-gate.js"
 import {
   buildChallengeClearingCookie,
   buildReturnUrl,
@@ -56,6 +57,25 @@ function describeStoreType(store: object): string {
 }
 
 /**
+ * Refuse a gate that some provider would bypass. A provider built before the
+ * gate existed serves its initiate route without consulting it, and nothing
+ * at request time would reveal that the application's policy was skipped.
+ */
+function assertProvidersConsultGate(providers: AuthProvider[]): void {
+  const bypassing = providers.filter(
+    (provider) =>
+      !provider.consultsInitiateGate &&
+      provider.getRoutes().some((route) => route.handler === "initiate"),
+  )
+  if (bypassing.length > 0) {
+    throw new AuthenticationError(
+      "CONFIGURATION_ERROR",
+      `AuthConfig.gate is set, but these providers serve an initiate route without consulting it: ${bypassing.map((provider) => provider.id).join(", ")}. Upgrade them to a version that sets consultsInitiateGate.`,
+    )
+  }
+}
+
+/**
  * Main authentication class that orchestrates providers
  */
 export class Auth {
@@ -74,6 +94,7 @@ export class Auth {
     for (const provider of config.providers) {
       this.providers.set(provider.id, provider)
     }
+    if (config.gate) assertProvidersConsultGate(config.providers)
 
     // Start cache cleanup interval. Nothing to sweep when the cache is off.
     if (this.sessionCache.enabled) {
@@ -419,6 +440,15 @@ export class Auth {
       challengeStore: this.config.challengeStore,
       getSession: (sessionRequest) => this.verifySession(sessionRequest),
       abuse: this.abuseGuard.contextFor(request),
+      ...(this.config.gate
+        ? {
+            gate: initiateGateContextFor(
+              this.config.gate,
+              request,
+              this.config.logger,
+            ),
+          }
+        : {}),
       logger: this.config.logger,
     }
   }

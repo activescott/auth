@@ -58,6 +58,15 @@ export type {
   AbuseReason,
 } from "./abuse/abuse-guard.js"
 export { AbuseGuard } from "./abuse/abuse-guard.js"
+
+// Initiate gate
+export type {
+  InitiateGate,
+  InitiateGateContext,
+  InitiateGateDecision,
+  InitiateGateInput,
+  InitiateMode,
+} from "./initiate-gate.js"
 export type { RateLimitRule, RateLimitVerdict } from "./abuse/rate-limiter.js"
 export { RateLimiter } from "./abuse/rate-limiter.js"
 export type { RateLimitHit, RateLimitStore } from "./abuse/rate-limit-store.js"
