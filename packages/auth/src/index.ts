@@ -88,6 +88,20 @@ export {
   FORM_TOKEN_FIELD,
 } from "./abuse/bot-check.js"
 
+// Waitlist
+export type {
+  ApprovalStatus,
+  ApprovalStore,
+  AutoApproveInput,
+  Waitlist,
+  WaitlistActionResult,
+  WaitlistConfig,
+  WaitlistNotice,
+} from "./waitlist.js"
+export { createWaitlist } from "./waitlist.js"
+export type { WaitlistEmail, WaitlistEmailOptions } from "./waitlist-email.js"
+export { waitlistNotificationEmail } from "./waitlist-email.js"
+
 // Utilities for provider authors
 export {
   parseRequestBody,
