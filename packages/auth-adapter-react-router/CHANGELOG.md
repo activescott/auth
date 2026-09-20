@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.6.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.5.1...auth-adapter-react-router@2.6.0) (2026-09-20)
+
+### Features
+
+* add profile page components ([#123](https://github.com/activescott/auth/issues/123)) ([8e5ecce](https://github.com/activescott/auth/commit/8e5ecce06ff877f2e7c0c991a03bd9ee778666b4)), closes [#122](https://github.com/activescott/auth/issues/122)
+
 ## [2.5.1](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.5.0...auth-adapter-react-router@2.5.1) (2026-09-20)
 
 ### Bug Fixes
