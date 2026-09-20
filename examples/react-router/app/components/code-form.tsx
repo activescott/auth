@@ -1,5 +1,5 @@
-import { useRef, useState } from "react"
 import { Form } from "react-router"
+import { useOtpAutoSubmit } from "@activescott/auth-adapter-react-router/client"
 
 /** Digits in a sign-in code. Both providers here are configured for six. */
 const DEFAULT_CODE_LENGTH = 6
@@ -9,13 +9,12 @@ const DEFAULT_CODE_LENGTH = 6
  * into your app as-is. It posts the code directly to the provider's verify
  * action (`/auth/email/verify`, `/auth/sms/verify`, ...); the challenge
  * cookie set at initiate identifies which sign-in attempt the code belongs
- * to. The input attributes are what make platform autofill work:
- * `autoComplete="one-time-code"` (iOS/macOS from Mail or Messages, Android
- * from SMS) plus `inputMode="numeric"` for the digit keyboard.
+ * to.
  *
- * Once `length` digits are entered the form submits itself, so autofill
- * finishes the sign-in without a button press. The button stays for the
- * cases autofill misses.
+ * `useOtpAutoSubmit` supplies the input attributes platform autofill looks
+ * for (`autoComplete="one-time-code"`, the numeric keyboard) and submits the
+ * form once `length` digits are in, so autofill finishes the sign-in without
+ * a button press. The button stays for the cases autofill misses.
  *
  * `length` must match what the provider issues. Email codes use the SMS/email
  * provider's `otp.length` (6 by default). Twilio Verify uses the `code_length`
@@ -34,21 +33,10 @@ export function CodeForm({
   submitLabel?: string
   children: string
 }) {
-  const formRef = useRef<HTMLFormElement>(null)
-  // Autofill can fire more than one change event with a complete code, and
-  // requestSubmit() during an in-flight navigation throws
-  const [submitting, setSubmitting] = useState(false)
-
-  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-    if (submitting) return
-    if (event.target.value.length !== length) return
-    setSubmitting(true)
-    formRef.current?.requestSubmit()
-  }
+  const { inputProps, submitting } = useOtpAutoSubmit(length)
 
   return (
     <Form
-      ref={formRef}
       method="post"
       action={action}
       reloadDocument
@@ -57,15 +45,10 @@ export function CodeForm({
       <label htmlFor="code">{children}</label>
       <input
         id="code"
-        name="code"
         type="text"
-        autoComplete="one-time-code"
-        inputMode="numeric"
-        pattern={`[0-9]{${length}}`}
-        maxLength={length}
         required
         autoFocus
-        onChange={handleChange}
+        {...inputProps}
         className="border p-2 rounded font-mono text-2xl tracking-[0.5em] text-center"
       />
       <button
