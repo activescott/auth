@@ -120,6 +120,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 | Hooks (from `./client`)                | `useTurnstile`, `usePasskeySignIn`, `useRegisterPasskey`, `useOtpAutoSubmit`, `usePreservedInput`.                                     |
 | `createAdminHandlers` (from `./admin`) | Returns `{ requireAdmin, adminUsersLoader, adminConfigLoader }`.                                                                       |
 | `AdminUsersPage`, `AdminConfigPage`    | The admin pages, from `./admin`.                                                                                                       |
+| `ProfilePage` (from `./profile`)       | The profile page, and `AccountSummary`, `SignInMethods`, `Passkeys` separately. See [Profile page](#profile-page).                     |
 
 Login pages need no action of their own: post the email form directly to `/auth/email/initiate` (the provider redirects back with `?sent=1`) and the code form to `/auth/email/verify`.
 
@@ -127,7 +128,7 @@ Login pages need no action of their own: post the email form directly to `/auth/
 
 ## Sign-in and profile pages
 
-The adapter ships the logic of a sign-in page and a profile page's sign-in methods section, and leaves the markup to you. The loaders run on the server and read what the providers put in the query string on the way back; the hooks run in the browser.
+The adapter ships the logic of a sign-in page and a profile page's sign-in methods section, and leaves the markup to you. The loaders run on the server and read what the providers put in the query string on the way back; the hooks run in the browser. The profile page's markup ships too, as components: see [Profile page](#profile-page).
 
 ```ts
 // app/lib/auth.server.ts
@@ -156,6 +157,77 @@ The hooks are at the `./client` subpath and need React, not React Router:
 The passkey hooks take `createPasskeyClient()` from `@activescott/auth-provider-passkey/browser` as `client`, so apps without passkeys never install the WebAuthn library. A Turnstile token matters more than it looks: a form posted without one is blocked, and the block answers exactly like a successful send, so the user waits for an email that never comes.
 
 [`examples/react-router`](https://github.com/activescott/auth/tree/main/examples/react-router) uses all of them: `app/routes/login.tsx` and `app/routes/dashboard.tsx`.
+
+## Profile page
+
+A profile page is the same page in every app, so the adapter ships one at the `./profile` subpath. `ProfilePage` renders the account summary, the sign-in methods and the passkeys; it takes what `profileAuthLoader` returns.
+
+```tsx
+// app/routes/profile.tsx
+import { Link, useRevalidator } from "react-router"
+import { ProfilePage } from "@activescott/auth-adapter-react-router/profile"
+import { profileAuthLoader, requireAuth } from "~/lib/auth.server"
+import { passkeys } from "~/lib/passkeys"
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await requireAuth(request)
+  return {
+    email: user.email,
+    memberSince: user.createdAt.toISOString(),
+    ...(await profileAuthLoader(user.id, request)),
+  }
+}
+
+export default function Profile({ loaderData }: Route.ComponentProps) {
+  const revalidator = useRevalidator()
+  return (
+    <ProfilePage
+      {...loaderData}
+      addMethods={[
+        { provider: "email" },
+        { provider: "sms", callingCode: "+1" },
+      ]}
+      passkeyClient={passkeys}
+      onPasskeyRegistered={revalidator.revalidate}
+      linkComponent={Link}
+    />
+  )
+}
+```
+
+`addMethods` is what the page offers to add, in the order the links appear; it offers nothing by default, and drops a provider the account already signs in with unless the entry sets `allowMultiple`. `callingCode` makes the field take a national number and submit the full E.164 one. `allowMerge` turns an `IDENTITY_CONFLICT` into an offer to merge the two accounts rather than an error, so set it only where your `UserStore.onMerge` merges.
+
+An application with sections of its own renders the blocks directly, in whatever order, with whatever between them:
+
+```tsx
+<AccountSummary email={user.email} entries={[{ label: "Handle", value: user.handle }]} />
+<HandleSection handle={user.handle} />
+<SignInMethods identities={identities} linkFlow={linkFlow} addMethods={addMethods} linkComponent={Link} />
+<Passkeys passkeys={passkeys} client={passkeyClient} onRegistered={revalidator.revalidate} />
+```
+
+### Styling
+
+Every block takes `classNames`, one class per slot: `card`, `cardBody`, `cardTitle`, `table`, `th`, `td`, `field`, `label`, `input`, `submitButton`, `success` and the rest of `ProfileClassNames`. A slot you name gets your class and none of the built-in styling, because an inline style outranks any class it would otherwise compete with; slots you say nothing about keep the plain built-in look, and `includeDefaultStyles={false}` drops that everywhere.
+
+That means a half-named map is a half-styled page, and there are 34 slots. On Bootstrap, pass the map the package ships instead:
+
+```tsx
+import {
+  BOOTSTRAP_PROFILE_CLASS_NAMES,
+  ProfilePage,
+} from "@activescott/auth-adapter-react-router/profile"
+
+;<ProfilePage {...loaderData} classNames={BOOTSTRAP_PROFILE_CLASS_NAMES} />
+```
+
+Spread it to change a slot and keep the rest: `{ ...BOOTSTRAP_PROFILE_CLASS_NAMES, title: "fw-bold text-primary mb-4" }`. It is typed `Required<ProfileClassNames>`, so a slot added later has to be given a class before the package builds.
+
+For another framework, write the map yourself. An empty string is a slot you own but want no class on, the way Bootstrap's `.table` reaches its own cells: it drops the built-in style without adding an attribute.
+
+Announcements are in the markup rather than in `classNames`, since a class cannot add one: a failure or a caution carries `role="alert"`, a confirmation `role="status"`, and a message about the address or the code you typed is tied to that field with `aria-invalid` and `aria-describedby`.
+
+The blocks import React but nothing from `react-router`, so links go through the optional `linkComponent`; without it they are plain anchors, which navigate the whole document. The forms are plain `<form>` elements on purpose: each step of an add-a-sign-in-method flow is a document POST the auth routes answer with a redirect, which is what lets the flow's state live in the URL.
 
 ## Admin dashboard
 
