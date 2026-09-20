@@ -42,7 +42,7 @@
   "dependencies": {
     "@simplewebauthn/server": "^13.2.2",
     "jose": "^6.2.6",
-    "zod": "^4.3.5"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@activescott/auth": "^5.0.0"
