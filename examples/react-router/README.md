@@ -111,24 +111,25 @@ Abuse protection is already on with no configuration: per-IP and per-recipient r
 
 3. Restart `npm run dev` — the keys are read at startup.
 
-The widget now renders in both sign-in forms (`app/components/anti-bot-fields.tsx`) and the server verifies the token before sending anything. With no keys set, Turnstile stays off and the example runs exactly as before.
+The widget now renders in every form that posts to an initiate endpoint (`app/components/anti-bot-fields.tsx`, driven by the adapter's `useTurnstile` hook), the submit button waits for the widget's token, and the server verifies the token before sending anything. With no keys set, Turnstile stays off and the example runs exactly as before.
 
 ### Seeing each path
 
-Cloudflare publishes fixed test keys, so you can exercise both outcomes without touching your real widget:
+Cloudflare publishes fixed test keys, so you can exercise each outcome without touching your real widget:
 
-| Behavior      | Site key                   | Secret key                            |
-| ------------- | -------------------------- | ------------------------------------- |
-| always passes | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` |
-| always blocks | `2x00000000000000000000AB` | `2x0000000000000000000000000000000AA` |
+| Behavior                      | Site key                   | Secret key                            |
+| ----------------------------- | -------------------------- | ------------------------------------- |
+| always passes                 | `1x00000000000000000000AA` | `1x0000000000000000000000000000000AA` |
+| widget passes, server rejects | `1x00000000000000000000AA` | `2x0000000000000000000000000000000AA` |
+| widget blocks                 | `2x00000000000000000000AB` | any                                   |
 
-With the always-blocks pair, submit the email form and watch the server console:
+With the widget-passes, server-rejects pair, submit the email form and watch the server console:
 
 ```
 [auth] blocked initiate: reason=bot_check_failed detail=turnstile:invalid-input-response provider=email ip=...
 ```
 
-The browser gets the same `?sent=1` page a real send produces — a blocked caller is told nothing — but no email is sent and no challenge is created. Deleting the widget's hidden input in devtools before submitting produces `detail=turnstile:missing_token` the same way.
+The browser gets the same `?sent=1` page a real send produces — a blocked caller is told nothing — but no email is sent and no challenge is created. Deleting the widget's hidden input in devtools before submitting produces `detail=turnstile:missing_token` the same way. That silence is why the submit button waits for the token: a form posted before the widget finished would be blocked the same way, and the user would wait for an email that never comes. With the widget-blocks site key no token is ever issued, so the button never enables and the page asks the user to reload instead.
 
 If Cloudflare is unreachable, `TurnstileBotCheck` fails **open** by default (logging `turnstile unavailable ...`) so an outage there can't lock everyone out of signing in; the rate limits still apply. Pass `failOpen: false` to fail closed instead.
 

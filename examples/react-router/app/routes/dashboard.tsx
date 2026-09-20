@@ -1,47 +1,30 @@
 import { useState } from "react"
 import { Form, Link, useRevalidator } from "react-router"
-import { getAuthErrorMessage } from "@activescott/auth"
 import {
-  requireAuth,
-  listPasskeys,
-  listSignInMethods,
-  createLoginFormFields,
-} from "~/lib/auth.server"
-import { AntiBotFields } from "~/components/anti-bot-fields"
+  useRegisterPasskey,
+  useTurnstile,
+} from "@activescott/auth-adapter-react-router/client"
+import { requireAuth, profileAuthLoader } from "~/lib/auth.server"
+import { passkeys as passkeyClient } from "~/lib/passkey.client"
+import {
+  AntiBotFields,
+  AntiBotSubmitButton,
+} from "~/components/anti-bot-fields"
 import { CodeForm } from "~/components/code-form"
 import type { Route } from "./+types/dashboard"
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireAuth(request)
-  const url = new URL(request.url)
-  const errorCode = url.searchParams.get("error")
-  const linkParameter = url.searchParams.get("link")
-  const link: "email" | "sms" | null =
-    linkParameter === "sms" || linkParameter === "email" ? linkParameter : null
-  return {
-    user,
-    passkeys: await listPasskeys(user.id),
-    signInMethods: await listSignInMethods(user.id),
-    // Link initiates post to the same abuse-guarded endpoints as sign-in,
-    // so the forms below need the same anti-bot fields the login page uses
-    antiBot: await createLoginFormFields(),
-    // Which add-method form is open. The provider redirects back via
-    // Referer, so ?link=email survives the initiate round trip the same way
-    // ?via= does on the login page.
-    link,
-    sent: url.searchParams.get("sent") === "1",
-    merged: url.searchParams.get("merged") === "1",
-    linked: url.searchParams.get("linked") === "1" && !errorCode,
-    // IDENTITY_CONFLICT is not a dead end: it means the identifier belongs
-    // to another account and a merge ticket cookie is waiting, so the page
-    // shows a merge prompt instead of an error message.
-    conflict: errorCode === "IDENTITY_CONFLICT",
-    error:
-      errorCode && errorCode !== "IDENTITY_CONFLICT"
-        ? getAuthErrorMessage(errorCode)
-        : null,
-  }
+  // identities (email and phone sign-in methods), passkeys, and linkFlow: the
+  // add-a-method flow's state, read from the query string the providers
+  // redirect back with (?add=, ?sent=1, ?linked=1, ?merged=1, ?error=). Link
+  // initiates post to the same abuse-guarded endpoints as sign-in, so
+  // linkFlow carries the same anti-bot form token the login page gets.
+  return { user, ...(await profileAuthLoader(user.id, request)) }
 }
+
+type LoaderData = Route.ComponentProps["loaderData"]
+type LinkableProvider = "email" | "sms"
 
 export default function Dashboard({ loaderData }: Route.ComponentProps) {
   return (
@@ -50,7 +33,10 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
       <p className="mb-4">
         Signed in as <code>{String(loaderData.user.metadata?.identifier)}</code>
       </p>
-      <SignInMethods {...loaderData} />
+      <SignInMethods
+        identities={loaderData.identities}
+        linkFlow={loaderData.linkFlow}
+      />
       <Passkeys passkeys={loaderData.passkeys} />
 
       <Form method="post" action="/logout">
@@ -71,27 +57,24 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
  * `mode=link`, which attaches the verified identifier to the signed-in user
  * instead of signing in as it. When the identifier already belongs to a
  * different account the verify comes back with error=IDENTITY_CONFLICT and
- * a merge-ticket cookie; the prompt below redeems it at
- * /auth/{provider}/link-merge to merge that account into this one.
+ * a merge-ticket cookie; linkFlow.conflict names the provider that minted
+ * it, and the prompt below redeems it at /auth/{provider}/link-merge to
+ * merge that account into this one.
  */
 function SignInMethods({
-  signInMethods,
-  antiBot,
-  link,
-  sent,
-  merged,
-  linked,
-  conflict,
-  error,
-}: Route.ComponentProps["loaderData"]) {
+  identities,
+  linkFlow,
+}: Pick<LoaderData, "identities" | "linkFlow">) {
+  const { add, sent, merged, linked, conflict, error } = linkFlow
+
   return (
     <section className="mb-6 p-4 border rounded">
       <h2 className="font-semibold mb-2">Sign-in methods</h2>
 
       <ul className="mb-3 divide-y border rounded">
-        {signInMethods.map((method) => (
+        {identities.map((method) => (
           <li
-            key={`${method.provider}:${method.identifier}`}
+            key={method.id}
             data-testid="sign-in-method"
             className="p-2 text-sm flex items-baseline justify-between gap-2"
           >
@@ -114,21 +97,25 @@ function SignInMethods({
         </p>
       )}
 
-      {link === null && (
+      {/* A conflict replaces the add form: the identifier is proven, and
+          what is left to decide is whether to merge */}
+      {conflict ? (
+        <MergePrompt provider={conflict.provider} />
+      ) : add === "email" ? (
+        <AddEmail sent={sent} linkFlow={linkFlow} />
+      ) : add === "sms" ? (
+        <AddPhone sent={sent} linkFlow={linkFlow} />
+      ) : (
         <nav className="flex gap-4">
-          <Link className="text-blue-600 underline" to="/dashboard?link=email">
+          <Link className="text-blue-600 underline" to="/dashboard?add=email">
             Add an email
           </Link>
-          <Link className="text-blue-600 underline" to="/dashboard?link=sms">
+          <Link className="text-blue-600 underline" to="/dashboard?add=sms">
             Add a phone number
           </Link>
         </nav>
       )}
 
-      {link === "email" && <AddEmail sent={sent} antiBot={antiBot} />}
-      {link === "sms" && <AddPhone sent={sent} antiBot={antiBot} />}
-
-      {conflict && link && <MergePrompt provider={link} />}
       {error && (
         <p className="text-red-700 mt-3" data-testid="link-error">
           Error: {error}
@@ -138,23 +125,29 @@ function SignInMethods({
   )
 }
 
-type AddMethodProps = {
-  sent: boolean
-  antiBot: { formToken: string; turnstileSiteKey: string | null }
-}
-
 /**
  * Where the verify step should land: back on this page with ?linked=1 (and
- * the open form's ?link= so a conflict prompt knows which provider minted
+ * the open form's ?add= so a conflict prompt knows which provider minted
  * the merge ticket). Passed as ?redirectTo= on the verify URL — the same
  * mechanism a post-login redirect uses.
  */
-function verifyAction(provider: "email" | "sms"): string {
-  const redirectTo = `/dashboard?link=${provider}&linked=1`
-  return `/auth/${provider}/verify?redirectTo=${encodeURIComponent(redirectTo)}`
+function linkedRedirect(provider: LinkableProvider): string {
+  return `/dashboard?add=${provider}&linked=1`
 }
 
-function AddEmail({ sent, antiBot }: AddMethodProps) {
+function verifyAction(provider: LinkableProvider): string {
+  const redirectTo = encodeURIComponent(linkedRedirect(provider))
+  return `/auth/${provider}/verify?redirectTo=${redirectTo}`
+}
+
+type AddMethodProps = {
+  sent: boolean
+  linkFlow: LoaderData["linkFlow"]
+}
+
+function AddEmail({ sent, linkFlow }: AddMethodProps) {
+  const turnstile = useTurnstile(linkFlow.turnstileSiteKey)
+
   return (
     <div className="mt-2">
       <Form
@@ -163,14 +156,14 @@ function AddEmail({ sent, antiBot }: AddMethodProps) {
         reloadDocument
         className="flex flex-col gap-3"
       >
-        <AntiBotFields {...antiBot} />
+        <AntiBotFields formToken={linkFlow.formToken} turnstile={turnstile} />
         {/* mode=link is what makes this attach to the signed-in account
             instead of starting a new sign-in */}
         <input type="hidden" name="mode" value="link" />
         <input
           type="hidden"
           name="redirectTo"
-          value="/dashboard?link=email&linked=1"
+          value={linkedRedirect("email")}
         />
         <label htmlFor="link-email">Email to add</label>
         <input
@@ -181,12 +174,9 @@ function AddEmail({ sent, antiBot }: AddMethodProps) {
           required
           className="border p-2 rounded"
         />
-        <button
-          type="submit"
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-        >
+        <AntiBotSubmitButton turnstile={turnstile}>
           {sent ? "Resend" : "Send confirmation"}
-        </button>
+        </AntiBotSubmitButton>
       </Form>
 
       {sent && (
@@ -203,8 +193,9 @@ function AddEmail({ sent, antiBot }: AddMethodProps) {
   )
 }
 
-function AddPhone({ sent, antiBot }: AddMethodProps) {
+function AddPhone({ sent, linkFlow }: AddMethodProps) {
   const [nationalNumber, setNationalNumber] = useState("")
+  const turnstile = useTurnstile(linkFlow.turnstileSiteKey)
 
   return (
     <div className="mt-2">
@@ -214,7 +205,7 @@ function AddPhone({ sent, antiBot }: AddMethodProps) {
         reloadDocument
         className="flex flex-col gap-3"
       >
-        <AntiBotFields {...antiBot} />
+        <AntiBotFields formToken={linkFlow.formToken} turnstile={turnstile} />
         <input type="hidden" name="mode" value="link" />
         <label htmlFor="link-phone">Mobile phone number to add</label>
         <div className="flex rounded border focus-within:ring-2 focus-within:ring-blue-600">
@@ -234,12 +225,9 @@ function AddPhone({ sent, antiBot }: AddMethodProps) {
           />
         </div>
         <input type="hidden" name="phone" value={`+1${nationalNumber}`} />
-        <button
-          type="submit"
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-        >
+        <AntiBotSubmitButton turnstile={turnstile}>
           {sent ? "Resend code" : "Text me a code"}
-        </button>
+        </AntiBotSubmitButton>
       </Form>
 
       {sent && (
@@ -257,20 +245,21 @@ function AddPhone({ sent, antiBot }: AddMethodProps) {
 /**
  * Offered when a link attempt hit IDENTITY_CONFLICT. The merge-ticket
  * cookie set by that response authorizes exactly one merge of the other
- * account into this one; the ticket expires after a few minutes, and the
- * server re-checks this session before merging.
+ * account into this one, and only at the provider that minted it; the
+ * ticket expires after a few minutes, and the server re-checks this session
+ * before merging.
  */
-function MergePrompt({ provider }: { provider: "email" | "sms" }) {
+function MergePrompt({ provider }: { provider: string }) {
   return (
     <aside
       className="mt-4 p-3 border border-amber-300 bg-amber-50 text-amber-900 text-sm rounded"
       data-testid="merge-prompt"
     >
       <p className="mb-2">
-        That {provider === "email" ? "email" : "phone number"} already signs in
-        to a <strong>different account</strong>. You just proved it&rsquo;s
-        yours, so you can merge that account into this one — all of its sign-in
-        methods will open this account afterwards.
+        That {provider === "sms" ? "phone number" : "email"} already signs in to
+        a <strong>different account</strong>. You just proved it&rsquo;s yours,
+        so you can merge that account into this one — all of its sign-in methods
+        will open this account afterwards.
       </p>
       <Form
         method="post"
@@ -291,31 +280,13 @@ function MergePrompt({ provider }: { provider: "email" | "sms" }) {
   )
 }
 
-function Passkeys({
-  passkeys,
-}: {
-  passkeys: Route.ComponentProps["loaderData"]["passkeys"]
-}) {
-  const [status, setStatus] = useState<
-    { state: "idle" } | { state: "added" } | { state: "error"; message: string }
-  >({ state: "idle" })
+function Passkeys({ passkeys }: Pick<LoaderData, "passkeys">) {
   const revalidator = useRevalidator()
-
-  async function handleClick() {
-    try {
-      const { passkeys } = await import("~/lib/passkey.client")
-      await passkeys.registerPasskey()
-      setStatus({ state: "added" })
-      // Reload the loader data so the new passkey shows in the list
-      await revalidator.revalidate()
-    } catch (caught) {
-      setStatus({
-        state: "error",
-        message:
-          caught instanceof Error ? caught.message : "Adding a passkey failed",
-      })
-    }
-  }
+  const registration = useRegisterPasskey({
+    client: passkeyClient,
+    // Reload the loader data so the new passkey shows in the list
+    onRegistered: revalidator.revalidate,
+  })
 
   return (
     <section className="mb-6 p-4 border rounded">
@@ -350,17 +321,18 @@ function Passkeys({
 
       <button
         type="button"
-        onClick={handleClick}
+        onClick={registration.register}
+        disabled={registration.status === "pending"}
         className="border py-2 px-4 rounded hover:bg-gray-50 dark:hover:bg-gray-800"
       >
         {passkeys.length > 0 ? "Add another passkey" : "Add a passkey"}
       </button>
-      {status.state === "added" && (
+      {registration.status === "added" && (
         <p className="text-green-700 mt-3">Passkey added.</p>
       )}
-      {status.state === "error" && (
+      {registration.status === "error" && (
         <p className="text-red-700 mt-3" data-testid="passkey-error">
-          Error: {status.message}
+          Error: {registration.error}
         </p>
       )}
     </section>
