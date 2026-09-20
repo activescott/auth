@@ -201,6 +201,8 @@ export const { adminUsersLoader, adminConfigLoader } = createAdminHandlers(
 
 `admins` is a comma- or whitespace-separated allowlist of email addresses and E.164 phone numbers, matched against **every** identity a user owns — so an address on the list still gets in after signing in by SMS. It defaults to `process.env.AUTH_ADMIN_IDENTIFIERS`, and an empty or missing list admits nobody: forgetting to set it locks the dashboard rather than opening it. A predicate works too, if membership lives in your database. A signed-in visitor who is not an admin gets a **404**, not a 403, so the admin area does not announce its own existence (`onForbidden: "forbidden"` opts into 403).
 
+The same check is available for pages the dashboard does not own: `isAdminUser(auth, user)` from `@activescott/auth/admin` answers it for one user against `AUTH_ADMIN_IDENTIFIERS`, and `createAdminPredicate(admins)` builds it from a list of your own. Both match every identity a user owns, so your own admin page and the dashboard agree on who gets in.
+
 ### Step 3 — Add the routes
 
 ```tsx

@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.4.0](https://github.com/activescott/auth/compare/auth@5.3.0...auth@5.4.0) (2026-09-20)
+
+### Features
+
+* export the admin allowlist check ([#107](https://github.com/activescott/auth/issues/107)) ([41cdcb5](https://github.com/activescott/auth/commit/41cdcb5ac845f80cbda5f33b274a2863f88c178a)), closes [#101](https://github.com/activescott/auth/issues/101)
+
 ## [5.3.0](https://github.com/activescott/auth/compare/auth@5.2.1...auth@5.3.0) (2026-09-19)
 
 ### Features
