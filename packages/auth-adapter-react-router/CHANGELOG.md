@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.5.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.4.0...auth-adapter-react-router@2.5.0) (2026-09-20)
+
+### Features
+
+* add page hooks ([#117](https://github.com/activescott/auth/issues/117)) ([d0de3e4](https://github.com/activescott/auth/commit/d0de3e4868091c454fa9314a39bcdf716143a02b))
+
 ## [2.4.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.3.0...auth-adapter-react-router@2.4.0) (2026-09-19)
 
 ### Features
