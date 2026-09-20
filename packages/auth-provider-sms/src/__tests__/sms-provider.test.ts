@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { InMemoryChallengeStore } from "@activescott/auth"
-import type { AuthContext, Identity } from "@activescott/auth"
+import { Auth, InMemoryChallengeStore } from "@activescott/auth"
+import type { AuthContext, Identity, InitiateGate } from "@activescott/auth"
 import { SmsProvider, normalizePhoneNumber } from "../sms-provider.js"
 import type {
   SmsTransport,
@@ -260,6 +260,42 @@ describe("SmsProvider", () => {
       expect(location).toContain("/login")
       expect(location).toContain("sent=1")
       expect(result.headers.get("Set-Cookie")).toContain("auth_sms_challenge=")
+    })
+
+    it("should report a Referer it cannot return to", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = createInitiateRequest(TEST_PHONE, {
+        Accept: "text/html",
+        Referer: "https://other.example/login",
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        source: "Referer",
+        reason: "other-origin",
+        origin: "https://other.example",
+        fallback: "/login",
+      })
+    })
+
+    it("should not log a Referer on this origin", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = createInitiateRequest(TEST_PHONE, {
+        Accept: "text/html",
+        Referer: `${TEST_BASE_URL}/login`,
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).not.toHaveBeenCalled()
     })
   })
 
@@ -912,5 +948,135 @@ describe("SmsProvider link message wording", () => {
     await provider.initiate(linkInitiateRequest(), context)
 
     expect(lastMessage()).toMatch(/^Test App: confirm with \d{6}$/)
+  })
+})
+
+describe("SmsProvider behind an initiate gate", () => {
+  let auth: Auth | undefined
+
+  afterEach(() => {
+    auth?.destroy()
+  })
+
+  beforeEach(() => {
+    vi.mocked(mockTransport.sendMessage).mockClear()
+  })
+
+  function createGatedAuth(onInitiate: InitiateGate["onInitiate"]): Auth {
+    const identity = createMockIdentity()
+    return new Auth({
+      session: {
+        secret: "test-session-secret",
+        maxAge: "7d",
+        cookieName: "auth_session",
+        cookie: { secure: false, sameSite: "lax" },
+      },
+      userStore: {
+        findById: vi.fn().mockResolvedValue({ id: "user-1" }),
+        create: vi.fn().mockResolvedValue({ id: "user-1" }),
+        onMerge: vi.fn(),
+      },
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([identity]),
+        create: vi.fn().mockResolvedValue(identity),
+        update: vi.fn().mockResolvedValue(identity),
+        delete: vi.fn(),
+        reassignByUserId: vi.fn(),
+      },
+      challengeStore: new InMemoryChallengeStore(),
+      providers: [createProvider()],
+      gate: { onInitiate },
+    })
+  }
+
+  function formPost(body: Record<string, string>, cookie?: string): Request {
+    return new Request(`${TEST_BASE_URL}/auth/sms/initiate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "text/html",
+        Referer: `${TEST_BASE_URL}/login`,
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      body: new URLSearchParams(body).toString(),
+    })
+  }
+
+  it.each(["4155550100", "not a number", ""])(
+    "rejects %j before the gate is called",
+    async (phone) => {
+      const onInitiate = vi.fn().mockReturnValue("allow")
+      auth = createGatedAuth(onInitiate)
+
+      const response = await auth.handleRequest(formPost({ phone }))
+
+      expect(response.status).toBe(302)
+      expect(response.headers.get("Location")).toContain(
+        "error=INVALID_CREDENTIALS",
+      )
+      expect(onInitiate).not.toHaveBeenCalled()
+      expect(mockTransport.sendMessage).not.toHaveBeenCalled()
+    },
+  )
+
+  it("hands the gate the E.164 number in signin mode, then sends", async () => {
+    const onInitiate = vi.fn().mockReturnValue("allow")
+    auth = createGatedAuth(onInitiate)
+
+    const response = await auth.handleRequest(
+      formPost({ phone: "+1 (415) 555-0100" }),
+    )
+
+    expect(onInitiate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "sms",
+        identifier: TEST_PHONE,
+        mode: "signin",
+      }),
+    )
+    expect(response.headers.get("Location")).toContain("sent=1")
+    expect(mockTransport.sendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports link mode for a signed-in link request", async () => {
+    const onInitiate = vi.fn().mockReturnValue("allow")
+    auth = createGatedAuth(onInitiate)
+    const cookie = await auth.createSessionCookie(
+      { id: "user-1" },
+      createMockIdentity(),
+    )
+
+    await auth.handleRequest(
+      formPost({ phone: "+14155550199", mode: "link" }, cookie.split(";")[0]),
+    )
+
+    expect(onInitiate).toHaveBeenCalledWith(
+      expect.objectContaining({ identifier: "+14155550199", mode: "link" }),
+    )
+  })
+
+  it("sends nothing when the gate redirects", async () => {
+    auth = createGatedAuth(() => ({ redirect: "/waitlist" }))
+
+    const response = await auth.handleRequest(formPost({ phone: TEST_PHONE }))
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get("Location")).toBe("/waitlist")
+    expect(response.headers.get("Set-Cookie")).toBeNull()
+    expect(mockTransport.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it("sends nothing when the gate returns an error", async () => {
+    auth = createGatedAuth(() => ({
+      error: { code: "INVALID_CREDENTIALS", message: "Invite only" },
+    }))
+
+    const response = await auth.handleRequest(formPost({ phone: TEST_PHONE }))
+
+    expect(response.headers.get("Location")).toBe(
+      `${TEST_BASE_URL}/login?error=INVALID_CREDENTIALS`,
+    )
+    expect(mockTransport.sendMessage).not.toHaveBeenCalled()
   })
 })

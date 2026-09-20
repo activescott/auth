@@ -3,8 +3,8 @@
  * redemption flow.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { InMemoryChallengeStore } from "@activescott/auth"
-import type { AuthContext, Identity } from "@activescott/auth"
+import { Auth, InMemoryChallengeStore } from "@activescott/auth"
+import type { AuthContext, Identity, InitiateGate } from "@activescott/auth"
 import { EmailProvider } from "../email-provider.js"
 import type { EmailTransport } from "../types.js"
 
@@ -132,6 +132,89 @@ describe("EmailProvider", () => {
       expect(typeof challenge?.data?.hashedKey).toBe("string")
     })
 
+    it("should carry a same-origin redirectTo into the magic link", async () => {
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          email: TEST_EMAIL,
+          redirectTo: "/dashboard?link=email",
+        }).toString(),
+      })
+
+      await provider.initiate(request, context)
+
+      const link = new URL(lastMagicLink())
+      expect(link.searchParams.get("redirectTo")).toBe("/dashboard?link=email")
+    })
+
+    it.each([
+      ["another origin", "https://other.example/x"],
+      ["protocol-relative", "//other.example"],
+      ["backslash-prefixed", "/\\other.example"],
+      ["javascript:", "javascript:alert(1)"],
+    ])(
+      "should drop a redirectTo naming %s from the magic link",
+      async (_label, redirectTo) => {
+        const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            email: TEST_EMAIL,
+            redirectTo,
+          }).toString(),
+        })
+
+        await provider.initiate(request, context)
+
+        const link = new URL(lastMagicLink())
+        expect(link.searchParams.get("redirectTo")).toBeNull()
+      },
+    )
+
+    it("should report a dropped redirectTo to the configured logger", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          email: TEST_EMAIL,
+          redirectTo: "https://other.example/x",
+        }).toString(),
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        source: "redirectTo",
+        reason: "other-origin",
+        origin: "https://other.example",
+      })
+    })
+
+    it("should not log a redirectTo it carries into the link", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          email: TEST_EMAIL,
+          redirectTo: "/dashboard?link=email",
+        }).toString(),
+      })
+
+      await provider.initiate(request, loggingContext)
+
+      expect(warn).not.toHaveBeenCalled()
+    })
+
     it("should reject a missing email", async () => {
       const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
         method: "POST",
@@ -154,6 +237,46 @@ describe("EmailProvider", () => {
 
       if (result instanceof Response) throw new Error("expected result")
       expect(result.success).toBe(false)
+    })
+
+    it("should reject a dotless domain without writing to the store or sending", async () => {
+      const result = await provider.initiate(
+        createInitiateRequest("scott@willeke"),
+        context,
+      )
+
+      if (result instanceof Response) throw new Error("expected result")
+      expect(result.success).toBe(false)
+      if (result.success) return
+      expect(result.error.code).toBe("INVALID_CREDENTIALS")
+      expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
+      expect(context.identityStore.create).not.toHaveBeenCalled()
+    })
+
+    it("should accept a dotless domain when allowDotlessDomain is set", async () => {
+      const localhostProvider = new EmailProvider(
+        {
+          smtp: { host: "smtp.test.com", port: 587, user: "u", pass: "p" },
+          from: "test@example.com",
+          allowDotlessDomain: true,
+        },
+        mockTransport,
+      )
+
+      const result = await localhostProvider.initiate(
+        createInitiateRequest("admin@localhost"),
+        context,
+      )
+
+      if (result instanceof Response || !result.success) {
+        throw new Error("initiate failed")
+      }
+      expect(mockTransport.sendMagicLink).toHaveBeenCalledWith(
+        "admin@localhost",
+        expect.any(String),
+        expect.anything(),
+        expect.anything(),
+      )
     })
 
     it("should redirect browser form posts back to the submitting page", async () => {
@@ -211,6 +334,35 @@ describe("EmailProvider", () => {
       // A scanner can GET repeatedly; the link must survive
       const second = await provider.verify(new Request(magicLink), context)
       expect(second instanceof Response).toBe(true)
+    })
+
+    it("should drop a redirectTo naming another origin from the confirm page form", async () => {
+      await provider.initiate(createInitiateRequest(), context)
+      const magicLink = `${lastMagicLink()}&redirectTo=${encodeURIComponent("https://other.example/x")}`
+
+      const page = await provider.verify(new Request(magicLink), context)
+      if (!(page instanceof Response)) throw new Error("expected page")
+      const html = await page.text()
+      expect(html).toContain(`action=""`)
+      expect(html).not.toContain("other.example")
+    })
+
+    it("should report the confirm page's dropped redirectTo to the logger", async () => {
+      const warn = vi.fn()
+      const loggingContext = createMockContext(challengeStore, {
+        logger: { warn },
+      })
+      await provider.initiate(createInitiateRequest(), loggingContext)
+      const magicLink = `${lastMagicLink()}&redirectTo=${encodeURIComponent("https://other.example/x")}`
+
+      await provider.verify(new Request(magicLink), loggingContext)
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[1]).toMatchObject({
+        source: "redirectTo",
+        reason: "other-origin",
+        origin: "https://other.example",
+      })
     })
 
     it("should redeem on POST and consume the challenge", async () => {
@@ -645,5 +797,145 @@ describe("EmailProvider transport purpose", () => {
       expect.anything(),
       expect.objectContaining({ purpose: "link" }),
     )
+  })
+})
+
+describe("EmailProvider behind an initiate gate", () => {
+  let auth: Auth | undefined
+
+  afterEach(() => {
+    auth?.destroy()
+  })
+
+  function createGatedAuth(onInitiate: InitiateGate["onInitiate"]): Auth {
+    const identity = createMockIdentity()
+    return new Auth({
+      session: {
+        secret: "test-session-secret",
+        maxAge: "7d",
+        cookieName: "auth_session",
+        cookie: { secure: false, sameSite: "lax" },
+      },
+      userStore: {
+        findById: vi.fn().mockResolvedValue({ id: "user-1" }),
+        create: vi.fn().mockResolvedValue({ id: "user-1" }),
+        onMerge: vi.fn(),
+      },
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([identity]),
+        create: vi.fn().mockResolvedValue(identity),
+        update: vi.fn().mockResolvedValue(identity),
+        delete: vi.fn(),
+        reassignByUserId: vi.fn(),
+      },
+      challengeStore: new InMemoryChallengeStore(),
+      providers: [createProvider()],
+      gate: { onInitiate },
+    })
+  }
+
+  function formPost(body: Record<string, string>, cookie?: string): Request {
+    return new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "text/html",
+        Referer: `${TEST_BASE_URL}/login`,
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      body: new URLSearchParams(body).toString(),
+    })
+  }
+
+  beforeEach(() => {
+    vi.mocked(mockTransport.sendMagicLink).mockClear()
+  })
+
+  it.each(["not-an-email", "user@localhost", ""])(
+    "rejects %j before the gate is called",
+    async (email) => {
+      const onInitiate = vi.fn().mockReturnValue("allow")
+      auth = createGatedAuth(onInitiate)
+
+      const response = await auth.handleRequest(formPost({ email }))
+
+      expect(response.status).toBe(302)
+      expect(response.headers.get("Location")).toContain(
+        "error=INVALID_CREDENTIALS",
+      )
+      expect(onInitiate).not.toHaveBeenCalled()
+      expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
+    },
+  )
+
+  it("hands the gate the normalized address in signin mode, then sends", async () => {
+    const onInitiate = vi.fn().mockReturnValue("allow")
+    auth = createGatedAuth(onInitiate)
+
+    const response = await auth.handleRequest(
+      formPost({ email: "  User@Example.COM " }),
+    )
+
+    expect(onInitiate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "email",
+        identifier: "user@example.com",
+        mode: "signin",
+      }),
+    )
+    expect(response.headers.get("Location")).toContain("sent=1")
+    expect(mockTransport.sendMagicLink).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports link mode for a signed-in link request", async () => {
+    const onInitiate = vi.fn().mockReturnValue("allow")
+    auth = createGatedAuth(onInitiate)
+    const cookie = await auth.createSessionCookie(
+      { id: "user-1" },
+      createMockIdentity(),
+    )
+
+    await auth.handleRequest(
+      formPost(
+        { email: "second@example.com", mode: "link" },
+        cookie.split(";")[0],
+      ),
+    )
+
+    expect(onInitiate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: "second@example.com",
+        mode: "link",
+      }),
+    )
+  })
+
+  it("sends nothing when the gate redirects", async () => {
+    auth = createGatedAuth(() => ({ redirect: "/waitlist" }))
+
+    const response = await auth.handleRequest(
+      formPost({ email: "stranger@example.com" }),
+    )
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get("Location")).toBe("/waitlist")
+    expect(response.headers.get("Set-Cookie")).toBeNull()
+    expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
+  })
+
+  it("sends nothing when the gate returns an error", async () => {
+    auth = createGatedAuth(() => ({
+      error: { code: "INVALID_CREDENTIALS", message: "Invite only" },
+    }))
+
+    const response = await auth.handleRequest(
+      formPost({ email: "stranger@example.com" }),
+    )
+
+    expect(response.headers.get("Location")).toBe(
+      `${TEST_BASE_URL}/login?error=INVALID_CREDENTIALS`,
+    )
+    expect(mockTransport.sendMagicLink).not.toHaveBeenCalled()
   })
 })

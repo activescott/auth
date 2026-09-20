@@ -1,34 +1,35 @@
-import { useEffect, useState } from "react"
 import { Form, redirect } from "react-router"
-import { getAuthErrorMessage } from "@activescott/auth"
-import { createLoginFormFields, getSession } from "~/lib/auth.server"
-import { AntiBotFields } from "~/components/anti-bot-fields"
+import {
+  usePasskeySignIn,
+  usePreservedInput,
+  useTurnstile,
+} from "@activescott/auth-adapter-react-router/client"
+import { getSession, signInLoader } from "~/lib/auth.server"
+import { passkeys } from "~/lib/passkey.client"
+import {
+  AntiBotFields,
+  AntiBotSubmitButton,
+} from "~/components/anti-bot-fields"
 import { CodeForm } from "~/components/code-form"
 import { TabLink } from "~/components/tab-link"
-import { usePreservedInput } from "~/hooks/use-preserved-input"
 import type { Route } from "./+types/login"
 
 export async function loader({ request }: Route.LoaderArgs) {
   const session = await getSession(request)
   if (session) throw redirect("/dashboard")
 
-  const url = new URL(request.url)
-  const errorCode = url.searchParams.get("error")
-  // Minted per render: the abuse checks compare this against submit time
-  const antiBot = await createLoginFormFields()
-  return {
-    antiBot,
-    // Which provider's form to show. The provider redirects back to the
-    // page the form was posted from (via Referer), so ?via=sms survives
-    // the round trip: /login?via=sms → initiate → /login?via=sms&sent=1.
-    via: url.searchParams.get("via") === "sms" ? "sms" : "email",
-    sent: url.searchParams.get("sent") === "1",
-    error: errorCode ? getAuthErrorMessage(errorCode) : null,
-  }
+  // Everything the page renders from: which provider's form to show (?via=,
+  // which survives the round trip because the provider redirects back to the
+  // page the form was posted from: /login?via=sms → initiate →
+  // /login?via=sms&sent=1), whether a message went out (?sent=1), the error
+  // message for ?error=, and the anti-bot form token, minted per render
+  // because the abuse checks compare it against submit time.
+  return signInLoader(request)
 }
 
 export default function Login({ loaderData }: Route.ComponentProps) {
-  const { via, sent, error, antiBot } = loaderData
+  const { via, sent, error, formToken, turnstileSiteKey } = loaderData
+  const formProps = { sent, formToken, turnstileSiteKey }
 
   return (
     <main className="container mx-auto p-8 max-w-sm">
@@ -43,10 +44,10 @@ export default function Login({ loaderData }: Route.ComponentProps) {
         </TabLink>
       </nav>
 
-      {via === "email" ? (
-        <EmailLogin sent={sent} antiBot={antiBot} />
+      {via === "sms" ? (
+        <SmsLogin {...formProps} />
       ) : (
-        <SmsLogin sent={sent} antiBot={antiBot} />
+        <EmailLogin {...formProps} />
       )}
 
       {error && <p className="text-red-700 mt-3">Error: {error}</p>}
@@ -66,85 +67,35 @@ export default function Login({ loaderData }: Route.ComponentProps) {
 
 interface LoginFormProps {
   sent: boolean
-  antiBot: { formToken: string; turnstileSiteKey: string | null }
+  formToken: string
+  turnstileSiteKey: string | null
 }
 
 /** Start a conditional (autofill) passkey request when the login page loads */
 const OFFER_PASSKEY_AUTOFILL = false
 
 function PasskeyLogin() {
-  const [error, setError] = useState<string | null>(null)
-
-  // Conditional UI: offer passkeys in the browser's autofill on the
-  // email input (autoComplete="username webauthn"). The request stays
-  // pending until the user picks a passkey there; clicking the passkey
-  // button below aborts it and runs the modal flow instead.
+  // autofill offers passkeys in the browser's autofill on the email input
+  // (autoComplete="username webauthn"); clicking the button aborts that
+  // pending request and runs the modal flow instead. Off here for the reason
+  // on the hook's option: password manager extensions commonly answer the
+  // pending request with their own dialog the moment the page loads. Turn it
+  // on if your users' browsers handle it natively.
   //
-  // Off by default. The spec intends this to be silent — passkeys appear as
-  // autofill suggestions and nothing interrupts the page — but password
-  // manager extensions commonly answer the pending request with their own
-  // dialog the moment the page loads, which reads as an unsolicited prompt
-  // to sign in. Turn it on if your users' browsers handle it natively.
-  useEffect(() => {
-    if (!OFFER_PASSKEY_AUTOFILL) return
-
-    async function offerPasskeyAutofill() {
-      const { signInWithPasskey, isConditionalUIAvailable } =
-        await import("~/lib/passkey.client")
-      if (!(await isConditionalUIAvailable())) return
-      try {
-        await signInWithPasskey(true)
-        // Full page load: fresh server render with the new session
-        window.location.assign("/dashboard")
-      } catch (caught) {
-        // DOMExceptions are ceremony noise the user never initiated
-        // (aborted by the button's modal flow, dismissed, or the
-        // browser not supporting conditional requests). A plain Error
-        // is the server rejecting a completed assertion — e.g. an
-        // orphaned credential after a dev-server restart — and the
-        // user did act on that one, so show it.
-        if (caught instanceof Error && !(caught instanceof DOMException)) {
-          setError(caught.message)
-        }
-      }
-    }
-    // The timeout makes React StrictMode's dev-only mount→unmount→remount
-    // start exactly ONE WebAuthn ceremony (the first mount's timer is
-    // cleared before it fires). Start-abort-start cycles broke sign-in
-    // two ways: the user could pick a passkey on the aborted ceremony,
-    // whose completion handler never navigates; and 1Password's
-    // extension ignores AbortController on conditional requests
-    // (acknowledged, unfixed: https://www.1password.community/1password-at-home-31/passkey-authentication-doesn-t-abort-on-signal-2930),
-    // so each aborted ceremony strands a 1Password-internal one that
-    // later surfaces "1Password encountered a problem" even when
-    // sign-in succeeded.
-    const timer = setTimeout(() => void offerPasskeyAutofill(), 0)
-    return () => clearTimeout(timer)
-  }, [])
-
-  async function handleClick() {
-    setError(null)
-    try {
-      const { signInWithPasskey } = await import("~/lib/passkey.client")
-      // Starting the modal ceremony aborts the pending conditional one
-      // (required by WebAuthn). Because of the 1Password abort bug cited
-      // above, 1Password may show its "encountered a problem" toast on
-      // this path even when sign-in succeeds — not fixable site-side.
-      await signInWithPasskey()
-      // Full page load: fresh server render with the new session
-      window.location.assign("/dashboard")
-    } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Passkey sign-in failed",
-      )
-    }
-  }
+  // On success the hook does a full page load of redirectTo, so the
+  // dashboard renders on the server with the new session.
+  const passkey = usePasskeySignIn({
+    client: passkeys,
+    redirectTo: "/dashboard",
+    autofill: OFFER_PASSKEY_AUTOFILL,
+  })
 
   return (
     <div className="mt-6 pt-4 border-t">
       <button
         type="button"
-        onClick={handleClick}
+        onClick={passkey.signIn}
+        disabled={passkey.pending}
         className="w-full border py-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800"
       >
         Sign in with a passkey
@@ -154,17 +105,20 @@ function PasskeyLogin() {
         time? Sign in with your email or mobile number above, then add a passkey
         from the dashboard.
       </p>
-      {error && (
+      {passkey.error && (
         <p className="text-red-700 mt-3" data-testid="passkey-error">
-          Error: {error}
+          Error: {passkey.error}
         </p>
       )}
     </div>
   )
 }
 
-function EmailLogin({ sent, antiBot }: LoginFormProps) {
+function EmailLogin({ sent, formToken, turnstileSiteKey }: LoginFormProps) {
+  // The page reloads on the way back from the provider; this brings the
+  // address back so the user can resend without retyping it
   const [email, setEmail, saveEmail] = usePreservedInput("login.email")
+  const turnstile = useTurnstile(turnstileSiteKey)
 
   return (
     <>
@@ -178,12 +132,14 @@ function EmailLogin({ sent, antiBot }: LoginFormProps) {
         className="flex flex-col gap-3"
         onSubmit={saveEmail}
       >
-        <AntiBotFields {...antiBot} />
+        <AntiBotFields formToken={formToken} turnstile={turnstile} />
         <label htmlFor="email">Email</label>
         <input
           id="email"
           name="email"
           type="email"
+          pattern=".+@.+\..+"
+          title="Enter a full email address, e.g. name@example.com"
           // "webauthn" lets the browser offer passkeys in the autofill
           // dropdown on this field (conditional UI)
           autoComplete="username webauthn"
@@ -192,12 +148,9 @@ function EmailLogin({ sent, antiBot }: LoginFormProps) {
           onChange={(event) => setEmail(event.target.value)}
           className="border p-2 rounded"
         />
-        <button
-          type="submit"
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-        >
+        <AntiBotSubmitButton turnstile={turnstile}>
           {sent ? "Resend" : "Send magic link"}
-        </button>
+        </AntiBotSubmitButton>
       </Form>
 
       {sent && (
@@ -225,12 +178,13 @@ function EmailLogin({ sent, antiBot }: LoginFormProps) {
   )
 }
 
-function SmsLogin({ sent, antiBot }: LoginFormProps) {
+function SmsLogin({ sent, formToken, turnstileSiteKey }: LoginFormProps) {
   // The visible input takes the national number; the hidden field submits
   // the full E.164 value the provider expects. This example is wired for
   // US/Canada numbers (fixed +1) — adapt the prefix for your market.
   const [nationalNumber, setNationalNumber, savePhone] =
     usePreservedInput("login.phone")
+  const turnstile = useTurnstile(turnstileSiteKey)
 
   return (
     <>
@@ -244,7 +198,7 @@ function SmsLogin({ sent, antiBot }: LoginFormProps) {
         className="flex flex-col gap-3"
         onSubmit={savePhone}
       >
-        <AntiBotFields {...antiBot} />
+        <AntiBotFields formToken={formToken} turnstile={turnstile} />
         <label htmlFor="phone">Mobile phone number</label>
         <div className="flex rounded border focus-within:ring-2 focus-within:ring-blue-600">
           <span className="flex items-center px-3 bg-gray-100 text-gray-600 border-r rounded-l select-none">
@@ -263,12 +217,9 @@ function SmsLogin({ sent, antiBot }: LoginFormProps) {
           />
         </div>
         <input type="hidden" name="phone" value={`+1${nationalNumber}`} />
-        <button
-          type="submit"
-          className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-        >
+        <AntiBotSubmitButton turnstile={turnstile}>
           {sent ? "Resend code" : "Text me a code"}
-        </button>
+        </AntiBotSubmitButton>
       </Form>
 
       {sent && (

@@ -1,60 +1,21 @@
-import {
-  startRegistration,
-  startAuthentication,
-  isConditionalUIAvailable,
-} from "@activescott/auth-provider-passkey/browser"
-
-export { isConditionalUIAvailable }
+import { createPasskeyClient } from "@activescott/auth-provider-passkey/browser"
 
 /**
- * Add a passkey to the signed-in user: fetch registration options, run
- * the WebAuthn ceremony, and post the result back for verification.
- * Throws when the user cancels or the server rejects the registration.
+ * The passkey client: each method fetches options from the provider, runs
+ * the WebAuthn ceremony, and posts the result back. The default basePath
+ * ("/auth") matches where app/routes/auth.$provider.$action.tsx mounts the
+ * endpoints. Pages hand it to the adapter's usePasskeySignIn and
+ * useRegisterPasskey hooks, which take the client as a parameter so the
+ * adapter does not depend on the passkey package.
+ *
+ * The `.client` suffix keeps this browser-only module out of the server
+ * bundle. Pages still import it directly: on the server the export is
+ * undefined, and the hooks only call it from click handlers and effects,
+ * which never run there.
+ *
+ * Rejections from the server surface as an Error whose message is the
+ * specific reason — e.g. "Unknown credential" for a passkey saved in a
+ * password manager that the server no longer knows, common here because
+ * the example's stores reset on restart.
  */
-export async function registerPasskey(): Promise<void> {
-  const options = await postJson<Parameters<typeof startRegistration>[0]>(
-    "/auth/passkey/register-options",
-  )
-  const registration = await startRegistration(options)
-  await postJson("/auth/passkey/register-verify", registration)
-}
-
-/**
- * Sign in with a passkey. Pass conditional=true for the autofill flow
- * (the promise stays pending until the user picks a passkey from the
- * autofill suggestions). On success the session cookie is set; the
- * caller navigates.
- */
-export async function signInWithPasskey(conditional = false): Promise<void> {
-  const options = await postJson<Parameters<typeof startAuthentication>[0]>(
-    "/auth/passkey/authenticate-options",
-  )
-  const assertion = await startAuthentication(options, { conditional })
-  await postJson("/auth/passkey/authenticate-verify", assertion)
-}
-
-async function postJson<T>(url: string, body?: object): Promise<T> {
-  const response = await fetch(url, {
-    method: "POST",
-    ...(body && {
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  })
-  const json = await response.json().catch(() => null)
-  if (!response.ok) {
-    // Prefer the specific reason (e.g. "Unknown credential" — a passkey
-    // saved in a password manager that the server no longer knows,
-    // common here because the example's stores reset on restart).
-    const message =
-      (json && typeof json.error?.details?.reason === "string"
-        ? json.error.details.reason
-        : undefined) ??
-      (json && typeof json.error?.message === "string"
-        ? json.error.message
-        : undefined) ??
-      `Request to ${url} failed (${response.status})`
-    throw new Error(message)
-  }
-  return json
-}
+export const passkeys = createPasskeyClient()

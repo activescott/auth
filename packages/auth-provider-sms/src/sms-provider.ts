@@ -1,6 +1,7 @@
 import type {
   AuthProvider,
   AuthContext,
+  AuthLogger,
   AuthResult,
   AuthInitResult,
   ChallengeStore,
@@ -63,6 +64,7 @@ export class SmsProvider implements AuthProvider {
   public readonly id = "sms"
   public readonly name = "SMS"
   public readonly initiateSentMessage = "Code sent. Check your phone."
+  public readonly consultsInitiateGate = true
 
   public constructor(
     private readonly config: SmsProviderConfig,
@@ -90,6 +92,7 @@ export class SmsProvider implements AuthProvider {
           AuthErrors.invalidCredentials({
             reason: "Phone number is required",
           }),
+          context.logger,
         )
       }
 
@@ -101,6 +104,7 @@ export class SmsProvider implements AuthProvider {
             reason:
               "Enter the phone number in international format, e.g. +14155550100",
           }),
+          context.logger,
         )
       }
 
@@ -117,6 +121,7 @@ export class SmsProvider implements AuthProvider {
             AuthErrors.sessionInvalid({
               reason: "Sign in before linking a phone number",
             }),
+            context.logger,
           )
         }
         linkUserId = session.user.id
@@ -126,8 +131,22 @@ export class SmsProvider implements AuthProvider {
       // A throttled request gets the same answer as a sent one.
       const decision = await context.abuse?.checkIdentifier(this.id, phone)
       if (decision?.allowed === false) {
-        return initiateAccepted(request, this.initiateSentMessage)
+        return initiateAccepted(
+          request,
+          this.initiateSentMessage,
+          [],
+          context.logger,
+        )
       }
+
+      // The application's own policy (allowlist, invite-only beta) sees the
+      // number only now that it is validated, so it never acts on a malformed one.
+      const gated = await context.gate?.check({
+        provider: this.id,
+        identifier: phone,
+        mode: linkUserId ? "link" : "signin",
+      })
+      if (gated) return gated
 
       const challengeId = crypto.randomUUID()
       const expirySeconds = parseDuration(this.config.expiry ?? DEFAULT_EXPIRY)
@@ -150,6 +169,7 @@ export class SmsProvider implements AuthProvider {
             AuthErrors.providerError(
               started.message ?? "Failed to send the code",
             ),
+            context.logger,
           )
         }
 
@@ -181,6 +201,7 @@ export class SmsProvider implements AuthProvider {
           return this.initiateFailure(
             request,
             AuthErrors.providerError("Failed to send the code"),
+            context.logger,
           )
         }
       }
@@ -192,9 +213,12 @@ export class SmsProvider implements AuthProvider {
         context.baseUrl,
       )
 
-      return initiateAccepted(request, this.initiateSentMessage, [
-        challengeCookie,
-      ])
+      return initiateAccepted(
+        request,
+        this.initiateSentMessage,
+        [challengeCookie],
+        context.logger,
+      )
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Error in sms provider initiate:", error)
@@ -203,6 +227,7 @@ export class SmsProvider implements AuthProvider {
         AuthErrors.providerError(
           error instanceof Error ? error.message : "Unknown error",
         ),
+        context.logger,
       )
     }
   }
@@ -439,12 +464,13 @@ export class SmsProvider implements AuthProvider {
   private initiateFailure(
     request: Request,
     error: ReturnType<typeof AuthErrors.invalidCredentials>,
+    logger?: AuthLogger,
   ): AuthInitResult | Response {
     if (isBrowserFormPost(request)) {
       return new Response(null, {
         status: 302,
         headers: {
-          Location: buildReturnUrl(request, { error: error.code }),
+          Location: buildReturnUrl(request, { error: error.code }, logger),
         },
       })
     }

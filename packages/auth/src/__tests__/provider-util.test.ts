@@ -10,6 +10,7 @@ import {
   authenticateWithIdentifier,
   completeLinkVerification,
   linkUserIdFromChallenge,
+  resolveRedirectTarget,
 } from "../provider-util.js"
 import type { AuthContext, Identity } from "../types.js"
 import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
@@ -111,6 +112,194 @@ describe("buildReturnUrl", () => {
     const url = new URL(buildReturnUrl(request, { error: "RATE_LIMITED" }))
     expect(url.pathname).toBe("/login")
     expect(url.searchParams.get("error")).toBe("RATE_LIMITED")
+  })
+
+  it("should fall back to /login when the referer is another origin", () => {
+    const request = new Request(TEST_URL, {
+      headers: { Referer: "https://other.example/login" },
+    })
+    const url = new URL(buildReturnUrl(request, { error: "RATE_LIMITED" }))
+    expect(url.origin).toBe("https://example.com")
+    expect(url.pathname).toBe("/login")
+  })
+})
+
+describe("resolveRedirectTarget", () => {
+  const FALLBACK = "/dashboard"
+
+  it("should keep a same-origin path with its query and hash", () => {
+    expect(
+      resolveRedirectTarget("/settings?tab=email#top", TEST_URL, FALLBACK),
+    ).toBe("/settings?tab=email#top")
+  })
+
+  it("should reduce an absolute same-origin URL to a path", () => {
+    expect(
+      resolveRedirectTarget(
+        "https://example.com/settings?tab=email",
+        TEST_URL,
+        FALLBACK,
+      ),
+    ).toBe("/settings?tab=email")
+  })
+
+  it("should use the fallback for another origin", () => {
+    expect(
+      resolveRedirectTarget("https://other.example/x", TEST_URL, FALLBACK),
+    ).toBe(FALLBACK)
+  })
+
+  it("should use the fallback for a protocol-relative destination", () => {
+    expect(resolveRedirectTarget("//other.example", TEST_URL, FALLBACK)).toBe(
+      FALLBACK,
+    )
+  })
+
+  it("should use the fallback for a backslash-prefixed destination", () => {
+    expect(resolveRedirectTarget("/\\other.example", TEST_URL, FALLBACK)).toBe(
+      FALLBACK,
+    )
+    expect(resolveRedirectTarget("\\/other.example", TEST_URL, FALLBACK)).toBe(
+      FALLBACK,
+    )
+  })
+
+  it("should use the fallback for a javascript: destination", () => {
+    expect(
+      resolveRedirectTarget("javascript:alert(1)", TEST_URL, FALLBACK),
+    ).toBe(FALLBACK)
+  })
+
+  it("should use the fallback for empty and unparseable input", () => {
+    expect(resolveRedirectTarget(undefined, TEST_URL, FALLBACK)).toBe(FALLBACK)
+    expect(resolveRedirectTarget(null, TEST_URL, FALLBACK)).toBe(FALLBACK)
+    expect(resolveRedirectTarget("", TEST_URL, FALLBACK)).toBe(FALLBACK)
+    expect(resolveRedirectTarget("/ok", "not a url", FALLBACK)).toBe(FALLBACK)
+  })
+})
+
+describe("resolveRedirectTarget logging", () => {
+  const FALLBACK = "/dashboard"
+
+  function recordingLogger(): {
+    warn: (message: string, context?: Record<string, unknown>) => void
+    calls: { message: string; context?: Record<string, unknown> }[]
+  } {
+    const calls: { message: string; context?: Record<string, unknown> }[] = []
+    return {
+      calls,
+      warn: (message, context) => calls.push({ message, context }),
+    }
+  }
+
+  it("should warn once with the source and the origin of the declined value", () => {
+    const logger = recordingLogger()
+    expect(
+      resolveRedirectTarget("https://other.example/x", TEST_URL, FALLBACK, {
+        logger,
+        source: "redirectTo",
+      }),
+    ).toBe(FALLBACK)
+    expect(logger.calls).toHaveLength(1)
+    expect(logger.calls[0]?.context).toMatchObject({
+      source: "redirectTo",
+      reason: "other-origin",
+      origin: "https://other.example",
+      fallback: FALLBACK,
+    })
+  })
+
+  it("should keep the declined value's path and query out of the log", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget(
+      "https://other.example/collect?key=s3cret-link-key",
+      TEST_URL,
+      FALLBACK,
+      { logger, source: "redirectTo" },
+    )
+    expect(JSON.stringify(logger.calls)).not.toContain("s3cret-link-key")
+  })
+
+  it("should leave the fallback out when the caller has none yet", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget("https://other.example/x", TEST_URL, "", {
+      logger,
+      source: "redirectTo",
+    })
+    expect(logger.calls[0]?.context).not.toHaveProperty("fallback")
+  })
+
+  it("should report the scheme when that is what was wrong", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget("javascript:alert(1)", TEST_URL, FALLBACK, {
+      logger,
+      source: "redirectTo",
+    })
+    expect(logger.calls[0]?.context).toMatchObject({
+      reason: "scheme",
+      scheme: "javascript:",
+    })
+  })
+
+  it("should warn for an unparseable value", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget("/ok", "not a url", FALLBACK, { logger })
+    expect(logger.calls[0]?.context).toMatchObject({ reason: "unparseable" })
+  })
+
+  it("should stay quiet for a destination on this origin", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget("/settings?tab=email", TEST_URL, FALLBACK, { logger })
+    resolveRedirectTarget("https://example.com/settings", TEST_URL, FALLBACK, {
+      logger,
+    })
+    expect(logger.calls).toEqual([])
+  })
+
+  it("should stay quiet when there is no destination to decline", () => {
+    const logger = recordingLogger()
+    resolveRedirectTarget(undefined, TEST_URL, FALLBACK, { logger })
+    resolveRedirectTarget(null, TEST_URL, FALLBACK, { logger })
+    resolveRedirectTarget("", TEST_URL, FALLBACK, { logger })
+    expect(logger.calls).toEqual([])
+  })
+
+  it("should log nowhere when no logger is configured", () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      expect(
+        resolveRedirectTarget("https://other.example/x", TEST_URL, FALLBACK),
+      ).toBe(FALLBACK)
+      expect(
+        resolveRedirectTarget("https://other.example/x", TEST_URL, FALLBACK, {
+          source: "redirectTo",
+        }),
+      ).toBe(FALLBACK)
+      expect(consoleWarn).not.toHaveBeenCalled()
+    } finally {
+      consoleWarn.mockRestore()
+    }
+  })
+
+  it("should name the Referer as the source from buildReturnUrl", () => {
+    const logger = recordingLogger()
+    const request = new Request(TEST_URL, {
+      headers: { Referer: "https://other.example/login" },
+    })
+    const url = new URL(buildReturnUrl(request, { sent: "1" }, logger))
+    expect(url.pathname).toBe("/login")
+    expect(logger.calls).toHaveLength(1)
+    expect(logger.calls[0]?.context).toMatchObject({
+      source: "Referer",
+      reason: "other-origin",
+      origin: "https://other.example",
+    })
+  })
+
+  it("should stay quiet from buildReturnUrl when there is no Referer", () => {
+    const logger = recordingLogger()
+    buildReturnUrl(new Request(TEST_URL), { sent: "1" }, logger)
+    expect(logger.calls).toEqual([])
   })
 })
 
@@ -221,6 +410,42 @@ describe("authenticateWithIdentifier", () => {
       "identity-1",
       expect.objectContaining({ verifiedAt: expect.any(Date) }),
     )
+  })
+
+  it("should return the identity as the store holds it after the update", async () => {
+    // a store that persists, so verifiedAt is absent until the update lands
+    const stored = new Map<string, Identity>()
+    const context = createMockContext({
+      userStore: {
+        findById: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: "user-1" }),
+      },
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn(async () => {
+          const identity = createMockIdentity({ verifiedAt: undefined })
+          stored.set(identity.id, identity)
+          return identity
+        }),
+        update: vi.fn(async (id: string, data: Partial<Identity>) => {
+          const updated = { ...stored.get(id)!, ...data }
+          stored.set(id, updated)
+          return updated
+        }),
+      },
+    })
+
+    const result = await authenticateWithIdentifier(
+      "sms",
+      "+14155550100",
+      context,
+    )
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.identity.verifiedAt).toBeInstanceOf(Date)
+    expect(result.identity).toEqual(stored.get(result.identity.id))
   })
 
   it("should fail when the identity's user no longer exists", async () => {

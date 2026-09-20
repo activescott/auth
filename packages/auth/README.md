@@ -63,10 +63,14 @@ npm install @activescott/auth
 | `IdentityStore`, `UserStore`                                      | Interfaces you implement to plug in your database.                                                                    |
 | `ChallengeStore`, `InMemoryChallengeStore`                        | Storage for short-lived, single-use challenges (see below).                                                           |
 | `AbuseConfig`, `RateLimitStore`, `InMemoryRateLimitStore`         | Abuse protection for the initiate endpoints — on by default (see below).                                              |
+| `InitiateGate`                                                    | Your own policy on who may start a sign-in or link (see below).                                                       |
+| `createWaitlist`, `waitlistNotificationEmail`                     | Waitlist with admin approval, built on the initiate gate (see below).                                                 |
 | `BotCheckProvider`, `createFormToken`, `FORM_TOKEN_FIELD`         | Bot-check interface and the login form's anti-bot fields.                                                             |
 | `generateOtpCode`, `hashOtpCode`, `verifyOtpCode`                 | One-time-code utilities used by OTP-capable providers.                                                                |
 | `AuthUser`, `Identity`, `Session`, `AuthResult`, `AuthInitResult` | Core data types.                                                                                                      |
 | `AuthErrors`, `getAuthErrorMessage`, `AUTH_ERROR_CODES`           | Structured error helpers.                                                                                             |
+
+Plus the `@activescott/auth/admin` subpath: admin dashboard data and the admin allowlist check (see [Admin subpath](#admin-subpath)).
 
 ## Data model
 
@@ -97,6 +101,24 @@ const auth = new Auth({
 ```
 
 Then call `auth.handleRequest(request)` from your framework's routing layer (or use a framework adapter), and `auth.verifySession(request)` to check the session cookie on protected routes.
+
+## Session cache
+
+`verifySession` keeps each verified session in memory for two minutes, so a page whose loaders each ask who is signed in costs one pair of store reads instead of one per loader. What you pay for it is staleness: for up to two minutes after you block or delete someone, their requests still verify.
+
+`session.cacheTtlMs` is that window in milliseconds, and `0` turns the cache off so every request reads your stores:
+
+```ts
+session: {
+  secret: process.env.JWT_SECRET!,
+  maxAge: "30d",
+  cookieName: "session",
+  cookie: { secure: true, sameSite: "lax", path: "/" },
+  cacheTtlMs: 0, // block a user, and their next request is signed out
+}
+```
+
+With the cache on, it holds at most 10,000 sessions and evicts the oldest past that, so a burst of sign-ins between sweeps cannot grow it without limit. Nothing is shared between instances: an entry is only ever a repeat of what that process's stores just said.
 
 ## ChallengeStore
 
@@ -195,6 +217,134 @@ abuse: {
 ```
 
 Implement `BotCheckProvider` (`{ id, verify({ request, body, ip, providerId }) }`) to add your own.
+
+## Initiate gate
+
+An invite-only beta, an allowlist, or a blocked domain is a rule about _who_ may be sent a sign-in message. Put it in `gate.onInitiate` rather than in a preamble in your auth route:
+
+```ts
+const auth = new Auth({
+  // ...
+  gate: {
+    async onInitiate({ provider, identifier, mode, request }) {
+      if (mode === "link") return "allow" // already signed in
+      if (await invites.has(provider, identifier)) return "allow"
+      return { redirect: "/waitlist" }
+    },
+  },
+})
+```
+
+The gate runs inside `handleRequest`, after the provider has parsed, normalized, and validated the identifier (`User@Example.com ` arrives as `user@example.com`, a phone number as E.164) and before anything is created or sent. A malformed identifier is rejected by the provider first, so the gate never acts on one. `mode` is `"signin"` or `"link"` (see [linking identities](../../README.md#linking-identities--account-merge)); `request` is a clone of the initiate request, for headers or cookies.
+
+Return one of:
+
+- `"allow"` — send as usual.
+- `{ redirect: "/waitlist" }` — send nothing and answer with a 302 to that URL, for every caller.
+- `{ error: AuthErrors.invalidCredentials({ reason: "Invite only" }) }` — send nothing and fail like any other initiate: a browser form post goes back to the submitting page with `?error=<code>`, a fetch caller gets the error as JSON.
+
+A gate that throws fails the initiate. Per-IP and per-recipient abuse limits run before the gate, so a throttled request still gets the silent "sent" answer.
+
+The built-in email and SMS providers consult the gate. With `gate` set, `new Auth` throws if any provider that serves an initiate route does not declare `consultsInitiateGate: true` — an older provider package would otherwise skip your policy without a trace. A custom provider opts in by calling `context.gate?.check({ provider, identifier, mode })` once its identifier is valid, returning the result when there is one, and setting `consultsInitiateGate = true`.
+
+## Admin subpath
+
+`@activescott/auth/admin` is what the admin dashboard is built from, with no framework in it:
+
+| Export                         | Purpose                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------ |
+| `createAdminData(auth)`        | `{ listUsers, describeConfig }` over your stores, as plain serializable rows.        |
+| `createAdminPredicate(admins)` | Builds the allowlist check from a delimited string, an array, or your own predicate. |
+| `isAdminUser(auth, user)`      | Answers that check for one user against `AUTH_ADMIN_IDENTIFIERS`.                    |
+
+The allowlist is email addresses and E.164 phone numbers, separated by commas or whitespace, matched against **every** identity a user owns. An allowlisted address therefore admits its owner even when they signed in by SMS. An empty or missing allowlist admits nobody.
+
+```ts
+import { isAdminUser } from "@activescott/auth/admin"
+
+const session = await auth.verifySession(request)
+if (!session || !(await isAdminUser(auth, session.user))) {
+  return new Response("Not Found", { status: 404 })
+}
+```
+
+`isAdminUser` reads the environment allowlist and loads the user's identities on each call. When the list comes from somewhere else, build the check with `createAdminPredicate(admins)` and hand it the user's identities yourself (`identityStore.findByUserId(user.id)`). The React Router adapter's dashboard uses these, so a page you gate yourself and the dashboard agree on who is an admin.
+
+## Logging
+
+Redirect destinations reach the library from `?redirectTo=`, form fields, and the `Referer` header. One that names another origin or another scheme is declined and a configured path is used instead, which is otherwise invisible to your app: a stale link or a proxy rewriting `Referer` shows up only as users landing somewhere unexpected. Give the library somewhere to say so:
+
+```ts
+const auth = new Auth({
+  // ...
+  logger: console, // or { warn: (message, context) => log.warn(context, message) }
+})
+```
+
+Each declined destination logs one WARN naming the parameter it came from and that value's origin. The value itself is never logged, because a magic-link URL carries a single-use key in its query:
+
+```
+[auth] redirect destination declined, using fallback { source: 'redirectTo', fallback: '/', reason: 'other-origin', origin: 'https://other.example' }
+```
+
+`logger` is optional and nothing is logged through it when it is absent. Providers receive it as `AuthContext.logger`, and framework adapters read it off the `Auth` instance (`auth.getLogger()`), so configuring it here covers the whole flow. Abuse blocks are separate: those always go to `console.warn`, plus `abuse.onBlocked` if you set it.
+
+## Waitlist
+
+`createWaitlist` is an initiate gate for apps that approve new users by hand. An identifier without an account gets a PENDING user and lands on your waitlist page instead of receiving a code; admins hear about it through `notify`; an admin approves or blocks from the dashboard. Approved users sign in as usual.
+
+The status lives in your database, behind an `ApprovalStore`. Its values, `"PENDING" | "APPROVED" | "BLOCKED"`, match the enum apps usually already have:
+
+```ts
+import { createWaitlist, waitlistNotificationEmail } from "@activescott/auth"
+
+export const waitlist = createWaitlist({
+  identityStore,
+  userStore,
+  approvalStore: {
+    getApprovalStatus: async (userId) =>
+      (await db.user.findUnique({ where: { id: userId } }))?.approvalStatus ??
+      null,
+    setApprovalStatus: async (userId, approvalStatus) => {
+      await db.user.update({ where: { id: userId }, data: { approvalStatus } })
+    },
+  },
+  waitlistUrl: "/waitlist",
+  blockedUrl: "/login?error=blocked", // defaults to waitlistUrl
+  // App rules that skip the waitlist. Never consulted for BLOCKED users.
+  autoApprove: ({ identifier }) => autoApproved.has(identifier),
+  notify: (notice) =>
+    transporter.sendMail({
+      ...waitlistNotificationEmail(notice, {
+        appName: "Fernfiles",
+        domain: "fernfiles.com",
+        from: "noreply@fernfiles.com",
+      }),
+      to: adminEmails,
+    }),
+  logger: console,
+})
+
+const auth = new Auth({ /* ... */ gate: waitlist })
+```
+
+A new user's identity row is created at initiate, with the same calls the verify step would make, so the admin dashboard lists them before they ever get a code and verify finds that row instead of creating a second user. `notify` fires once when a user joins the waitlist (`reason: "waitlisted"`) and whenever `autoApprove` lets someone in (`reason: "auto-approved"`); a throw there is logged and does not fail the sign-in. The email is plain and generic on purpose: app name, domain, sender, and a link to `/admin/users` (`adminPath` changes it). Sending it is yours, so the core takes no mail dependency.
+
+A user with no recorded status counts as not approved. Mark existing users APPROVED before turning the waitlist on.
+
+The gate only sees email and SMS sign-ins, and only at initiate. Passkey sign-ins and a user you block after they signed in need a per-request check; `waitlist.redirectFor(userId)` returns null for approved users and the URL to send anyone else to. With the React Router adapter:
+
+```ts
+createAuthHandlers(auth, {
+  // ...
+  onSessionVerified: async ({ user }) => {
+    const to = await waitlist.redirectFor(user.id)
+    if (to) return logout(to)
+  },
+})
+```
+
+For the dashboard, render approve and block buttons in `AdminUsersPage`'s `rowActions` as forms posting `userId` and `intent` (`"approve"` or `"block"`) to your admin route, and in that route's action call `waitlist.handleAdminAction(await request.formData())` after checking the caller is an admin. `waitlist.approve(userId)` and `waitlist.block(userId)` do the same from your own code. The form has no CSRF token of its own; it relies on the session cookie being `SameSite=Lax` or stricter, as the example configures. The [example app](../../examples/react-router/app/routes/admin.users.tsx) has the whole flow.
 
 ## License
 

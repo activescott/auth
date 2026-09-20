@@ -2,7 +2,10 @@ import {
   Auth,
   InMemoryChallengeStore,
   buildReturnUrl,
-  createFormToken,
+  resolveRedirectTarget,
+  createWaitlist,
+  waitlistNotificationEmail,
+  type ApprovalStore,
   type AuthUser,
   type Identity,
   type IdentityStore,
@@ -25,12 +28,15 @@ import {
 } from "@activescott/auth-sms-twilio"
 import {
   PasskeyProvider,
-  parsePasskeyCredentialMetadata,
+  listPasskeys,
 } from "@activescott/auth-provider-passkey"
 import { CaptureEmailTransport } from "@activescott/auth-provider-email/testing"
 import { CaptureSmsTransport } from "@activescott/auth-provider-sms/testing"
 import { TurnstileBotCheck } from "@activescott/auth-botcheck-turnstile"
-import { createAuthHandlers } from "@activescott/auth-adapter-react-router"
+import {
+  createAuthHandlers,
+  createAuthPageLoaders,
+} from "@activescott/auth-adapter-react-router"
 import { createAdminHandlers } from "@activescott/auth-adapter-react-router/admin"
 
 /** Set TURNSTILE_SECRET_KEY (and TURNSTILE_SITE_KEY) to turn Turnstile on */
@@ -82,6 +88,10 @@ const userStore: UserStore = {
     const wantedProvider = filter?.signedUpWith
     if (wantedProvider) {
       all = all.filter((user) => user.metadata?.signedUpWith === wantedProvider)
+    }
+    const wantedStatus = filter?.approvalStatus
+    if (wantedStatus) {
+      all = all.filter((user) => user.metadata?.approvalStatus === wantedStatus)
     }
 
     const direction = sortOrder === "asc" ? 1 : -1
@@ -180,56 +190,68 @@ const SESSION_SECRET =
   process.env.JWT_SECRET ?? "dev-only-session-secret-do-not-use-in-production"
 
 /**
- * The signed-in user's passkeys for the dashboard list. Passkeys are
- * ordinary identity rows ({provider: "passkey"}) whose provider-owned
- * providerState holds the credential state; a restart wipes the in-memory
- * store, orphaning any passkeys saved in the browser/password manager
- * for localhost (delete those there when it happens).
+ * Each user's waitlist status. A real app keeps it in a column on the user
+ * row (`approvalStatus`, often a Prisma enum with these same three values).
+ * Here it goes in metadata, which also makes it a column on the admin page.
  */
-export async function listPasskeys(userId: string): Promise<
-  {
-    credentialId: string
-    nickname: string | null
-    synced: boolean
-    createdAt: string
-    lastUsedAt: string | null
-  }[]
-> {
-  const all = await identityStore.findByUserId(userId)
-  const passkeys = []
-  for (const identity of all) {
-    if (identity.provider !== "passkey") continue
-    const credential = parsePasskeyCredentialMetadata(identity.providerState)
-    if (!credential) continue
-    passkeys.push({
-      credentialId: identity.identifier,
-      nickname: credential.nickname ?? null,
-      // "multiDevice" = synced to a cloud keychain / password manager
-      synced: credential.deviceType === "multiDevice",
-      createdAt: identity.createdAt.toISOString(),
-      lastUsedAt: credential.lastUsedAt ?? null,
-    })
-  }
-  return passkeys
+const approvalStore: ApprovalStore = {
+  async getApprovalStatus(userId) {
+    const status = users.get(userId)?.metadata?.approvalStatus
+    return status === "PENDING" || status === "APPROVED" || status === "BLOCKED"
+      ? status
+      : null
+  },
+  async setApprovalStatus(userId, approvalStatus) {
+    const user = users.get(userId)
+    if (!user) throw new Error(`User ${userId} not found`)
+    user.metadata = { ...user.metadata, approvalStatus }
+  },
 }
 
+/** The admin allowlist, which also decides who skips the waitlist */
+const adminIdentifiers = (process.env.AUTH_ADMIN_IDENTIFIERS ?? "")
+  .split(/[,\s]+/)
+  .map((entry) => entry.trim().toLowerCase())
+  .filter((entry) => entry.length > 0)
+
 /**
- * The signed-in user's email and phone sign-in methods for the dashboard
- * list. Passkeys are identity rows too but have their own section (see
- * listPasskeys).
+ * Sign-ups wait for an admin only when WAITLIST=true (see .env.example), so
+ * the example still lets anyone in by default. Either way every user gets a
+ * status, which is what lets an admin block someone from /admin/users.
  */
-export async function listSignInMethods(
-  userId: string,
-): Promise<{ provider: string; identifier: string; createdAt: string }[]> {
-  const all = await identityStore.findByUserId(userId)
-  return all
-    .filter((identity) => identity.provider !== "passkey")
-    .map((identity) => ({
-      provider: identity.provider,
-      identifier: identity.identifier,
-      createdAt: identity.createdAt.toISOString(),
-    }))
-}
+const waitlistEnabled = process.env.WAITLIST === "true"
+
+/**
+ * The waitlist is an initiate gate (`gate: waitlist` below): an address or
+ * number without an approved account is sent to /waitlist instead of a code.
+ */
+export const waitlist = createWaitlist({
+  identityStore,
+  userStore,
+  approvalStore,
+  waitlistUrl: "/waitlist",
+  // App rules that skip the waitlist go here. Admins have to get in to
+  // approve anyone else, so they always do. A rule like "someone already
+  // shared a file with this address" belongs here too. BLOCKED users never
+  // reach this hook.
+  autoApprove: ({ identifier }) =>
+    !waitlistEnabled || adminIdentifiers.includes(identifier),
+  // Only new waiting users need an admin's attention. A real app sends the
+  // rendered message with its mailer, e.g.
+  // `transporter.sendMail({ ...email, to: adminEmails })`; the example prints
+  // it, the same way it prints sign-in emails when SMTP is not configured.
+  notify: (notice) => {
+    if (notice.reason !== "waitlisted") return
+    const email = waitlistNotificationEmail(notice, {
+      appName: "RR Auth Example",
+      domain: process.env.APP_URL ?? "http://localhost:5173",
+      from: process.env.EMAIL_FROM ?? "login@example.com",
+    })
+    // eslint-disable-next-line no-console -- the example has no mailer
+    console.info(`Admin notification: ${email.subject}\n${email.text}`)
+  },
+  logger: console,
+})
 
 /**
  * SMTP is considered configured when SMTP_HOST is set (see .env.example).
@@ -358,6 +380,14 @@ export const auth = new Auth({
   // hashed) between "send" and "verify". In-memory works for one server
   // process; use a DB/Redis-backed implementation for multiple instances.
   challengeStore: new InMemoryChallengeStore(),
+  // Where the library reports a redirect destination it declined — a stale
+  // ?redirectTo=, or a Referer from another origin — since landing on the
+  // fallback instead is otherwise invisible. A real app passes its own
+  // logger here.
+  logger: {
+    // eslint-disable-next-line no-console -- the example has no logger
+    warn: (message, logContext) => console.warn(message, logContext),
+  },
   // Abuse protection is on with no configuration at all: per-IP and
   // per-recipient rate limits backed by an in-memory counter store, plus the
   // form-token check the login form below feeds. Everything
@@ -382,6 +412,7 @@ export const auth = new Auth({
       ? [new TurnstileBotCheck({ secretKey: turnstileSecretKey })]
       : [],
   },
+  gate: waitlist,
   providers: [
     new EmailProvider(
       {
@@ -416,9 +447,12 @@ export const auth = new Auth({
     ),
     new PasskeyProvider({
       rpName: "RR Auth Example",
-      // rpID and expectedOrigin default to the request's hostname/origin,
-      // which suits dev and e2e on localhost. Set both explicitly in
-      // production (passkeys are bound to the domain they were created on).
+      // Passkeys are bound to the domain they were created on, so in
+      // production set APP_URL to your canonical URL: rpID and
+      // expectedOrigin then come from it rather than from each request's
+      // Host, which a proxy can rewrite. Unset (dev, e2e), both derive from
+      // the request, which suits localhost.
+      appUrl: process.env.APP_URL,
       challengeSecret: SESSION_SECRET,
     }),
   ],
@@ -435,17 +469,31 @@ const handlers = createAuthHandlers(auth, {
   // When the verify URL carries ?redirectTo= (the dashboard's link flows set
   // it), errors go there instead: the magic-link confirm page's Referer is
   // the confirm page itself, so buildReturnUrl would strand the error on a
-  // dead URL.
+  // dead URL. resolveRedirectTarget keeps that destination on this app,
+  // since the query param arrives from the browser.
   errorRedirect: (error, request) => {
-    const redirectTo = new URL(request.url).searchParams.get("redirectTo")
+    const redirectTo = resolveRedirectTarget(
+      new URL(request.url).searchParams.get("redirectTo"),
+      request.url,
+      "",
+      { logger: auth.getLogger(), source: "redirectTo" },
+    )
     if (redirectTo) {
       const url = new URL(redirectTo, request.url)
       url.searchParams.set("error", error.code)
       return url.toString()
     }
-    return buildReturnUrl(request, { error: error.code })
+    return buildReturnUrl(request, { error: error.code }, auth.getLogger())
   },
   loginUrl: "/login",
+  // The waitlist gate only sees email and SMS sign-ins, and only when they
+  // start. This catches the rest on every request: a passkey sign-in, or a
+  // user an admin blocked after they signed in. Logging them out, rather
+  // than only redirecting, stops the session from coming back.
+  onSessionVerified: async ({ user }): Promise<Response | undefined> => {
+    const redirectTo = await waitlist.redirectFor(user.id)
+    if (redirectTo) return handlers.logout(redirectTo)
+  },
 })
 
 export const { handleAuth, getSession, requireAuth, optionalAuth, logout } =
@@ -470,16 +518,15 @@ export const { requireAdmin, adminUsersLoader, adminConfigLoader } =
   })
 
 /**
- * Anti-bot form fields for the login page, minted per render: a signed
- * timestamp the form-token check reads to reject submissions faster than a
- * human could type, plus the Turnstile site key when Turnstile is configured.
+ * Loaders for the login page and the dashboard's sign-in methods section.
+ * They read what the providers put in the query string on the way back
+ * (?sent=1, ?error=, ?add=, ?merged=1), mint the form token the abuse checks
+ * compare against submit time, and list the user's sign-in methods; the
+ * pages keep their own markup. listPasskeys comes from the passkey package,
+ * so an app without passkeys never installs it.
  */
-export async function createLoginFormFields(): Promise<{
-  formToken: string
-  turnstileSiteKey: string | null
-}> {
-  return {
-    formToken: await createFormToken(SESSION_SECRET),
-    turnstileSiteKey: process.env.TURNSTILE_SITE_KEY ?? null,
-  }
-}
+export const { signInLoader, profileAuthLoader } = createAuthPageLoaders(auth, {
+  // Public half of the Turnstile pair; unset leaves the widget off
+  turnstileSiteKey: process.env.TURNSTILE_SITE_KEY,
+  listPasskeys,
+})

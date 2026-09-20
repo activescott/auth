@@ -9,6 +9,7 @@ export type {
   AuthInitResult,
   AuthError,
   AuthErrorCode,
+  AuthLogger,
   AuthResponders,
   IdentityStore,
   UserStore,
@@ -57,6 +58,15 @@ export type {
   AbuseReason,
 } from "./abuse/abuse-guard.js"
 export { AbuseGuard } from "./abuse/abuse-guard.js"
+
+// Initiate gate
+export type {
+  InitiateGate,
+  InitiateGateContext,
+  InitiateGateDecision,
+  InitiateGateInput,
+  InitiateMode,
+} from "./initiate-gate.js"
 export type { RateLimitRule, RateLimitVerdict } from "./abuse/rate-limiter.js"
 export { RateLimiter } from "./abuse/rate-limiter.js"
 export type { RateLimitHit, RateLimitStore } from "./abuse/rate-limit-store.js"
@@ -78,11 +88,26 @@ export {
   FORM_TOKEN_FIELD,
 } from "./abuse/bot-check.js"
 
+// Waitlist
+export type {
+  ApprovalStatus,
+  ApprovalStore,
+  AutoApproveInput,
+  Waitlist,
+  WaitlistActionResult,
+  WaitlistConfig,
+  WaitlistNotice,
+} from "./waitlist.js"
+export { createWaitlist } from "./waitlist.js"
+export type { WaitlistEmail, WaitlistEmailOptions } from "./waitlist-email.js"
+export { waitlistNotificationEmail } from "./waitlist-email.js"
+
 // Utilities for provider authors
 export {
   parseRequestBody,
   isBrowserFormPost,
   buildReturnUrl,
+  resolveRedirectTarget,
   buildChallengeCookie,
   buildChallengeClearingCookie,
   readCookie,
@@ -94,6 +119,7 @@ export {
   MERGE_TICKET_COOKIE_NAME,
   MERGE_TICKET_TYPE,
 } from "./provider-util.js"
+export type { ResolveRedirectOptions } from "./provider-util.js"
 
 // Errors
 export {

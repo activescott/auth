@@ -4,6 +4,7 @@ import type {
   AuthContext,
   AuthError,
   AuthInitResult,
+  AuthLogger,
   AuthProvider,
   AuthResponders,
   AuthResult,
@@ -17,8 +18,10 @@ import type {
 } from "./types.js"
 import { REDACTED } from "./types.js"
 import { SessionManager } from "./session/session-manager.js"
+import { SessionCache } from "./session/session-cache.js"
 import { AuthenticationError, AuthErrors } from "./errors.js"
 import { AbuseGuard } from "./abuse/abuse-guard.js"
+import { initiateGateContextFor } from "./initiate-gate.js"
 import {
   buildChallengeClearingCookie,
   buildReturnUrl,
@@ -32,8 +35,6 @@ import {
 // Time constants
 const MS_PER_SECOND = 1000
 const SECONDS_PER_MINUTE = 60
-/** Default session cache TTL in minutes */
-const DEFAULT_CACHE_TTL_MINUTES = 2
 /** Interval between cache cleanups in minutes */
 const CACHE_CLEANUP_INTERVAL_MINUTES = 5
 
@@ -56,58 +57,21 @@ function describeStoreType(store: object): string {
 }
 
 /**
- * In-memory cache for session verification to reduce DB queries
+ * Refuse a gate that some provider would bypass. A provider built before the
+ * gate existed serves its initiate route without consulting it, and nothing
+ * at request time would reveal that the application's policy was skipped.
  */
-interface SessionCacheEntry {
-  user: AuthUser | null
-  identity: Identity | null
-  timestamp: number
-}
-
-class SessionCache {
-  private cache = new Map<string, SessionCacheEntry>()
-  private readonly ttl: number
-
-  public constructor(
-    ttlMs: number = DEFAULT_CACHE_TTL_MINUTES *
-      SECONDS_PER_MINUTE *
-      MS_PER_SECOND,
-  ) {
-    this.ttl = ttlMs
-  }
-
-  public get(token: string): SessionCacheEntry | undefined {
-    const entry = this.cache.get(token)
-    if (!entry) return undefined
-
-    // Check if expired
-    if (Date.now() - entry.timestamp > this.ttl) {
-      this.cache.delete(token)
-      return undefined
-    }
-
-    return entry
-  }
-
-  public set(
-    token: string,
-    user: AuthUser | null,
-    identity: Identity | null,
-  ): void {
-    this.cache.set(token, {
-      user,
-      identity,
-      timestamp: Date.now(),
-    })
-  }
-
-  public cleanup(): void {
-    const now = Date.now()
-    for (const [token, entry] of this.cache.entries()) {
-      if (now - entry.timestamp > this.ttl) {
-        this.cache.delete(token)
-      }
-    }
+function assertProvidersConsultGate(providers: AuthProvider[]): void {
+  const bypassing = providers.filter(
+    (provider) =>
+      !provider.consultsInitiateGate &&
+      provider.getRoutes().some((route) => route.handler === "initiate"),
+  )
+  if (bypassing.length > 0) {
+    throw new AuthenticationError(
+      "CONFIGURATION_ERROR",
+      `AuthConfig.gate is set, but these providers serve an initiate route without consulting it: ${bypassing.map((provider) => provider.id).join(", ")}. Upgrade them to a version that sets consultsInitiateGate.`,
+    )
   }
 }
 
@@ -123,19 +87,22 @@ export class Auth {
 
   public constructor(private readonly config: AuthConfig) {
     this.sessionManager = new SessionManager(config.session)
-    this.sessionCache = new SessionCache()
+    this.sessionCache = new SessionCache(config.session.cacheTtlMs)
     this.abuseGuard = new AbuseGuard(config.abuse, config.session.secret)
 
     // Register providers
     for (const provider of config.providers) {
       this.providers.set(provider.id, provider)
     }
+    if (config.gate) assertProvidersConsultGate(config.providers)
 
-    // Start cache cleanup interval
-    this.cleanupInterval = setInterval(
-      () => this.sessionCache.cleanup(),
-      CACHE_CLEANUP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
-    )
+    // Start cache cleanup interval. Nothing to sweep when the cache is off.
+    if (this.sessionCache.enabled) {
+      this.cleanupInterval = setInterval(
+        () => this.sessionCache.cleanup(),
+        CACHE_CLEANUP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
+      )
+    }
   }
 
   /**
@@ -183,8 +150,9 @@ export class Auth {
     const url = new URL(request.url)
     const path = url.pathname
 
-    // Route format: /auth/{provider}/{action}
-    const match = path.match(/\/auth\/([^/]+)\/([^/]+)/)
+    // Route format: /auth/{provider}/{action}, anchored so only the
+    // documented mounting dispatches and /anything/auth/email/verify is a 404
+    const match = path.match(/^\/auth\/([^/]+)\/([^/]+)\/?$/)
 
     if (!match) {
       return new Response("Not Found", { status: 404 })
@@ -393,6 +361,15 @@ export class Auth {
   }
 
   /**
+   * The application's logger, or undefined when none is configured. For
+   * framework adapters, which resolve redirect destinations of their own and
+   * should report a declined one to the same place the library does.
+   */
+  public getLogger(): AuthLogger | undefined {
+    return this.config.logger
+  }
+
+  /**
    * Get the configured stores.
    * `createContext` exposes the same objects but needs a Request; this is for
    * callers that operate outside a provider flow, such as the admin dashboard.
@@ -463,6 +440,16 @@ export class Auth {
       challengeStore: this.config.challengeStore,
       getSession: (sessionRequest) => this.verifySession(sessionRequest),
       abuse: this.abuseGuard.contextFor(request),
+      ...(this.config.gate
+        ? {
+            gate: initiateGateContextFor(
+              this.config.gate,
+              request,
+              this.config.logger,
+            ),
+          }
+        : {}),
+      logger: this.config.logger,
     }
   }
 
@@ -557,7 +544,9 @@ export class Auth {
     if (isBrowserFormPost(request)) {
       // The submitting page's URL still carries the ?error=IDENTITY_CONFLICT
       // that prompted the merge; drop it so the outcome reads as resolved.
-      const returnUrl = new URL(buildReturnUrl(request, { merged: "1" }))
+      const returnUrl = new URL(
+        buildReturnUrl(request, { merged: "1" }, this.config.logger),
+      )
       returnUrl.searchParams.delete("error")
       const headers = new Headers({ Location: returnUrl.toString() })
       headers.append("Set-Cookie", clearingCookie)
@@ -611,6 +600,8 @@ export class Auth {
     const accepted = initiateAccepted(
       request,
       provider.initiateSentMessage ?? DEFAULT_SENT_MESSAGE,
+      [],
+      this.config.logger,
     )
     return accepted instanceof Response
       ? accepted

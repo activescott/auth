@@ -1,6 +1,6 @@
 {
   "name": "@activescott/auth-provider-passkey",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Passkey (WebAuthn) provider for @activescott/auth",
   "type": "module",
   "main": "./dist/index.js",
@@ -42,7 +42,7 @@
   "dependencies": {
     "@simplewebauthn/server": "^13.2.2",
     "jose": "^6.2.6",
-    "zod": "^4.3.5"
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@activescott/auth": "^5.0.0"

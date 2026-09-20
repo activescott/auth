@@ -3,6 +3,52 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.6.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.5.1...auth-adapter-react-router@2.6.0) (2026-09-20)
+
+### Features
+
+* add profile page components ([#123](https://github.com/activescott/auth/issues/123)) ([8e5ecce](https://github.com/activescott/auth/commit/8e5ecce06ff877f2e7c0c991a03bd9ee778666b4)), closes [#122](https://github.com/activescott/auth/issues/122)
+
+## [2.5.1](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.5.0...auth-adapter-react-router@2.5.1) (2026-09-20)
+
+### Bug Fixes
+
+* strip .data URLs ([#120](https://github.com/activescott/auth/issues/120)) ([9c8e872](https://github.com/activescott/auth/commit/9c8e872378dd0ccb72e2806c5968b9a6cbe5c24c))
+
+## [2.5.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.4.0...auth-adapter-react-router@2.5.0) (2026-09-20)
+
+### Features
+
+* add page hooks ([#117](https://github.com/activescott/auth/issues/117)) ([d0de3e4](https://github.com/activescott/auth/commit/d0de3e4868091c454fa9314a39bcdf716143a02b))
+
+## [2.4.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.3.0...auth-adapter-react-router@2.4.0) (2026-09-19)
+
+### Features
+
+* add e2e readback ([#115](https://github.com/activescott/auth/issues/115)) ([c980d33](https://github.com/activescott/auth/commit/c980d3318341e1920109dd2fe116bdbf0f97158c))
+
+## [2.3.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.2.0...auth-adapter-react-router@2.3.0) (2026-09-18)
+
+### Features
+
+* add onSessionVerified ([c3705e5](https://github.com/activescott/auth/commit/c3705e5c86664dc11cfc614129382ede354faa58))
+
+## [2.2.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.1.0...auth-adapter-react-router@2.2.0) (2026-09-18)
+
+### Features
+
+* add rolling session renewal ([#108](https://github.com/activescott/auth/issues/108)) ([368fbb1](https://github.com/activescott/auth/commit/368fbb1795ba632bfcc8cfbb5e0fffb038c61bf2))
+
+## [2.1.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.0.0...auth-adapter-react-router@2.1.0) (2026-09-18)
+
+### Features
+
+* log a redirectTo the adapter declines ([1d5e7e1](https://github.com/activescott/auth/commit/1d5e7e17a8891b566bd0053273ea8fcd9a33a03b))
+
+### Bug Fixes
+
+* validate redirectTo before redirecting ([d73fb9c](https://github.com/activescott/auth/commit/d73fb9ccd0c3b4f26a2995bad509b92c4c96d6cc))
+
 ## [2.0.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@1.3.0...auth-adapter-react-router@2.0.0) (2026-08-11)
 
 ### ⚠ BREAKING CHANGES
