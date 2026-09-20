@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.5.0](https://github.com/activescott/auth/compare/auth@5.4.0...auth@5.5.0) (2026-09-20)
+
+### Features
+
+* add getAuthErrorMessage overrides ([#116](https://github.com/activescott/auth/issues/116)) ([112d4ef](https://github.com/activescott/auth/commit/112d4ef73ab568ffd9db64b65faab98e798a3d70))
+
 ## [5.4.0](https://github.com/activescott/auth/compare/auth@5.3.0...auth@5.4.0) (2026-09-20)
 
 ### Features
