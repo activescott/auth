@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.6.0](https://github.com/activescott/auth/compare/auth@5.5.0...auth@5.6.0) (2026-09-20)
+
+### Features
+
+* add waitlist with admin approval ([#118](https://github.com/activescott/auth/issues/118)) ([2d3e81d](https://github.com/activescott/auth/commit/2d3e81d001d3ae7d8d9412df934c1419feb18bb3))
+
 ## [5.5.0](https://github.com/activescott/auth/compare/auth@5.4.0...auth@5.5.0) (2026-09-20)
 
 ### Features
