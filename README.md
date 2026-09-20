@@ -126,7 +126,7 @@ export const action = ({ request }: Route.ActionArgs) => handleAuth({ request })
 
 The login page needs no action — its forms post directly to the auth routes: the email form to `/auth/email/initiate` (redirects back with `?sent=1` and sets the challenge cookie) and the code form to `/auth/email/verify`. `logout.tsx` action/loader calls `logout()`. See the example for the full files.
 
-The adapter's `signInLoader` and its hooks (Turnstile, passkeys, code autofill) carry the page logic, so your login and profile pages are only markup. See [Sign-in and profile pages](./packages/auth-adapter-react-router#sign-in-and-profile-pages).
+The adapter's `signInLoader` and its hooks (Turnstile, passkeys, code autofill) carry the page logic, so your login page is only markup. See [Sign-in and profile pages](./packages/auth-adapter-react-router#sign-in-and-profile-pages). The profile page ships whole, as `ProfilePage` and the three blocks it composes: [Profile page](./packages/auth-adapter-react-router#profile-page).
 
 ### Step 5 — Protect routes with `requireAuth`
 
@@ -365,16 +365,16 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 
 ## Packages
 
-| Package                                                                          | Description                                                                                                                                                                   |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@activescott/auth`](./packages/auth)                                           | Core: `Auth` class, `SessionManager`, types (`AuthProvider`, `IdentityStore`, `UserStore`), JWT-cookie sessions.                                                              |
-| [`@activescott/auth-provider-email`](./packages/auth-provider-email)             | Email magic link provider. Ships a Nodemailer SMTP transport; the `EmailTransport` interface lets you swap in others (Resend, SES, etc.).                                     |
-| [`@activescott/auth-provider-sms`](./packages/auth-provider-sms)                 | SMS one-time-code provider. Vendor-neutral (`SmsTransport` for sending it yourself, `VerificationTransport` for a hosted service); ships a console transport for development. |
-| [`@activescott/auth-provider-passkey`](./packages/auth-provider-passkey)         | Passkey (WebAuthn) provider. Credentials are ordinary identity rows (no extra storage interface); zero-dependency browser client at the `/browser` subpath.                   |
-| [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transports: Messages API (SMS, or RCS via a Messaging Service) and Twilio Verify (no A2P 10DLC registration). Raw fetch, zero dependencies.                            |
-| [`@activescott/auth-botcheck-turnstile`](./packages/auth-botcheck-turnstile)     | Cloudflare Turnstile bot check for the initiate endpoints. Optional — the core's rate limits and form-token check need no third party. Raw fetch, zero dependencies.          |
-| [`@activescott/auth-store-prisma`](./packages/auth-store-prisma)                 | Prisma `IdentityStore`: `createPrismaIdentityStore({ model: prisma.identity, providerStateField })`. Typed structurally, so no dependency on `@prisma/client`.                |
-| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v8 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`, and the admin dashboard at the `/admin` subpath.               |
+| Package                                                                          | Description                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@activescott/auth`](./packages/auth)                                           | Core: `Auth` class, `SessionManager`, types (`AuthProvider`, `IdentityStore`, `UserStore`), JWT-cookie sessions.                                                                                |
+| [`@activescott/auth-provider-email`](./packages/auth-provider-email)             | Email magic link provider. Ships a Nodemailer SMTP transport; the `EmailTransport` interface lets you swap in others (Resend, SES, etc.).                                                       |
+| [`@activescott/auth-provider-sms`](./packages/auth-provider-sms)                 | SMS one-time-code provider. Vendor-neutral (`SmsTransport` for sending it yourself, `VerificationTransport` for a hosted service); ships a console transport for development.                   |
+| [`@activescott/auth-provider-passkey`](./packages/auth-provider-passkey)         | Passkey (WebAuthn) provider. Credentials are ordinary identity rows (no extra storage interface); zero-dependency browser client at the `/browser` subpath.                                     |
+| [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transports: Messages API (SMS, or RCS via a Messaging Service) and Twilio Verify (no A2P 10DLC registration). Raw fetch, zero dependencies.                                              |
+| [`@activescott/auth-botcheck-turnstile`](./packages/auth-botcheck-turnstile)     | Cloudflare Turnstile bot check for the initiate endpoints. Optional — the core's rate limits and form-token check need no third party. Raw fetch, zero dependencies.                            |
+| [`@activescott/auth-store-prisma`](./packages/auth-store-prisma)                 | Prisma `IdentityStore`: `createPrismaIdentityStore({ model: prisma.identity, providerStateField })`. Typed structurally, so no dependency on `@prisma/client`.                                  |
+| [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v8 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`, the admin dashboard at the `/admin` subpath, and the profile page at `/profile`. |
 
 Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
 
