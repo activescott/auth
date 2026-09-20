@@ -15,4 +15,5 @@ export const adminMetadataColumns: AdminMetadataColumn[] = [
   { key: "identifier", label: "Signed up as", sortable: true },
   { key: "signedUpWith", label: "Via", render: "badge", sortable: true },
   { key: "signedUpAt", label: "Signed up", render: "date", sortable: true },
+  { key: "approvalStatus", label: "Status", render: "badge" },
 ]

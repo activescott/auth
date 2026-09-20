@@ -64,6 +64,7 @@ npm install @activescott/auth
 | `ChallengeStore`, `InMemoryChallengeStore`                        | Storage for short-lived, single-use challenges (see below).                                                           |
 | `AbuseConfig`, `RateLimitStore`, `InMemoryRateLimitStore`         | Abuse protection for the initiate endpoints — on by default (see below).                                              |
 | `InitiateGate`                                                    | Your own policy on who may start a sign-in or link (see below).                                                       |
+| `createWaitlist`, `waitlistNotificationEmail`                     | Waitlist with admin approval, built on the initiate gate (see below).                                                 |
 | `BotCheckProvider`, `createFormToken`, `FORM_TOKEN_FIELD`         | Bot-check interface and the login form's anti-bot fields.                                                             |
 | `generateOtpCode`, `hashOtpCode`, `verifyOtpCode`                 | One-time-code utilities used by OTP-capable providers.                                                                |
 | `AuthUser`, `Identity`, `Session`, `AuthResult`, `AuthInitResult` | Core data types.                                                                                                      |
@@ -287,6 +288,63 @@ Each declined destination logs one WARN naming the parameter it came from and th
 ```
 
 `logger` is optional and nothing is logged through it when it is absent. Providers receive it as `AuthContext.logger`, and framework adapters read it off the `Auth` instance (`auth.getLogger()`), so configuring it here covers the whole flow. Abuse blocks are separate: those always go to `console.warn`, plus `abuse.onBlocked` if you set it.
+
+## Waitlist
+
+`createWaitlist` is an initiate gate for apps that approve new users by hand. An identifier without an account gets a PENDING user and lands on your waitlist page instead of receiving a code; admins hear about it through `notify`; an admin approves or blocks from the dashboard. Approved users sign in as usual.
+
+The status lives in your database, behind an `ApprovalStore`. Its values, `"PENDING" | "APPROVED" | "BLOCKED"`, match the enum apps usually already have:
+
+```ts
+import { createWaitlist, waitlistNotificationEmail } from "@activescott/auth"
+
+export const waitlist = createWaitlist({
+  identityStore,
+  userStore,
+  approvalStore: {
+    getApprovalStatus: async (userId) =>
+      (await db.user.findUnique({ where: { id: userId } }))?.approvalStatus ??
+      null,
+    setApprovalStatus: async (userId, approvalStatus) => {
+      await db.user.update({ where: { id: userId }, data: { approvalStatus } })
+    },
+  },
+  waitlistUrl: "/waitlist",
+  blockedUrl: "/login?error=blocked", // defaults to waitlistUrl
+  // App rules that skip the waitlist. Never consulted for BLOCKED users.
+  autoApprove: ({ identifier }) => autoApproved.has(identifier),
+  notify: (notice) =>
+    transporter.sendMail({
+      ...waitlistNotificationEmail(notice, {
+        appName: "Fernfiles",
+        domain: "fernfiles.com",
+        from: "noreply@fernfiles.com",
+      }),
+      to: adminEmails,
+    }),
+  logger: console,
+})
+
+const auth = new Auth({ /* ... */ gate: waitlist })
+```
+
+A new user's identity row is created at initiate, with the same calls the verify step would make, so the admin dashboard lists them before they ever get a code and verify finds that row instead of creating a second user. `notify` fires once when a user joins the waitlist (`reason: "waitlisted"`) and whenever `autoApprove` lets someone in (`reason: "auto-approved"`); a throw there is logged and does not fail the sign-in. The email is plain and generic on purpose: app name, domain, sender, and a link to `/admin/users` (`adminPath` changes it). Sending it is yours, so the core takes no mail dependency.
+
+A user with no recorded status counts as not approved. Mark existing users APPROVED before turning the waitlist on.
+
+The gate only sees email and SMS sign-ins, and only at initiate. Passkey sign-ins and a user you block after they signed in need a per-request check; `waitlist.redirectFor(userId)` returns null for approved users and the URL to send anyone else to. With the React Router adapter:
+
+```ts
+createAuthHandlers(auth, {
+  // ...
+  onSessionVerified: async ({ user }) => {
+    const to = await waitlist.redirectFor(user.id)
+    if (to) return logout(to)
+  },
+})
+```
+
+For the dashboard, render approve and block buttons in `AdminUsersPage`'s `rowActions` as forms posting `userId` and `intent` (`"approve"` or `"block"`) to your admin route, and in that route's action call `waitlist.handleAdminAction(await request.formData())` after checking the caller is an admin. `waitlist.approve(userId)` and `waitlist.block(userId)` do the same from your own code. The form has no CSRF token of its own; it relies on the session cookie being `SameSite=Lax` or stricter, as the example configures. The [example app](../../examples/react-router/app/routes/admin.users.tsx) has the whole flow.
 
 ## License
 

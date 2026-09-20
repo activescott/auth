@@ -3,6 +3,9 @@ import {
   InMemoryChallengeStore,
   buildReturnUrl,
   resolveRedirectTarget,
+  createWaitlist,
+  waitlistNotificationEmail,
+  type ApprovalStore,
   type AuthUser,
   type Identity,
   type IdentityStore,
@@ -85,6 +88,10 @@ const userStore: UserStore = {
     const wantedProvider = filter?.signedUpWith
     if (wantedProvider) {
       all = all.filter((user) => user.metadata?.signedUpWith === wantedProvider)
+    }
+    const wantedStatus = filter?.approvalStatus
+    if (wantedStatus) {
+      all = all.filter((user) => user.metadata?.approvalStatus === wantedStatus)
     }
 
     const direction = sortOrder === "asc" ? 1 : -1
@@ -181,6 +188,70 @@ const identityStore: IdentityStore = {
  */
 const SESSION_SECRET =
   process.env.JWT_SECRET ?? "dev-only-session-secret-do-not-use-in-production"
+
+/**
+ * Each user's waitlist status. A real app keeps it in a column on the user
+ * row (`approvalStatus`, often a Prisma enum with these same three values).
+ * Here it goes in metadata, which also makes it a column on the admin page.
+ */
+const approvalStore: ApprovalStore = {
+  async getApprovalStatus(userId) {
+    const status = users.get(userId)?.metadata?.approvalStatus
+    return status === "PENDING" || status === "APPROVED" || status === "BLOCKED"
+      ? status
+      : null
+  },
+  async setApprovalStatus(userId, approvalStatus) {
+    const user = users.get(userId)
+    if (!user) throw new Error(`User ${userId} not found`)
+    user.metadata = { ...user.metadata, approvalStatus }
+  },
+}
+
+/** The admin allowlist, which also decides who skips the waitlist */
+const adminIdentifiers = (process.env.AUTH_ADMIN_IDENTIFIERS ?? "")
+  .split(/[,\s]+/)
+  .map((entry) => entry.trim().toLowerCase())
+  .filter((entry) => entry.length > 0)
+
+/**
+ * Sign-ups wait for an admin only when WAITLIST=true (see .env.example), so
+ * the example still lets anyone in by default. Either way every user gets a
+ * status, which is what lets an admin block someone from /admin/users.
+ */
+const waitlistEnabled = process.env.WAITLIST === "true"
+
+/**
+ * The waitlist is an initiate gate (`gate: waitlist` below): an address or
+ * number without an approved account is sent to /waitlist instead of a code.
+ */
+export const waitlist = createWaitlist({
+  identityStore,
+  userStore,
+  approvalStore,
+  waitlistUrl: "/waitlist",
+  // App rules that skip the waitlist go here. Admins have to get in to
+  // approve anyone else, so they always do. A rule like "someone already
+  // shared a file with this address" belongs here too. BLOCKED users never
+  // reach this hook.
+  autoApprove: ({ identifier }) =>
+    !waitlistEnabled || adminIdentifiers.includes(identifier),
+  // Only new waiting users need an admin's attention. A real app sends the
+  // rendered message with its mailer, e.g.
+  // `transporter.sendMail({ ...email, to: adminEmails })`; the example prints
+  // it, the same way it prints sign-in emails when SMTP is not configured.
+  notify: (notice) => {
+    if (notice.reason !== "waitlisted") return
+    const email = waitlistNotificationEmail(notice, {
+      appName: "RR Auth Example",
+      domain: process.env.APP_URL ?? "http://localhost:5173",
+      from: process.env.EMAIL_FROM ?? "login@example.com",
+    })
+    // eslint-disable-next-line no-console -- the example has no mailer
+    console.info(`Admin notification: ${email.subject}\n${email.text}`)
+  },
+  logger: console,
+})
 
 /**
  * SMTP is considered configured when SMTP_HOST is set (see .env.example).
@@ -341,6 +412,7 @@ export const auth = new Auth({
       ? [new TurnstileBotCheck({ secretKey: turnstileSecretKey })]
       : [],
   },
+  gate: waitlist,
   providers: [
     new EmailProvider(
       {
@@ -414,6 +486,14 @@ const handlers = createAuthHandlers(auth, {
     return buildReturnUrl(request, { error: error.code }, auth.getLogger())
   },
   loginUrl: "/login",
+  // The waitlist gate only sees email and SMS sign-ins, and only when they
+  // start. This catches the rest on every request: a passkey sign-in, or a
+  // user an admin blocked after they signed in. Logging them out, rather
+  // than only redirecting, stops the session from coming back.
+  onSessionVerified: async ({ user }): Promise<Response | undefined> => {
+    const redirectTo = await waitlist.redirectFor(user.id)
+    if (redirectTo) return handlers.logout(redirectTo)
+  },
 })
 
 export const { handleAuth, getSession, requireAuth, optionalAuth, logout } =

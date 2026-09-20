@@ -266,6 +266,8 @@ The pages look presentable with no configuration, and there is no stylesheet to 
 
 Runnable version: [`examples/react-router/app/routes/admin.users.tsx`](./examples/react-router/app/routes/admin.users.tsx).
 
+For a waitlist, where new users wait until an admin approves or blocks them from this page, see [Waitlist](./packages/auth/README.md#waitlist).
+
 ## Linking identities & account merge
 
 Without linking, a person who signs in with their email one day and their phone number the next ends up with **two separate accounts**. The OTP providers (email, SMS) support a link mode that attaches a newly verified identifier to the signed-in user instead, and an account-merge flow for when the identifier already belongs to another account.
