@@ -96,17 +96,45 @@ export function ProfileCard({ title, ui, testId, children }: ProfileCardProps) {
   )
 }
 
+/**
+ * How a tone is announced by default. A failure or a caution interrupts what
+ * the reader is doing; a confirmation waits for a pause. Several of these
+ * messages arrive with no page load behind them (a passkey that would not
+ * register, a bot check that stalled), and nothing else would say so.
+ */
+const TONE_ROLE = {
+  success: "status",
+  error: "alert",
+  warning: "alert",
+} as const
+
 export interface NoticeProps {
   tone: "success" | "error" | "warning"
   ui: ProfileStyler
   testId?: string
+  /** Referenced by the `aria-describedby` of the input the message is about */
+  id?: string
+  /**
+   * Override the announcement. Pass null where something inside carries it
+   * instead, so that buttons and fields stay out of the live region.
+   */
+  role?: "alert" | "status" | null
   children: ReactNode
 }
 
 /** A confirmation, failure, or caution message within a block */
-export function Notice({ tone, ui, testId, children }: NoticeProps) {
+export function Notice({
+  tone,
+  ui,
+  testId,
+  id,
+  role = TONE_ROLE[tone],
+  children,
+}: NoticeProps) {
   return (
     <div
+      id={id}
+      role={role ?? undefined}
       className={ui.className(tone)}
       style={ui.style(tone)}
       data-testid={testId}

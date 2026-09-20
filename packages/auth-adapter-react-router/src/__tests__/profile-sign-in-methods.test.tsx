@@ -203,10 +203,17 @@ describe("SignInMethods", () => {
     )
 
     expect(container.querySelector('[data-testid="link-sent"]')).toBeNull()
-    expect(container.querySelector("input[name=code]")).not.toBeNull()
-    expect(textOf(container.querySelector('[data-testid="link-error"]'))).toBe(
-      "Error: That code is wrong or expired.",
-    )
+    const error = container.querySelector('[data-testid="link-error"]')
+    expect(textOf(error)).toBe("Error: That code is wrong or expired.")
+    // The code is what was rejected, so the address above it is not marked
+    const code = container.querySelector<HTMLInputElement>("input[name=code]")
+    expect(code?.getAttribute("aria-invalid")).toBe("true")
+    expect(code?.getAttribute("aria-describedby")).toBe(error!.id)
+    expect(
+      container
+        .querySelector("input[name=email]")
+        ?.hasAttribute("aria-invalid"),
+    ).toBe(false)
   })
 
   it("confirms the method that was just added", () => {
@@ -222,7 +229,7 @@ describe("SignInMethods", () => {
     ).toContain("Sign-in method added.")
   })
 
-  it("reports a conflict as an error rather than offering a merge", () => {
+  it("reports a conflict as an error but leaves the form open for a retry", () => {
     const { container } = render(
       <SignInMethods
         identities={[]}
@@ -235,11 +242,38 @@ describe("SignInMethods", () => {
       />,
     )
 
-    expect(textOf(container.querySelector('[data-testid="link-error"]'))).toBe(
+    const error = container.querySelector('[data-testid="link-error"]')
+    expect(textOf(error)).toBe(
       "Error: That phone number already signs in to another account.",
     )
     expect(container.querySelector('[data-testid="merge-prompt"]')).toBeNull()
-    expect(container.querySelector('[data-testid="add-sms"]')).toBeNull()
+    // The number may simply have been mistyped, so there is a way to correct it
+    const form = container.querySelector('[data-testid="add-sms"]')
+    expect(form).not.toBeNull()
+    const input = form!.querySelector<HTMLInputElement>("input[name=phone]")
+    expect(input?.getAttribute("aria-invalid")).toBe("true")
+    expect(input?.getAttribute("aria-describedby")).toBe(error!.id)
+    expect(error!.id).not.toBe("")
+  })
+
+  it("closes the add form once the method is linked", () => {
+    const { container } = render(
+      <SignInMethods
+        identities={[identity()]}
+        linkFlow={linkFlow({ add: "email", linked: true })}
+        // allowMultiple, so the form closing is the outcome and not the
+        // already-have filter
+        addMethods={[{ provider: "email", allowMultiple: true }]}
+      />,
+    )
+
+    expect(container.querySelector('[data-testid="add-email"]')).toBeNull()
+    expect(
+      textOf(container.querySelector('[data-testid="link-success"]')),
+    ).toContain("Sign-in method added.")
+    expect(container.querySelector("a")?.getAttribute("href")).toBe(
+      "/profile?add=email",
+    )
   })
 
   it("offers the merge where the application merges accounts", () => {
@@ -350,6 +384,55 @@ describe("SignInMethods", () => {
     act(() => options[0].callback())
     expect(submit?.disabled).toBe(false)
     expect(submit?.textContent).toBe("Send a confirmation email")
+  })
+})
+
+describe("SignInMethods announcements", () => {
+  it("interrupts with a failure and waits with a confirmation", () => {
+    const failed = render(
+      <SignInMethods
+        identities={[]}
+        linkFlow={linkFlow({ error: "Too many attempts. Try again later." })}
+      />,
+    )
+    expect(
+      failed.container
+        .querySelector('[data-testid="link-error"]')
+        ?.getAttribute("role"),
+    ).toBe("alert")
+
+    const done = render(
+      <SignInMethods
+        identities={[identity()]}
+        linkFlow={linkFlow({ linked: true })}
+      />,
+    )
+    expect(
+      done.container
+        .querySelector('[data-testid="link-success"]')
+        ?.getAttribute("role"),
+    ).toBe("status")
+  })
+
+  it("announces the merge offer without its buttons", () => {
+    const { container } = render(
+      <SignInMethods
+        identities={[]}
+        linkFlow={linkFlow({
+          add: "email",
+          errorCode: "IDENTITY_CONFLICT",
+          conflict: { provider: "email" },
+        })}
+        addMethods={[{ provider: "email" }]}
+        allowMerge
+      />,
+    )
+
+    const prompt = container.querySelector('[data-testid="merge-prompt"]')
+    expect(prompt?.hasAttribute("role")).toBe(false)
+    const announced = prompt?.querySelector('[role="alert"]')
+    expect(textOf(announced)).toContain("already opens a different account")
+    expect(announced?.querySelector("button")).toBeNull()
   })
 })
 

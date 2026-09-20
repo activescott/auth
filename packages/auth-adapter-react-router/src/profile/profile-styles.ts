@@ -4,6 +4,11 @@ import type { CSSProperties } from "react"
  * Per-slot class name overrides. A value here replaces the built-in styling of
  * that slot rather than adding to it, so an application can dress the blocks in
  * its own framework's classes (Bootstrap, Tailwind, ...) with no leftovers.
+ *
+ * An empty string names a slot the application owns but needs no class on: a
+ * Bootstrap table's cells, which `.table` reaches by descendant selector. It
+ * drops the built-in style the way any other value does, and emits no class
+ * attribute. `BOOTSTRAP_PROFILE_CLASS_NAMES` relies on it.
  */
 export interface ProfileClassNames {
   /** Page wrapper, `ProfilePage` only */
@@ -234,9 +239,11 @@ export function createStyler(
   includeDefaultStyles: boolean,
 ): ProfileStyler {
   return {
-    className: (slot) => classNames?.[slot],
+    className: (slot) => classNames?.[slot] || undefined,
+    // Presence, not truthiness: an empty string is a slot the application has
+    // taken over and wants no class on, so it drops the built-in style too.
     style: (slot) =>
-      !includeDefaultStyles || classNames?.[slot]
+      !includeDefaultStyles || classNames?.[slot] !== undefined
         ? undefined
         : PROFILE_STYLES[slot],
   }

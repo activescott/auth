@@ -1,11 +1,8 @@
-import type { ReactNode } from "react"
+import { Fragment, type ReactNode } from "react"
 import type { ProfilePresentationProps } from "./profile-chrome.js"
 import { ProfileCard } from "./profile-chrome.js"
 import { createStyler } from "./profile-styles.js"
 import { formatProfileDate } from "./format-date.js"
-
-/** `display: contents` so each pair participates in the parent grid directly */
-const PAIR_STYLE = { display: "contents" } as const
 
 /** One row of the account block */
 export interface AccountEntry {
@@ -64,8 +61,12 @@ export function AccountSummary({
         className={ui.className("definitionList")}
         style={ui.style("definitionList")}
       >
+        {/* A Fragment rather than a wrapper element: both layouts need the
+            term and the value as direct children of the list. The built-in
+            grid places them itself, and Bootstrap's `dl.row` puts its column
+            classes on them. */}
         {rows.map((row) => (
-          <div key={row.label} style={PAIR_STYLE}>
+          <Fragment key={row.label}>
             <dt
               className={ui.className("definitionTerm")}
               style={ui.style("definitionTerm")}
@@ -78,7 +79,7 @@ export function AccountSummary({
             >
               {row.value}
             </dd>
-          </div>
+          </Fragment>
         ))}
       </dl>
     </ProfileCard>

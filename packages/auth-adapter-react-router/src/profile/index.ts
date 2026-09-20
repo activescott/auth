@@ -21,4 +21,5 @@ export type {
 } from "./profile-chrome.js"
 export type { ProfileClassNames, ProfileSlot } from "./profile-styles.js"
 export { PROFILE_STYLES } from "./profile-styles.js"
+export { BOOTSTRAP_PROFILE_CLASS_NAMES } from "./bootstrap-classes.js"
 export { formatProfileDate } from "./format-date.js"

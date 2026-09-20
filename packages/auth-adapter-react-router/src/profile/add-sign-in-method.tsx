@@ -92,6 +92,8 @@ export interface AddSignInMethodProps {
   authBasePath: string
   /** Digits in the one-time code */
   codeLength: number
+  /** Id of the error message the open form's input points at, if one is shown */
+  errorId?: string
   ui: ProfileStyler
   linkComponent?: ProfileLinkComponent
 }
@@ -108,11 +110,18 @@ export function AddSignInMethod({
   profilePath,
   authBasePath,
   codeLength,
+  errorId,
   ui,
   linkComponent,
 }: AddSignInMethodProps) {
   const resolved = methods.map(resolveMethod)
-  const open = resolved.find((method) => method.provider === linkFlow.add)
+  // A finished flow closes its form. `?add=` outlives the flow on purpose,
+  // since it is what attributes a conflict to the provider that raised it, so
+  // the outcome decides this rather than the query.
+  const finished = linkFlow.linked || linkFlow.merged
+  const open = finished
+    ? undefined
+    : resolved.find((method) => method.provider === linkFlow.add)
   if (open) {
     return (
       <AddMethodForm
@@ -121,6 +130,7 @@ export function AddSignInMethod({
         profilePath={profilePath}
         authBasePath={authBasePath}
         codeLength={codeLength}
+        errorId={errorId}
         ui={ui}
         linkComponent={linkComponent}
       />
@@ -157,6 +167,7 @@ interface AddMethodFormProps {
   profilePath: string
   authBasePath: string
   codeLength: number
+  errorId?: string
   ui: ProfileStyler
   linkComponent?: ProfileLinkComponent
 }
@@ -176,6 +187,7 @@ function AddMethodForm({
   profilePath,
   authBasePath,
   codeLength,
+  errorId,
   ui,
   linkComponent,
 }: AddMethodFormProps) {
@@ -190,6 +202,10 @@ function AddMethodForm({
   // provider that raised it: the loader reads the provider from the query.
   const linkedRedirect = `${profilePath}?add=${method.provider}&linked=1`
   const isEmail = method.kind === "email"
+  // Which field the message is about: once the code is out it is the code that
+  // was rejected, before that it is the identifier the initiate refused.
+  const identifierError = linkFlow.sent ? undefined : errorId
+  const codeError = linkFlow.sent ? errorId : undefined
 
   return (
     <div data-testid={`add-${method.provider}`}>
@@ -237,6 +253,8 @@ function AddMethodForm({
                 autoComplete="tel-national"
                 inputMode="tel"
                 required
+                aria-invalid={identifierError ? true : undefined}
+                aria-describedby={identifierError}
                 placeholder={method.placeholder}
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
@@ -257,6 +275,8 @@ function AddMethodForm({
               autoComplete={isEmail ? "email" : "tel"}
               inputMode={isEmail ? undefined : "tel"}
               required
+              aria-invalid={identifierError ? true : undefined}
+              aria-describedby={identifierError}
               // type="email" alone accepts dotless domains like "you@example";
               // require a dot so a typo fails here instead of after a round trip
               pattern={isEmail ? ".+@.+\\..+" : undefined}
@@ -316,6 +336,7 @@ function AddMethodForm({
             method={method}
             action={`${authBasePath}/${method.provider}/verify?redirectTo=${encodeURIComponent(linkedRedirect)}`}
             codeLength={codeLength}
+            errorId={codeError}
             ui={ui}
           />
         </>
@@ -338,6 +359,7 @@ interface CodeFormProps {
   method: ResolvedMethod
   action: string
   codeLength: number
+  errorId?: string
   ui: ProfileStyler
 }
 
@@ -347,7 +369,7 @@ interface CodeFormProps {
  * last digit lands, so a code offered from Mail or Messages needs no button
  * press; the button stays for the cases autofill misses.
  */
-function CodeForm({ method, action, codeLength, ui }: CodeFormProps) {
+function CodeForm({ method, action, codeLength, errorId, ui }: CodeFormProps) {
   const { inputProps, submitting } = useOtpAutoSubmit(codeLength)
   const inputId = `link-code-${method.provider}`
 
@@ -369,6 +391,8 @@ function CodeForm({ method, action, codeLength, ui }: CodeFormProps) {
           className={ui.className("input")}
           style={ui.style("input")}
           required
+          aria-invalid={errorId ? true : undefined}
+          aria-describedby={errorId}
           {...inputProps}
         />
       </div>

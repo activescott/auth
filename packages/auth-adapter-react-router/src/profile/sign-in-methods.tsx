@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useId, type ReactNode } from "react"
 import type { LinkFlow, SignInMethod } from "../page-loaders.js"
 import type { AddableSignInMethod } from "./add-sign-in-method.js"
 import { AddSignInMethod, methodNoun } from "./add-sign-in-method.js"
@@ -80,6 +80,13 @@ export function SignInMethods({
 }: SignInMethodsProps) {
   const ui = createStyler(classNames, includeDefaultStyles)
   const conflict = linkFlow.conflict?.provider ?? null
+  // The conflict message and the plain error are the same thing to the reader:
+  // what went wrong with the identifier they just gave. Only one renders, so
+  // they share the id the form's input points `aria-describedby` at.
+  const errorId = useId()
+  const errorMessage = conflict
+    ? `That ${methodNoun(conflict, addMethods)} already signs in to another account.`
+    : linkFlow.error
 
   return (
     <ProfileCard title={title} ui={ui} testId="sign-in-methods">
@@ -140,28 +147,24 @@ export function SignInMethods({
 
       {/* After a merge the URL still carries the add-flow parameters, so the
           merged notice replaces the flow rather than stacking on it. */}
-      {conflict ? (
-        allowMerge ? (
-          <MergePrompt
-            provider={conflict}
-            noun={methodNoun(conflict, addMethods)}
-            description={mergeDescription}
-            profilePath={profilePath}
-            authBasePath={authBasePath}
-            ui={ui}
-            linkComponent={linkComponent}
-          />
-        ) : (
-          <Notice tone="error" ui={ui} testId="link-error">
-            Error: That {methodNoun(conflict, addMethods)} already signs in to
-            another account.
-          </Notice>
-        )
+      {conflict && allowMerge ? (
+        <MergePrompt
+          provider={conflict}
+          noun={methodNoun(conflict, addMethods)}
+          description={mergeDescription}
+          profilePath={profilePath}
+          authBasePath={authBasePath}
+          ui={ui}
+          linkComponent={linkComponent}
+        />
       ) : linkFlow.merged ? null : (
         <>
-          {linkFlow.error && (
-            <Notice tone="error" ui={ui} testId="link-error">
-              Error: {linkFlow.error}
+          {/* A conflict an application will not merge is still correctable:
+              the address may have been mistyped into someone else's. The form
+              stays below the message so there is a way to try again. */}
+          {errorMessage && (
+            <Notice tone="error" ui={ui} id={errorId} testId="link-error">
+              Error: {errorMessage}
             </Notice>
           )}
           <AddSignInMethod
@@ -171,6 +174,7 @@ export function SignInMethods({
             profilePath={profilePath}
             authBasePath={authBasePath}
             codeLength={codeLength}
+            errorId={errorMessage ? errorId : undefined}
             ui={ui}
             linkComponent={linkComponent}
           />
@@ -205,9 +209,11 @@ function MergePrompt({
   ui,
   linkComponent,
 }: MergePromptProps) {
+  // The explanation is what gets announced; the buttons below it are the
+  // reader's to find, not to have read at them.
   return (
-    <Notice tone="warning" ui={ui} testId="merge-prompt">
-      <p>
+    <Notice tone="warning" ui={ui} testId="merge-prompt" role={null}>
+      <p role="alert">
         {description ?? (
           <>
             That {noun} already opens a different account. You just proved it is

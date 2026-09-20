@@ -208,24 +208,24 @@ An application with sections of its own renders the blocks directly, in whatever
 
 ### Styling
 
-Every block takes `classNames`, one class per slot: `card`, `cardBody`, `cardTitle`, `table`, `th`, `td`, `field`, `label`, `input`, `submitButton`, `success` and the rest of `ProfileClassNames`. A slot you name gets your class and none of the built-in styling, because an inline style outranks any class it would otherwise compete with; slots you say nothing about keep the plain built-in look, and `includeDefaultStyles={false}` drops that everywhere. A Bootstrap application passes its own classes and the page looks like the rest of the app:
+Every block takes `classNames`, one class per slot: `card`, `cardBody`, `cardTitle`, `table`, `th`, `td`, `field`, `label`, `input`, `submitButton`, `success` and the rest of `ProfileClassNames`. A slot you name gets your class and none of the built-in styling, because an inline style outranks any class it would otherwise compete with; slots you say nothing about keep the plain built-in look, and `includeDefaultStyles={false}` drops that everywhere.
+
+That means a half-named map is a half-styled page, and there are 34 slots. On Bootstrap, pass the map the package ships instead:
 
 ```tsx
-const profileClasses = {
-  card: "card mb-4",
-  cardBody: "card-body",
-  cardTitle: "h5",
-  table: "table",
-  input: "form-control",
-  label: "form-label",
-  submitButton: "btn btn-primary",
-  addButton: "btn btn-outline-primary",
-  cancelButton: "btn btn-outline-secondary",
-  success: "alert alert-success",
-  error: "alert alert-danger",
-  warning: "alert alert-warning",
-}
+import {
+  BOOTSTRAP_PROFILE_CLASS_NAMES,
+  ProfilePage,
+} from "@activescott/auth-adapter-react-router/profile"
+
+;<ProfilePage {...loaderData} classNames={BOOTSTRAP_PROFILE_CLASS_NAMES} />
 ```
+
+Spread it to change a slot and keep the rest: `{ ...BOOTSTRAP_PROFILE_CLASS_NAMES, title: "fw-bold text-primary mb-4" }`. It is typed `Required<ProfileClassNames>`, so a slot added later has to be given a class before the package builds.
+
+For another framework, write the map yourself. An empty string is a slot you own but want no class on, the way Bootstrap's `.table` reaches its own cells: it drops the built-in style without adding an attribute.
+
+Announcements are in the markup rather than in `classNames`, since a class cannot add one: a failure or a caution carries `role="alert"`, a confirmation `role="status"`, and a message about the address or the code you typed is tied to that field with `aria-invalid` and `aria-describedby`.
 
 The blocks import React but nothing from `react-router`, so links go through the optional `linkComponent`; without it they are plain anchors, which navigate the whole document. The forms are plain `<form>` elements on purpose: each step of an add-a-sign-in-method flow is a document POST the auth routes answer with a redirect, which is what lets the flow's state live in the URL.
 

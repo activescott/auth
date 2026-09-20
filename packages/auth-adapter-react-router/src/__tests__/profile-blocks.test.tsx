@@ -7,6 +7,8 @@ import { Passkeys } from "../profile/passkeys.js"
 import { ProfilePage } from "../profile/profile-page.js"
 import { SignInMethods } from "../profile/sign-in-methods.js"
 import type { ProfilePasskey } from "../profile/passkeys.js"
+import { BOOTSTRAP_PROFILE_CLASS_NAMES } from "../profile/bootstrap-classes.js"
+import { PROFILE_STYLES } from "../profile/profile-styles.js"
 import { render } from "./render.js"
 
 const LINK_FLOW: LinkFlow = {
@@ -83,6 +85,37 @@ describe("AccountSummary", () => {
 
     expect(rowsOf(container)).toEqual(["Handle: tester", "Status: APPROVED"])
   })
+
+  it("renders structural markup only when asked", () => {
+    const { container } = render(
+      <AccountSummary
+        email="user@example.com"
+        memberSince="2026-01-15T10:00:00.000Z"
+        includeDefaultStyles={false}
+      />,
+    )
+
+    expect(container.querySelectorAll("[style]")).toHaveLength(0)
+  })
+
+  it("puts each term and value straight into the list", () => {
+    const { container } = render(
+      <AccountSummary
+        email="user@example.com"
+        classNames={{ definitionList: "row mb-0", definitionTerm: "col-sm-4" }}
+      />,
+    )
+
+    // Bootstrap's dl.row puts its columns on the terms and values themselves,
+    // so nothing may come between them and the list
+    const list = container.querySelector("dl")
+    expect(list?.getAttribute("class")).toBe("row mb-0")
+    expect([...(list?.children ?? [])].map((child) => child.tagName)).toEqual([
+      "DT",
+      "DD",
+    ])
+    expect(list?.querySelector("dt")?.getAttribute("class")).toBe("col-sm-4")
+  })
 })
 
 describe("Passkeys", () => {
@@ -148,9 +181,10 @@ describe("Passkeys", () => {
     await act(() => container.querySelector("button")?.click())
 
     expect(onRegistered).toHaveBeenCalled()
-    expect(
-      textOf(container.querySelector('[data-testid="passkey-added"]')),
-    ).toBe("Passkey added.")
+    const added = container.querySelector('[data-testid="passkey-added"]')
+    expect(textOf(added)).toBe("Passkey added.")
+    // Nothing else tells a screen reader the ceremony finished
+    expect(added?.getAttribute("role")).toBe("status")
   })
 
   it("reports a registration that failed", async () => {
@@ -165,9 +199,9 @@ describe("Passkeys", () => {
 
     await act(() => container.querySelector("button")?.click())
 
-    expect(
-      textOf(container.querySelector('[data-testid="passkey-error"]')),
-    ).toBe("Error: Cancelled")
+    const failure = container.querySelector('[data-testid="passkey-error"]')
+    expect(textOf(failure)).toBe("Error: Cancelled")
+    expect(failure?.getAttribute("role")).toBe("alert")
   })
 })
 
@@ -264,5 +298,45 @@ describe("ProfilePage", () => {
       expect(card.getAttribute("class")).toBe("card mb-4")
       expect(card.hasAttribute("style")).toBe(false)
     }
+  })
+})
+
+describe("BOOTSTRAP_PROFILE_CLASS_NAMES", () => {
+  const client = { registerPasskey: vi.fn() }
+
+  it("names every slot the built-in look styles", () => {
+    expect(Object.keys(BOOTSTRAP_PROFILE_CLASS_NAMES).sort()).toEqual(
+      Object.keys(PROFILE_STYLES).sort(),
+    )
+  })
+
+  it("leaves no inline style behind to outrank Bootstrap's rules", () => {
+    const { container } = render(
+      <ProfilePage
+        email="user@example.com"
+        memberSince="2026-01-15T10:00:00.000Z"
+        identities={[
+          {
+            id: "identity-1",
+            provider: "email",
+            identifier: "user@example.com",
+            createdAt: "2026-01-15T10:00:00.000Z",
+            verifiedAt: "2026-01-15T10:00:00.000Z",
+          },
+        ]}
+        linkFlow={{ ...LINK_FLOW, add: "sms", sent: true }}
+        addMethods={[{ provider: "sms", callingCode: "+1" }]}
+        passkeys={[passkey()]}
+        passkeyClient={client}
+        classNames={BOOTSTRAP_PROFILE_CLASS_NAMES}
+      />,
+    )
+
+    expect(container.querySelectorAll("[style]")).toHaveLength(0)
+    // An empty entry means the application owns the slot and wants no class
+    expect(container.querySelector("td")?.hasAttribute("class")).toBe(false)
+    expect(container.querySelector("table")?.getAttribute("class")).toBe(
+      "table",
+    )
   })
 })
