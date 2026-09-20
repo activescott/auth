@@ -1,6 +1,5 @@
 import type { ReactNode } from "react"
-import type { AuthUser, Identity } from "@activescott/auth"
-import type { AdminUserRow } from "@activescott/auth/admin"
+import type { AdminPredicate, AdminUserRow } from "@activescott/auth/admin"
 
 /** Default users per page when the request does not ask for a size */
 export const DEFAULT_PAGE_SIZE = 20
@@ -15,14 +14,10 @@ export const MAX_PAGE_SIZE = 100
 export const DEFAULT_BASE_PATH = "/admin"
 
 /**
- * Decides whether the signed-in user may see the admin pages. Receives every
- * identity the user owns, not just the one they signed in with, so a user
- * allowlisted by email still gets in after signing in by SMS.
+ * Decides whether the signed-in user may see the admin pages. Defined by core;
+ * re-exported here so the admin options and the predicate stay one type.
  */
-export type AdminPredicate = (
-  user: AuthUser,
-  identities: Identity[],
-) => boolean | Promise<boolean>
+export type { AdminPredicate }
 
 /**
  * What a signed-in user who is not an admin receives.
