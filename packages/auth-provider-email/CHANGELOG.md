@@ -6,6 +6,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 <!-- nodemailer 9.0.3 -> 9.1.1 (#81) is republished by the commit below;
 the original Dependabot commit was typed chore(deps) and never released. -->
 
+## [3.2.2](https://github.com/activescott/auth/compare/auth-provider-email@3.2.1...auth-provider-email@3.2.2) (2026-09-20)
+
+### Bug Fixes
+
+* bump nodemailer to 10 ([#129](https://github.com/activescott/auth/issues/129)) ([7fd387d](https://github.com/activescott/auth/commit/7fd387d5440da014ff7579bd5ca5e02413fa8cbc))
+
 ## [3.2.1](https://github.com/activescott/auth/compare/auth-provider-email@3.2.0...auth-provider-email@3.2.1) (2026-09-19)
 
 ## [3.2.0](https://github.com/activescott/auth/compare/auth-provider-email@3.1.1...auth-provider-email@3.2.0) (2026-09-18)
