@@ -337,9 +337,9 @@ The gate only sees email and SMS sign-ins, and only at initiate. Passkey sign-in
 ```ts
 createAuthHandlers(auth, {
   // ...
-  onSessionVerified: async ({ user }) => {
+  onSessionVerified: async ({ user }, request) => {
     const to = await waitlist.redirectFor(user.id)
-    if (to) return logout(to)
+    if (to) return logout(request, to)
   },
 })
 ```
