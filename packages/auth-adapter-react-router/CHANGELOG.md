@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.0.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.6.0...auth-adapter-react-router@3.0.0) (2026-09-21)
+
+### ⚠ BREAKING CHANGES
+
+* logout takes the request first and always checks its
+Origin. A logout route is a resource route, and react-router runs no
+Origin check of its own there. The old logout("/") form is removed
+rather than kept, because keeping it would leave the check opt-in.
+To upgrade, each logout route calls logout(request, "/") inside
+action({ request }). Any other logout call passes its request the same
+way.
+
+### Bug Fixes
+
+* check Origin on actions ([#134](https://github.com/activescott/auth/issues/134)) ([5f60b72](https://github.com/activescott/auth/commit/5f60b723fa5d89b8a521a9d96abd4adfa06d57e0))
+
 ## [2.6.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.5.1...auth-adapter-react-router@2.6.0) (2026-09-20)
 
 ### Features
