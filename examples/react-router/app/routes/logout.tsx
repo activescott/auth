@@ -7,6 +7,6 @@ export function action({ request }: Route.ActionArgs) {
   return logout(request, "/")
 }
 
-export function loader() {
-  return logout("/")
+export function loader({ request }: Route.LoaderArgs) {
+  return logout(request, "/")
 }
