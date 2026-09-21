@@ -54,6 +54,19 @@ export const action = ({ request }: Route.ActionArgs) => handleAuth({ request })
 
 This one file covers `/auth/<provider>/<action>` for every registered provider — e.g. `POST /auth/email/initiate` (your login form posts here), `GET /auth/email/verify?...` (magic-link confirm page), `POST /auth/email/verify` (link redemption or code entry), `/auth/sms/...`, `/auth/passkey/...`, etc. `handleAuth` dispatches to the right provider, runs `verify` or `initiate`, sets/clears the session cookie, and returns a redirect — or passes through a page the provider renders (like the magic-link confirm page).
 
+That route has no component, which makes it a resource route, and react-router runs its `Origin` check on document and single-fetch actions only. So `handleAuth` runs the check itself: a POST carrying an `Origin` that is not this app's is answered 400, a request with no `Origin` passes (as react-router does), and GET is untouched. A logout route is a resource route for the same reason, so `logout` takes the request and runs the same check:
+
+```tsx
+import { logout } from "~/lib/auth.server"
+import type { Route } from "./+types/logout"
+
+export function action({ request }: Route.ActionArgs) {
+  return logout(request, "/")
+}
+```
+
+The comparison is against `request.url`, so behind a proxy that terminates TLS the app still has to trust the proxy (`app.set("trust proxy", 1)` in express), or every post from the browser looks cross-origin.
+
 Protect any loader with `requireAuth(request)`:
 
 ```tsx

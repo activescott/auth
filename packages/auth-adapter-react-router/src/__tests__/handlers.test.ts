@@ -42,6 +42,7 @@ function createMockAuth(overrides: Partial<Auth> = {}): Auth {
     }),
     getSessionManager: vi.fn(),
     getSessionConfig: vi.fn(),
+    getLogger: vi.fn().mockReturnValue(undefined),
     destroy: vi.fn(),
     ...overrides,
   } as unknown as Auth
@@ -425,6 +426,34 @@ describe("createAuthHandlers", () => {
       expect(response.status).toBe(200)
     })
 
+    it("should route a POST from the app's own origin", async () => {
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider))
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { Origin: TEST_BASE_URL },
+      })
+      const response = await handlers.handleAuth({ request })
+
+      expect(provider.initiate).toHaveBeenCalledTimes(1)
+      expect(response.status).toBe(200)
+    })
+
+    it("should refuse a POST from another origin", async () => {
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider))
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { Origin: "https://evil.example" },
+      })
+      const response = await handlers.handleAuth({ request })
+
+      expect(response.status).toBe(400)
+      expect(provider.initiate).not.toHaveBeenCalled()
+    })
+
     it("should route action routes to handleAction, not verify", async () => {
       const actionResponse = new Response("{}", {
         headers: { "Content-Type": "application/json" },
@@ -632,22 +661,52 @@ describe("createAuthHandlers", () => {
   })
 
   describe("logout", () => {
-    it("should return redirect with destroy cookie", () => {
+    it("should refuse the removed logout(redirectTo) form", () => {
       const mockAuth = createMockAuth()
       const handlers = createAuthHandlers(mockAuth)
 
-      const response = handlers.logout("/goodbye")
+      // @ts-expect-error the request is required
+      expect(() => handlers.logout("/goodbye")).toThrow(TypeError)
+      expect(mockAuth.destroySessionCookie).not.toHaveBeenCalled()
+    })
+
+    it("should sign out a POST from the app's own origin", () => {
+      const handlers = createAuthHandlers(createMockAuth())
+
+      const response = handlers.logout(
+        new Request(`${TEST_BASE_URL}/logout`, {
+          method: "POST",
+          headers: { Origin: TEST_BASE_URL },
+        }),
+        "/goodbye",
+      )
 
       expect(response.status).toBe(302)
       expect(response.headers.get("Location")).toBe("/goodbye")
       expect(response.headers.get("Set-Cookie")).toContain("Max-Age=0")
     })
 
-    it("should default redirect to /", () => {
+    it("should refuse a POST from another origin", () => {
       const mockAuth = createMockAuth()
       const handlers = createAuthHandlers(mockAuth)
 
-      const response = handlers.logout()
+      const response = handlers.logout(
+        new Request(`${TEST_BASE_URL}/logout`, {
+          method: "POST",
+          headers: { Origin: "https://evil.example" },
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(mockAuth.destroySessionCookie).not.toHaveBeenCalled()
+    })
+
+    it("should default redirect to / when given only a request", () => {
+      const handlers = createAuthHandlers(createMockAuth())
+
+      const response = handlers.logout(
+        new Request(`${TEST_BASE_URL}/logout`, { method: "POST" }),
+      )
 
       expect(response.headers.get("Location")).toBe("/")
     })

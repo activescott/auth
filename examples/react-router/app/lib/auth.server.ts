@@ -490,9 +490,12 @@ const handlers = createAuthHandlers(auth, {
   // start. This catches the rest on every request: a passkey sign-in, or a
   // user an admin blocked after they signed in. Logging them out, rather
   // than only redirecting, stops the session from coming back.
-  onSessionVerified: async ({ user }): Promise<Response | undefined> => {
+  onSessionVerified: async (
+    { user },
+    request,
+  ): Promise<Response | undefined> => {
     const redirectTo = await waitlist.redirectFor(user.id)
-    if (redirectTo) return handlers.logout(redirectTo)
+    if (redirectTo) return handlers.logout(request, redirectTo)
   },
 })
 
