@@ -1,5 +1,6 @@
 import { parseDuration, resolveRedirectTarget } from "@activescott/auth"
 import type { Auth, AuthUser, Identity, AuthError } from "@activescott/auth"
+import { applyOriginGate } from "./origin-gate.js"
 import { pageUrl } from "./page-url.js"
 
 const MS_PER_SECOND = 1000
@@ -102,7 +103,10 @@ export interface AuthHandlers<TUser = AuthUser> {
     updatedUser: AuthUser,
   ) => Promise<string>
   clearSessionCookie: () => string
-  logout: (redirectTo?: string) => Response
+  logout: (
+    requestOrRedirectTo?: Request | string,
+    redirectTo?: string,
+  ) => Response
   getAuth: () => Auth
 }
 
@@ -185,8 +189,14 @@ export function createAuthHandlers<TUser = AuthUser>(
      * session cookie plus redirect on success, error redirect on failure.
      * Providers that answer with a Response themselves (the email confirm
      * page, passkey JSON) pass through untouched, as do initiate results.
+     *
+     * The route this sits in has no component, so react-router treats it as a
+     * resource route and skips the Origin check it runs on every other action.
      */
     async handleAuth({ request }: { request: Request }): Promise<Response> {
+      const refused = applyOriginGate(request, auth.getLogger())
+      if (refused) return refused
+
       return auth.handleRequest(request, {
         onSuccess: async (result, successRequest) => {
           const sessionCookie = await auth.createSessionCookie(
@@ -379,11 +389,38 @@ export function createAuthHandlers<TUser = AuthUser>(
     },
 
     /**
-     * Create a logout response that clears the session
+     * Create a logout response that clears the session.
+     *
+     * Pass the action's `request` to get the Origin check: a logout route is
+     * a resource route, so react-router never runs its own. `logout("/bye")`
+     * still works and still signs the user out, but nothing then checks where
+     * the post came from.
+     *
+     * @example
+     * ```typescript
+     * export function action({ request }: Route.ActionArgs) {
+     *   return logout(request, "/")
+     * }
+     * ```
      */
-    logout(redirectTo = "/"): Response {
+    logout(
+      requestOrRedirectTo?: Request | string,
+      redirectTo?: string,
+    ): Response {
+      const request =
+        requestOrRedirectTo instanceof Request ? requestOrRedirectTo : undefined
+      const target =
+        (typeof requestOrRedirectTo === "string"
+          ? requestOrRedirectTo
+          : redirectTo) ?? "/"
+
+      if (request) {
+        const refused = applyOriginGate(request, auth.getLogger())
+        if (refused) return refused
+      }
+
       const cookie = auth.destroySessionCookie()
-      return redirect(redirectTo, {
+      return redirect(target, {
         headers: {
           "Set-Cookie": cookie,
         },
