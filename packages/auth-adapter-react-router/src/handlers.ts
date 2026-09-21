@@ -103,10 +103,7 @@ export interface AuthHandlers<TUser = AuthUser> {
     updatedUser: AuthUser,
   ) => Promise<string>
   clearSessionCookie: () => string
-  logout: (
-    requestOrRedirectTo?: Request | string,
-    redirectTo?: string,
-  ) => Response
+  logout: (request: Request, redirectTo?: string) => Response
   getAuth: () => Auth
 }
 
@@ -391,10 +388,8 @@ export function createAuthHandlers<TUser = AuthUser>(
     /**
      * Create a logout response that clears the session.
      *
-     * Pass the action's `request` to get the Origin check: a logout route is
-     * a resource route, so react-router never runs its own. `logout("/bye")`
-     * still works and still signs the user out, but nothing then checks where
-     * the post came from.
+     * Takes the action's `request` to run the Origin check: a logout route is
+     * a resource route, so react-router never runs its own.
      *
      * @example
      * ```typescript
@@ -403,24 +398,17 @@ export function createAuthHandlers<TUser = AuthUser>(
      * }
      * ```
      */
-    logout(
-      requestOrRedirectTo?: Request | string,
-      redirectTo?: string,
-    ): Response {
-      const request =
-        requestOrRedirectTo instanceof Request ? requestOrRedirectTo : undefined
-      const target =
-        (typeof requestOrRedirectTo === "string"
-          ? requestOrRedirectTo
-          : redirectTo) ?? "/"
-
-      if (request) {
-        const refused = applyOriginGate(request, auth.getLogger())
-        if (refused) return refused
+    logout(request: Request, redirectTo = "/"): Response {
+      if (typeof request === "string") {
+        throw new TypeError(
+          'logout takes the request first: logout(request, "/")',
+        )
       }
+      const refused = applyOriginGate(request, auth.getLogger())
+      if (refused) return refused
 
       const cookie = auth.destroySessionCookie()
-      return redirect(target, {
+      return redirect(redirectTo, {
         headers: {
           "Set-Cookie": cookie,
         },

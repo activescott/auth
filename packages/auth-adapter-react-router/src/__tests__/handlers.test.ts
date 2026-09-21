@@ -661,24 +661,13 @@ describe("createAuthHandlers", () => {
   })
 
   describe("logout", () => {
-    it("should return redirect with destroy cookie", () => {
+    it("should refuse the removed logout(redirectTo) form", () => {
       const mockAuth = createMockAuth()
       const handlers = createAuthHandlers(mockAuth)
 
-      const response = handlers.logout("/goodbye")
-
-      expect(response.status).toBe(302)
-      expect(response.headers.get("Location")).toBe("/goodbye")
-      expect(response.headers.get("Set-Cookie")).toContain("Max-Age=0")
-    })
-
-    it("should default redirect to /", () => {
-      const mockAuth = createMockAuth()
-      const handlers = createAuthHandlers(mockAuth)
-
-      const response = handlers.logout()
-
-      expect(response.headers.get("Location")).toBe("/")
+      // @ts-expect-error the request is required
+      expect(() => handlers.logout("/goodbye")).toThrow(TypeError)
+      expect(mockAuth.destroySessionCookie).not.toHaveBeenCalled()
     })
 
     it("should sign out a POST from the app's own origin", () => {
