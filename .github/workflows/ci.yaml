@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    # Fork PRs stay on GitHub-hosted runners: this repo is public and the
+    # self-hosted runner is a privileged dind pod on the cluster's only node.
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || 'auth-runners' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,7 +27,7 @@ jobs:
       - run: npm test
 
   example-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || 'auth-runners' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,7 +55,7 @@ jobs:
 
   release:
     needs: [validate, example-e2e]
-    runs-on: ubuntu-latest
+    runs-on: auth-runners
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
       packages: ${{ steps.get-packages.outputs.packages }}
@@ -95,6 +97,8 @@ jobs:
 
   publish:
     needs: release
+    # Stays GitHub-hosted: npm trusted publishing does not support
+    # self-hosted runners (https://docs.npmjs.com/trusted-publishers).
     runs-on: ubuntu-latest
     if: needs.release.outputs.packages != '[]'
     strategy:
