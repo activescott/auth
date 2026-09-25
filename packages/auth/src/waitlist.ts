@@ -52,6 +52,15 @@ export interface WaitlistNotice {
   identifier: string
 }
 
+/**
+ * A user an admin just approved, for {@link WaitlistConfig.onApproved}.
+ */
+export interface ApprovalNotice {
+  userId: string
+  /** The user's sign-in methods, so the app can pick an address to write to */
+  identities: Array<{ provider: string; identifier: string }>
+}
+
 /** Configuration for {@link createWaitlist} */
 export interface WaitlistConfig {
   /** The same identity store `Auth` uses */
@@ -81,7 +90,15 @@ export interface WaitlistConfig {
    * happened, and losing it must not fail the sign-in that caused it.
    */
   notify?: (notice: WaitlistNotice) => void | Promise<void>
-  /** Where a failed `notify` is reported */
+  /**
+   * Called when an admin approves a user who was not already approved, so
+   * the app can tell them they can sign in (`waitlistApprovalEmail` renders
+   * the message). Not called for `autoApprove`, whose user is already
+   * signing in. A throw is logged and swallowed, as with `notify`: the
+   * approval is already saved.
+   */
+  onApproved?: (notice: ApprovalNotice) => void | Promise<void>
+  /** Where a failed `notify` or `onApproved` is reported */
   logger?: AuthLogger
 }
 
@@ -112,14 +129,15 @@ export interface Waitlist extends InitiateGate {
    * `onSessionVerified`).
    */
   redirectFor(userId: string): Promise<string | null>
-  /** Mark the user APPROVED */
+  /** Mark the user APPROVED, calling `onApproved` if they were not already */
   approve(userId: string): Promise<void>
   /** Mark the user BLOCKED */
   block(userId: string): Promise<void>
   /**
    * Apply an admin's approve or block from a posted form with a `userId`
    * field and an `intent` field of "approve" or "block", as rendered by the
-   * admin dashboard's `rowActions`. Call it only after checking the caller is
+   * admin dashboard's `rowActions`. Approving calls `onApproved` as
+   * {@link Waitlist.approve} does. Call it only after checking the caller is
    * an admin.
    */
   handleAdminAction(formData: FormData): Promise<WaitlistActionResult>
@@ -142,6 +160,29 @@ export function createWaitlist(config: WaitlistConfig): Waitlist {
       config.logger?.warn("waitlist notify failed", {
         reason: notice.reason,
         userId: notice.userId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function approve(userId: string): Promise<void> {
+    const previous = await approvalStore.getApprovalStatus(userId)
+    await setStatus(userId, "APPROVED")
+    // Approving someone already approved (a double-clicked button, a second
+    // admin) must not send them a second welcome
+    if (previous === "APPROVED" || !config.onApproved) return
+    try {
+      const identities = await identityStore.findByUserId(userId)
+      await config.onApproved({
+        userId,
+        identities: identities.map(({ provider, identifier }) => ({
+          provider,
+          identifier,
+        })),
+      })
+    } catch (error) {
+      config.logger?.warn("waitlist onApproved failed", {
+        userId,
         error: error instanceof Error ? error.message : String(error),
       })
     }
@@ -210,7 +251,7 @@ export function createWaitlist(config: WaitlistConfig): Waitlist {
       return status === "BLOCKED" ? blockedUrl : waitlistUrl
     },
 
-    approve: (userId) => setStatus(userId, "APPROVED"),
+    approve,
 
     block: (userId) => setStatus(userId, "BLOCKED"),
 
@@ -223,9 +264,12 @@ export function createWaitlist(config: WaitlistConfig): Waitlist {
       if (intent !== "approve" && intent !== "block") {
         return { success: false, error: 'intent must be "approve" or "block"' }
       }
-      const status = intent === "approve" ? "APPROVED" : "BLOCKED"
-      await setStatus(userId, status)
-      return { success: true, userId, status }
+      if (intent === "approve") {
+        await approve(userId)
+        return { success: true, userId, status: "APPROVED" }
+      }
+      await setStatus(userId, "BLOCKED")
+      return { success: true, userId, status: "BLOCKED" }
     },
   }
 }
