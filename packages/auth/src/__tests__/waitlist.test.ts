@@ -339,3 +339,111 @@ describe("createWaitlist handleAdminAction", () => {
     expect(approvalStore.setApprovalStatus).not.toHaveBeenCalled()
   })
 })
+
+describe("createWaitlist onApproved", () => {
+  function form(fields: Record<string, string>): FormData {
+    const data = new FormData()
+    for (const [key, value] of Object.entries(fields)) data.set(key, value)
+    return data
+  }
+
+  it("tells a waiting user they were approved, with their identities", async () => {
+    const onApproved = vi.fn()
+    const { waitlist, seed } = setup({ onApproved })
+    const userId = await seed("p@example.com", "PENDING")
+
+    await waitlist.handleAdminAction(form({ userId, intent: "approve" }))
+
+    expect(onApproved).toHaveBeenCalledTimes(1)
+    expect(onApproved).toHaveBeenCalledWith({
+      userId,
+      identities: [{ provider: "email", identifier: "p@example.com" }],
+    })
+  })
+
+  it("tells an unblocked user, and a user with no status", async () => {
+    const onApproved = vi.fn()
+    const { waitlist, seed } = setup({ onApproved })
+
+    await waitlist.approve(await seed("b@example.com", "BLOCKED"))
+    await waitlist.approve(await seed("n@example.com", null))
+
+    expect(onApproved).toHaveBeenCalledTimes(2)
+  })
+
+  it("stays quiet for an approved user, a block, and autoApprove", async () => {
+    const onApproved = vi.fn()
+    const { waitlist, seed } = setup({
+      onApproved,
+      autoApprove: () => true,
+    })
+    const approved = await seed("a@example.com", "APPROVED")
+    const pending = await seed("p@example.com", "PENDING")
+
+    await waitlist.approve(approved)
+    await waitlist.handleAdminAction(form({ userId: pending, intent: "block" }))
+    await waitlist.onInitiate(signin("invited@example.com"))
+
+    expect(onApproved).not.toHaveBeenCalled()
+  })
+
+  it("logs a failed onApproved and keeps the approval", async () => {
+    const warn = vi.fn()
+    const { waitlist, statuses, seed } = setup({
+      onApproved: () => Promise.reject(new Error("smtp down")),
+      logger: { warn },
+    })
+    const userId = await seed("p@example.com", "PENDING")
+
+    expect(
+      await waitlist.handleAdminAction(form({ userId, intent: "approve" })),
+    ).toEqual({ success: true, userId, status: "APPROVED" })
+    expect(statuses.get(userId)).toBe("APPROVED")
+    expect(warn).toHaveBeenCalledWith(
+      "waitlist onApproved failed",
+      expect.objectContaining({ userId, error: "smtp down" }),
+    )
+  })
+})
+
+describe("createWaitlist lifecycle", () => {
+  it("holds a user at the gate until approved and again once blocked", async () => {
+    const { waitlist, statuses } = setup({ blockedUrl: "/blocked" })
+
+    // Unknown identifier: waitlisted at initiate and on every request
+    expect(await waitlist.onInitiate(signin("new@example.com"))).toEqual({
+      redirect: "/waitlist",
+    })
+    const [userId] = [...statuses.keys()] as [string]
+    expect(await waitlist.redirectFor(userId)).toBe("/waitlist")
+
+    // PENDING -> APPROVED: through the gate
+    await waitlist.approve(userId)
+    expect(await waitlist.onInitiate(signin("new@example.com"))).toBe("allow")
+    expect(await waitlist.redirectFor(userId)).toBeNull()
+
+    // APPROVED -> BLOCKED: turned away at both checks
+    await waitlist.block(userId)
+    expect(await waitlist.onInitiate(signin("new@example.com"))).toEqual({
+      redirect: "/blocked",
+    })
+    expect(await waitlist.redirectFor(userId)).toBe("/blocked")
+
+    // BLOCKED -> APPROVED: an admin can undo a block
+    await waitlist.approve(userId)
+    expect(await waitlist.onInitiate(signin("new@example.com"))).toBe("allow")
+    expect(await waitlist.redirectFor(userId)).toBeNull()
+  })
+
+  it("lets an admin block a waiting user, who stays out", async () => {
+    const { waitlist, seed } = setup({ blockedUrl: "/blocked" })
+    const userId = await seed("p@example.com", "PENDING")
+
+    await waitlist.block(userId)
+
+    expect(await waitlist.onInitiate(signin("p@example.com"))).toEqual({
+      redirect: "/blocked",
+    })
+    expect(await waitlist.redirectFor(userId)).toBe("/blocked")
+  })
+})
