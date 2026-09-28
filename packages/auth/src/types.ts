@@ -6,7 +6,11 @@ import type {
   AbuseContext,
   AbuseDescription,
 } from "./abuse/abuse-guard.js"
-import type { InitiateGate, InitiateGateContext } from "./initiate-gate.js"
+import type {
+  InitiateGate,
+  InitiateGateContext,
+  InitiateMode,
+} from "./initiate-gate.js"
 
 /**
  * Minimal user representation for authentication.
@@ -72,6 +76,13 @@ export interface AuthSuccess {
   success: true
   user: AuthUser
   identity: Identity
+  /**
+   * Whether the verify was a sign-in or attached the identifier to the
+   * signed-in user. Absent is treated as a sign-in.
+   */
+  mode?: InitiateMode
+  /** True when this verify created the user */
+  isNewUser?: boolean
   /**
    * Set-Cookie header values the caller must include in the HTTP response
    * (e.g., clearing a challenge cookie after OTP verification).
@@ -459,7 +470,8 @@ export interface AuthConfig {
    * an invite-only beta). Consulted inside `handleRequest` with the
    * identifier the provider has already validated and normalized — see
    * {@link InitiateGate}. Every provider serving an initiate route must set
-   * `consultsInitiateGate`, or the Auth constructor throws. */
+   * `consultsInitiateGate`, or the Auth constructor throws. Its optional
+   * `onVerified` runs again once the identifier is verified. */
   gate?: InitiateGate
   /** Where to report conditions worth a WARN — see {@link AuthLogger}.
    * Nothing is logged through it when absent. */
