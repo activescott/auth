@@ -83,16 +83,20 @@ export function createPasskeyClient(
   const actionUrl = (action: string): string => `${basePath}/passkey/${action}`
   const maxAge = options.optionsMaxAge ?? DEFAULT_OPTIONS_MAX_AGE_MS
   const registration = createPreparedOptions(
-    () =>
+    (issued) =>
       postJson<PublicKeyCredentialCreationOptionsJSON>(
         actionUrl("register-options"),
+        undefined,
+        issued,
       ),
     maxAge,
   )
   const authentication = createPreparedOptions(
-    () =>
+    (issued) =>
       postJson<PublicKeyCredentialRequestOptionsJSON>(
         actionUrl("authenticate-options"),
+        undefined,
+        issued,
       ),
     maxAge,
   )
@@ -129,9 +133,14 @@ export function createPasskeyClient(
 /**
  * POST (optionally with a JSON body) and return the parsed JSON response,
  * throwing an Error that carries the server's most specific reason on a
- * non-2xx status
+ * non-2xx status. `onOk` runs when a 2xx response arrives, before its body
+ * is read.
  */
-async function postJson<T>(url: string, body?: object): Promise<T> {
+async function postJson<T>(
+  url: string,
+  body?: object,
+  onOk?: () => void,
+): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
     ...(body && {
@@ -139,6 +148,7 @@ async function postJson<T>(url: string, body?: object): Promise<T> {
       body: JSON.stringify(body),
     }),
   })
+  if (response.ok) onOk?.()
   const json: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     throw new Error(

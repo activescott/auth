@@ -9,6 +9,8 @@ import { createPasskeyClient } from "../passkey-client.js"
 const OPTIONS_MAX_AGE_MS = 240_000
 
 let challenges: string[]
+// The challenge in the one cookie every tab on the origin shares
+let cookie: string | undefined
 let fetchMock: ReturnType<typeof vi.fn>
 let getCredential: ReturnType<typeof vi.fn>
 let createCredential: ReturnType<typeof vi.fn>
@@ -60,9 +62,11 @@ function tap(onClick: () => unknown): void {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] })
   challenges = ["first", "second", "third", "fourth"]
-  fetchMock = vi.fn(async (url: string) =>
-    respond(optionsBody(url, challenges.shift() ?? "spent")),
-  )
+  cookie = undefined
+  fetchMock = vi.fn(async (url: string) => {
+    cookie = challenges.shift() ?? "spent"
+    return respond(optionsBody(url, cookie))
+  })
   vi.stubGlobal("fetch", fetchMock)
   // Never settles: the passkey sheet stays open
   getCredential = vi.fn(() => new Promise<never>(() => undefined))
@@ -232,5 +236,205 @@ describe("prepareRegistration", () => {
 
     expect(createCredential).toHaveBeenCalledTimes(2)
     expect(requested(createCredential, 1)).toBe("second")
+  })
+})
+
+describe("autofill", () => {
+  it("does not replace the challenge a pending autofill request is bound to", async () => {
+    const passkeys = createPasskeyClient()
+    passkeys.prepareSignIn()
+    await settle()
+    void passkeys.signInWithPasskey({ conditional: true })
+
+    vi.advanceTimersByTime(OPTIONS_MAX_AGE_MS)
+    await settle()
+
+    expect(optionsFetches()).toBe(1)
+    expect(requested(getCredential, 0)).toBe(cookie)
+  })
+})
+
+describe("hidden tabs", () => {
+  let visibilityState: DocumentVisibilityState
+  let page: EventTarget
+
+  function show(state: DocumentVisibilityState): void {
+    visibilityState = state
+    page.dispatchEvent(new Event("visibilitychange"))
+  }
+
+  beforeEach(() => {
+    visibilityState = "visible"
+    page = new EventTarget()
+    Object.defineProperty(page, "visibilityState", {
+      get: () => visibilityState,
+    })
+    vi.stubGlobal("document", page)
+  })
+
+  it("does not refresh while hidden, and refetches stale options when shown", async () => {
+    const passkeys = createPasskeyClient()
+    passkeys.prepareSignIn()
+    await settle()
+
+    show("hidden")
+    vi.advanceTimersByTime(OPTIONS_MAX_AGE_MS)
+    await settle()
+    expect(optionsFetches()).toBe(1)
+
+    show("visible")
+    await settle()
+    tap(() => passkeys.signInWithPasskey())
+
+    expect(optionsFetches()).toBe(2)
+    expect(requested(getCredential, 0)).toBe("second")
+  })
+
+  it("does not refetch when shown while its options are fresh", async () => {
+    const passkeys = createPasskeyClient()
+    passkeys.prepareSignIn()
+    await settle()
+
+    show("hidden")
+    show("visible")
+    await settle()
+
+    expect(optionsFetches()).toBe(1)
+  })
+})
+
+// Each tab gets its own copy of the client module, as a browser tab would.
+// They share fetch, and so the one challenge cookie, and talk over a
+// BroadcastChannel or, without one, localStorage.
+describe("two tabs", () => {
+  class FakeBroadcastChannel {
+    static open = new Set<FakeBroadcastChannel>()
+    onmessage: ((event: MessageEvent) => void) | null = null
+    constructor(readonly name: string) {
+      FakeBroadcastChannel.open.add(this)
+    }
+    postMessage(data: unknown): void {
+      for (const other of FakeBroadcastChannel.open) {
+        if (other !== this && other.name === this.name) {
+          setImmediate(() =>
+            other.onmessage?.(new MessageEvent("message", { data })),
+          )
+        }
+      }
+    }
+  }
+
+  async function openTab(): Promise<ReturnType<typeof createPasskeyClient>> {
+    vi.resetModules()
+    const module = await import("../passkey-client.js")
+    return module.createPasskeyClient()
+  }
+
+  beforeEach(() => {
+    FakeBroadcastChannel.open.clear()
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+  })
+
+  it("does not register with a challenge another tab replaced", async () => {
+    const tabA = await openTab()
+    const tabB = await openTab()
+    tabA.prepareRegistration()
+    await settle()
+    tabB.prepareRegistration()
+    await settle()
+    // Then the message reaches tab A
+    await settle()
+
+    tap(() => tabA.registerPasskey())
+    expect(createCredential).not.toHaveBeenCalled()
+    await settle()
+
+    expect(createCredential).toHaveBeenCalledTimes(1)
+    expect(requested(createCredential, 0)).toBe(cookie)
+  })
+
+  it("does not sign in with a challenge another tab replaced", async () => {
+    const tabA = await openTab()
+    const tabB = await openTab()
+    tabA.prepareSignIn()
+    await settle()
+    tabB.prepareSignIn()
+    await settle()
+    // Then the message reaches tab A
+    await settle()
+
+    tap(() => tabA.signInWithPasskey())
+    await settle()
+
+    expect(getCredential).toHaveBeenCalledTimes(1)
+    expect(requested(getCredential, 0)).toBe(cookie)
+  })
+
+  it("hears about other tabs through localStorage without BroadcastChannel", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined)
+    const window = new EventTarget()
+    vi.stubGlobal("addEventListener", window.addEventListener.bind(window))
+    vi.stubGlobal("localStorage", {
+      setItem(key: string, newValue: string) {
+        setImmediate(() =>
+          window.dispatchEvent(
+            Object.assign(new Event("storage"), { key, newValue }),
+          ),
+        )
+      },
+    })
+    const tabA = await openTab()
+    const tabB = await openTab()
+    tabA.prepareRegistration()
+    await settle()
+    tabB.prepareRegistration()
+    await settle()
+    // Then the storage event reaches tab A
+    await settle()
+
+    tap(() => tabA.registerPasskey())
+    await settle()
+
+    expect(requested(createCredential, 0)).toBe(cookie)
+  })
+
+  it("keeps options whose response arrived after the other tab's", async () => {
+    let arrive = (): void => undefined
+    fetchMock.mockImplementationOnce(
+      (url: string) =>
+        new Promise<Response>((resolve) => {
+          arrive = () => {
+            cookie = "slow"
+            resolve(respond(optionsBody(url, "slow")))
+          }
+        }),
+    )
+    const tabA = await openTab()
+    const tabB = await openTab()
+    tabA.prepareSignIn()
+    tabB.prepareSignIn()
+    await settle()
+    arrive()
+    await settle()
+
+    tap(() => tabA.signInWithPasskey())
+
+    expect(getCredential).toHaveBeenCalledTimes(1)
+    expect(requested(getCredential, 0)).toBe("slow")
+    expect(cookie).toBe("slow")
+  })
+
+  it("drops registration options once sign-in options replace the cookie in the same tab", async () => {
+    const passkeys = createPasskeyClient()
+    passkeys.prepareRegistration()
+    await settle()
+    passkeys.prepareSignIn()
+    await settle()
+
+    tap(() => passkeys.registerPasskey())
+    await settle()
+
+    expect(createCredential).toHaveBeenCalledTimes(1)
+    expect(requested(createCredential, 0)).toBe(cookie)
   })
 })
