@@ -2,12 +2,16 @@ import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/server"
+import { createPreparedOptions } from "./prepared-options.js"
 import {
   runAuthenticationCeremony,
   runRegistrationCeremony,
 } from "./webauthn-ceremony.js"
 
 const DEFAULT_BASE_PATH = "/auth"
+// The provider's challengeExpiry defaults to 5 minutes; refetch a minute
+// before that
+const DEFAULT_OPTIONS_MAX_AGE_MS = 240_000
 
 /** Options for createPasskeyClient */
 export interface PasskeyClientOptions {
@@ -17,6 +21,12 @@ export interface PasskeyClientOptions {
    * fetches, so the browser sends the session and challenge cookies.
    */
   basePath?: string
+  /**
+   * How long options fetched by prepareSignIn or prepareRegistration are
+   * used, in milliseconds (default 4 minutes). Keep it under the provider's
+   * challengeExpiry.
+   */
+  optionsMaxAge?: number
 }
 
 /** Options for PasskeyClient.signInWithPasskey */
@@ -45,6 +55,17 @@ export interface PasskeyClient {
    * assertion.
    */
   signInWithPasskey(options?: SignInWithPasskeyOptions): Promise<void>
+  /**
+   * Fetch sign-in options before the user taps, and again before they
+   * expire, so signInWithPasskey can call navigator.credentials.get while
+   * the tap is still being handled. Safari (iOS and macOS) refuses the
+   * ceremony otherwise, with NotAllowedError. Call it when the sign-in UI
+   * mounts; it returns a function that stops the refreshes, fit for a
+   * useEffect cleanup.
+   */
+  prepareSignIn(): () => void
+  /** prepareSignIn for registerPasskey, on the page with "Add a passkey" */
+  prepareRegistration(): () => void
 }
 
 /**
@@ -60,26 +81,48 @@ export function createPasskeyClient(
 ): PasskeyClient {
   const basePath = (options.basePath ?? DEFAULT_BASE_PATH).replace(/\/+$/, "")
   const actionUrl = (action: string): string => `${basePath}/passkey/${action}`
+  const maxAge = options.optionsMaxAge ?? DEFAULT_OPTIONS_MAX_AGE_MS
+  const registration = createPreparedOptions(
+    () =>
+      postJson<PublicKeyCredentialCreationOptionsJSON>(
+        actionUrl("register-options"),
+      ),
+    maxAge,
+  )
+  const authentication = createPreparedOptions(
+    () =>
+      postJson<PublicKeyCredentialRequestOptionsJSON>(
+        actionUrl("authenticate-options"),
+      ),
+    maxAge,
+  )
 
   return {
-    async registerPasskey() {
-      const optionsJSON =
-        await postJson<PublicKeyCredentialCreationOptionsJSON>(
-          actionUrl("register-options"),
-        )
-      const registration = await runRegistrationCeremony(optionsJSON)
-      await postJson(actionUrl("register-verify"), registration)
+    registerPasskey() {
+      // Refetch after success too: the user may add another passkey, and
+      // the new options exclude the one just added
+      return registration.runModal(async (optionsJSON) => {
+        const response = await runRegistrationCeremony(optionsJSON)
+        await postJson(actionUrl("register-verify"), response)
+      }, true)
     },
 
-    async signInWithPasskey({ conditional = false } = {}) {
-      const optionsJSON = await postJson<PublicKeyCredentialRequestOptionsJSON>(
-        actionUrl("authenticate-options"),
-      )
-      const assertion = await runAuthenticationCeremony(optionsJSON, {
-        conditional,
-      })
-      await postJson(actionUrl("authenticate-verify"), assertion)
+    signInWithPasskey({ conditional = false } = {}) {
+      async function signIn(
+        optionsJSON: PublicKeyCredentialRequestOptionsJSON,
+      ): Promise<void> {
+        const assertion = await runAuthenticationCeremony(optionsJSON, {
+          conditional,
+        })
+        await postJson(actionUrl("authenticate-verify"), assertion)
+      }
+      return conditional
+        ? authentication.runConditional(signIn)
+        : authentication.runModal(signIn, false)
     },
+
+    prepareSignIn: () => authentication.prepare(),
+    prepareRegistration: () => registration.prepare(),
   }
 }
 
