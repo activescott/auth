@@ -61,11 +61,12 @@ export interface PasskeyClient {
    * the tap is still being handled. Safari (iOS and macOS) refuses the
    * ceremony otherwise, with NotAllowedError. Call it when the sign-in UI
    * mounts; it returns a function that stops the refreshes, fit for a
-   * useEffect cleanup.
+   * useEffect cleanup. Optional so objects written to this type before it
+   * existed still satisfy it; createPasskeyClient always provides it.
    */
-  prepareSignIn(): () => void
+  prepareSignIn?(): () => void
   /** prepareSignIn for registerPasskey, on the page with "Add a passkey" */
-  prepareRegistration(): () => void
+  prepareRegistration?(): () => void
 }
 
 /**
@@ -78,7 +79,7 @@ export interface PasskeyClient {
  */
 export function createPasskeyClient(
   options: PasskeyClientOptions = {},
-): PasskeyClient {
+): Required<PasskeyClient> {
   const basePath = (options.basePath ?? DEFAULT_BASE_PATH).replace(/\/+$/, "")
   const actionUrl = (action: string): string => `${basePath}/passkey/${action}`
   const maxAge = options.optionsMaxAge ?? DEFAULT_OPTIONS_MAX_AGE_MS
