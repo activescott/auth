@@ -298,9 +298,21 @@ Each declined destination logs one WARN naming the parameter it came from and th
 The status lives in your database, behind an `ApprovalStore`. Its values, `"PENDING" | "APPROVED" | "BLOCKED"`, match the enum apps usually already have:
 
 ```ts
-import { createWaitlist, waitlistNotificationEmail } from "@activescott/auth"
+import {
+  createWaitlist,
+  waitlistApprovalEmail,
+  waitlistNotificationEmail,
+} from "@activescott/auth"
+
+const emailOptions = {
+  appName: "Fernfiles",
+  domain: "fernfiles.com",
+  from: "noreply@fernfiles.com",
+}
 
 export const waitlist = createWaitlist({
+  // Only needed so onApproved below can look up an address to email
+  identityStore,
   approvalStore: {
     getApprovalStatus: async (userId) =>
       (await db.user.findUnique({ where: { id: userId } }))?.approvalStatus ??
@@ -315,13 +327,19 @@ export const waitlist = createWaitlist({
   autoApprove: ({ identifier }) => autoApproved.has(identifier),
   notify: (notice) =>
     transporter.sendMail({
-      ...waitlistNotificationEmail(notice, {
-        appName: "Fernfiles",
-        domain: "fernfiles.com",
-        from: "noreply@fernfiles.com",
-      }),
+      ...waitlistNotificationEmail(notice, emailOptions),
       to: adminEmails,
     }),
+  // Tell the user when an admin approves them
+  onApproved: ({ identities }) => {
+    const to = identities.find((i) => i.provider === "email")?.identifier
+    if (to) {
+      return transporter.sendMail({
+        ...waitlistApprovalEmail(emailOptions),
+        to,
+      })
+    }
+  },
   logger: console,
 })
 
@@ -329,6 +347,8 @@ const auth = new Auth({ /* ... */ gate: waitlist })
 ```
 
 The waitlist acts only after verification, so starting a sign-in for someone else's address creates no user and sends admins nothing. The verify step creates the user as it would without a waitlist; the waitlist then records their status. `notify` fires once when a user joins the waitlist (`reason: "waitlisted"`) and whenever `autoApprove` lets someone in (`reason: "auto-approved"`); a throw there is logged and does not fail the sign-in. The email is plain and generic on purpose: app name, domain, sender, and a link to `/admin/users` (`adminPath` changes it). Sending it is yours, so the core takes no mail dependency.
+
+`onApproved` fires when an admin approves a user who was not already approved, through `approve` or `handleAdminAction`, with the user's identities so you can pick an address (an SMS-only user has no email identity). It does not fire for `autoApprove`, whose user is already signing in. `waitlistApprovalEmail` renders the message, linking to `/login` (`signInPath` changes it). A throw is logged and the approval stands.
 
 A user with no recorded status counts as not approved. Mark existing users APPROVED before turning the waitlist on.
 

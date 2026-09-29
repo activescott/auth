@@ -90,6 +90,7 @@ export {
 
 // Waitlist
 export type {
+  ApprovalNotice,
   ApprovalStatus,
   ApprovalStore,
   AutoApproveInput,
@@ -99,8 +100,15 @@ export type {
   WaitlistNotice,
 } from "./waitlist.js"
 export { createWaitlist } from "./waitlist.js"
-export type { WaitlistEmail, WaitlistEmailOptions } from "./waitlist-email.js"
-export { waitlistNotificationEmail } from "./waitlist-email.js"
+export type {
+  WaitlistApprovalEmailOptions,
+  WaitlistEmail,
+  WaitlistEmailOptions,
+} from "./waitlist-email.js"
+export {
+  waitlistApprovalEmail,
+  waitlistNotificationEmail,
+} from "./waitlist-email.js"
 
 // Utilities for provider authors
 export {

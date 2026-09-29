@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest"
-import { waitlistNotificationEmail } from "../waitlist-email.js"
+import {
+  waitlistApprovalEmail,
+  waitlistNotificationEmail,
+} from "../waitlist-email.js"
 import type { WaitlistNotice } from "../waitlist.js"
 
 const NOTICE: WaitlistNotice = {
@@ -53,5 +56,33 @@ describe("waitlistNotificationEmail", () => {
 
     expect(email.html).not.toContain("<b>")
     expect(email.html).toContain("&quot;&lt;b&gt;&quot;@example.com")
+  })
+})
+
+describe("waitlistApprovalEmail", () => {
+  it("names the app and links to the sign-in page", () => {
+    const email = waitlistApprovalEmail(OPTIONS)
+
+    expect(email.from).toBe("noreply@fernfiles.com")
+    expect(email.subject).toBe("Your Fernfiles account is approved")
+    expect(email.text).toContain("https://fernfiles.com/login")
+    expect(email.html).toContain('href="https://fernfiles.com/login"')
+  })
+
+  it("uses an origin with a scheme as given, and a custom sign-in path", () => {
+    const email = waitlistApprovalEmail({
+      ...OPTIONS,
+      domain: "http://localhost:5173/",
+      signInPath: "/start",
+    })
+
+    expect(email.text).toContain("http://localhost:5173/start")
+  })
+
+  it("escapes the app name in the HTML", () => {
+    const email = waitlistApprovalEmail({ ...OPTIONS, appName: "<Fern>" })
+
+    expect(email.html).not.toContain("<Fern>")
+    expect(email.html).toContain("&lt;Fern&gt;")
   })
 })

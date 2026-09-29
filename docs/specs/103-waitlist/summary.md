@@ -18,10 +18,10 @@ Both apps keep `approvalStatus: PENDING | APPROVED | BLOCKED` on the user row. O
 - **The email is rendered, not sent.** The core has no mail dependency, and `EmailTransport` only knows how to send sign-in messages; widening that interface would break custom transports. `waitlistNotificationEmail` returns `{ from, subject, text, html }`, which nodemailer's `sendMail` takes once `to` is added.
 - **No adapter change.** Approve and block buttons are app markup in `rowActions`; the server half is `waitlist.handleAdminAction(formData)` (fields `userId`, `intent`).
 
-## Not included
+## Approval email to the user
 
-The "your account is approved" email to the user. Both apps send one from their approve action; it can follow if the consumer migrations want it in the library.
+Added after the first release, for a third consumer that needs it. Both apps send one from their approve action, so it moves behind an `onApproved` hook that `approve` and `handleAdminAction` call when the status changes to APPROVED from anything else. An already-approved user is skipped so a second click sends nothing. `autoApprove` does not call it, since that user is mid-sign-in. The hook gets the user's identities rather than an address because the library does not know which one the app writes to. `waitlistApprovalEmail` renders the message the same way `waitlistNotificationEmail` does.
 
 ## Compatibility
 
-Additive only: new exports from `@activescott/auth`. No existing export is replaced, so nothing is deprecated. The admin subpath is untouched.
+Additive only: new exports from `@activescott/auth` and a new optional `WaitlistConfig.onApproved`. `WaitlistNotice.reason` is unchanged; widening it would break exhaustive switches. No existing export is replaced, so nothing is deprecated. The admin subpath is untouched.
