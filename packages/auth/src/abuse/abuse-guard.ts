@@ -206,6 +206,10 @@ export class AbuseGuard {
     const ip = getClientIp(request, this.config.clientIp)
     const body = await this.readBody(request)
 
+    // After a failure, keep going until some check reports incomplete: an
+    // earlier check may have read the identifier, and the answer to a
+    // tokenless request must not depend on which checks ran first.
+    let failure: { detail: string; incomplete: boolean } | null = null
     for (const check of this.botChecks) {
       const result = await this.runBotCheck(check, {
         request,
@@ -213,18 +217,24 @@ export class AbuseGuard {
         ip,
         providerId,
       })
-      if (!result.ok) {
-        const decision = this.blocked({
-          reason: "bot_check_failed",
-          detail: `${check.id}:${result.reason}`,
-          providerId,
-          ip,
-          at: new Date(),
-        })
-        return result.incomplete
-          ? { ...decision, botCheckIncomplete: true }
-          : decision
+      if (result.ok) continue
+      const incomplete = result.incomplete === true
+      if (!failure || incomplete) {
+        failure = { detail: `${check.id}:${result.reason}`, incomplete }
       }
+      if (incomplete) break
+    }
+    if (failure) {
+      const decision = this.blocked({
+        reason: "bot_check_failed",
+        detail: failure.detail,
+        providerId,
+        ip,
+        at: new Date(),
+      })
+      return failure.incomplete
+        ? { ...decision, botCheckIncomplete: true }
+        : decision
     }
 
     if (ip) {

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest"
 import { SignJWT } from "jose"
 import { Auth } from "../auth.js"
 import { createFormToken } from "../abuse/bot-check.js"
-import type { BotCheckResult } from "../abuse/bot-check.js"
+import type { BotCheckProvider, BotCheckResult } from "../abuse/bot-check.js"
 import { SessionManager } from "../session/session-manager.js"
 import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
 import type {
@@ -1156,6 +1156,70 @@ describe("Auth abuse protection", () => {
       expect(response.status).toBe(400)
       expect(await response.json()).toMatchObject({
         error: { code: "BOT_CHECK_INCOMPLETE" },
+      })
+    })
+
+    describe("with an identifier check alongside", () => {
+      // Rejects one address whatever else the request carries, the way an
+      // app's own blocklist check would.
+      const blocklist: BotCheckProvider = {
+        id: "blocklist",
+        verify: ({ body }) =>
+          body.email === "listed@example.com"
+            ? { ok: false, reason: "listed" }
+            : { ok: true },
+      }
+      const turnstileLike: BotCheckProvider = {
+        id: "turnstile-like",
+        verify: ({ body }) => (body.token ? { ok: true } : MISSING_TOKEN),
+      }
+
+      async function answerFor(
+        botChecks: BotCheckProvider[],
+        email: string,
+      ): Promise<{ status: number; body: string }> {
+        auth = new Auth(createAuthConfig({ abuse: { botChecks } }))
+        const response = await auth.handleRequest(initiateRequest({ email }))
+        auth.destroy()
+        return { status: response.status, body: await response.text() }
+      }
+
+      it.each([
+        ["before", [blocklist, turnstileLike]],
+        ["after", [turnstileLike, blocklist]],
+      ])(
+        "answers tokenless requests alike when it runs %s the incomplete check",
+        async (_, botChecks) => {
+          vi.spyOn(console, "warn").mockImplementation(() => {})
+
+          const listed = await answerFor(botChecks, "listed@example.com")
+          const other = await answerFor(botChecks, "other@example.com")
+
+          expect(listed.status).toBe(400)
+          expect(JSON.parse(listed.body)).toMatchObject({
+            error: { code: "BOT_CHECK_INCOMPLETE" },
+          })
+          expect(listed).toEqual(other)
+        },
+      )
+
+      it("still blocks a listed address whose token passes", async () => {
+        vi.spyOn(console, "warn").mockImplementation(() => {})
+        const onBlocked = vi.fn()
+        auth = new Auth(
+          createAuthConfig({
+            abuse: { onBlocked, botChecks: [blocklist, turnstileLike] },
+          }),
+        )
+
+        const response = await auth.handleRequest(
+          initiateRequest({ email: "listed@example.com", token: "t" }),
+        )
+
+        expect(response.status).toBe(200)
+        expect(onBlocked).toHaveBeenCalledWith(
+          expect.objectContaining({ detail: "blocklist:listed" }),
+        )
       })
     })
 
