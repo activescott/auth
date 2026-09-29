@@ -1,6 +1,6 @@
 /**
- * Where the waitlist sends anyone without an approved account, instead of a
- * sign-in code. Deliberately calls no auth function: `onSessionVerified`
+ * Where the waitlist sends anyone without an approved account once they have
+ * verified their address or number, instead of signing them in. Deliberately calls no auth function: `onSessionVerified`
  * redirects unapproved sessions here, so checking the session on this page
  * would redirect it to itself.
  */

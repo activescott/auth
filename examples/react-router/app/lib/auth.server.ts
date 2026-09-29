@@ -222,12 +222,12 @@ const adminIdentifiers = (process.env.AUTH_ADMIN_IDENTIFIERS ?? "")
 const waitlistEnabled = process.env.WAITLIST === "true"
 
 /**
- * The waitlist is an initiate gate (`gate: waitlist` below): an address or
- * number without an approved account is sent to /waitlist instead of a code.
+ * The waitlist is a gate (`gate: waitlist` below) that acts once the code is
+ * verified: an address or number without an approved account is sent to
+ * /waitlist instead of being signed in. Waiting until then means nobody can
+ * put an address they don't own on the waitlist.
  */
 export const waitlist = createWaitlist({
-  identityStore,
-  userStore,
   approvalStore,
   waitlistUrl: "/waitlist",
   // App rules that skip the waitlist go here. Admins have to get in to
@@ -487,7 +487,7 @@ const handlers = createAuthHandlers(auth, {
   },
   loginUrl: "/login",
   // The waitlist gate only sees email and SMS sign-ins, and only when they
-  // start. This catches the rest on every request: a passkey sign-in, or a
+  // verify. This catches the rest on every request: a passkey sign-in, or a
   // user an admin blocked after they signed in. Logging them out, rather
   // than only redirecting, stops the session from coming back.
   onSessionVerified: async (

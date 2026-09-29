@@ -2,6 +2,7 @@ import type {
   InitiateGate,
   InitiateGateDecision,
   InitiateGateInput,
+  VerifiedGateInput,
 } from "./initiate-gate.js"
 import type { AuthLogger, IdentityStore, UserStore } from "./types.js"
 
@@ -29,14 +30,12 @@ export interface ApprovalStore {
 }
 
 /**
- * What {@link WaitlistConfig.autoApprove} is told about a waiting user who is
- * trying to sign in.
+ * What {@link WaitlistConfig.autoApprove} is told about a waiting user who has
+ * just verified their identifier.
  */
-export interface AutoApproveInput extends InitiateGateInput {
-  /** The waiting user, created by this initiate when `isNewUser` is true */
+export interface AutoApproveInput extends VerifiedGateInput {
+  /** The waiting user, created by this verify when `isNewUser` is true */
   userId: string
-  /** True when the identifier had no account before this initiate */
-  isNewUser: boolean
 }
 
 /**
@@ -63,13 +62,20 @@ export interface ApprovalNotice {
 
 /** Configuration for {@link createWaitlist} */
 export interface WaitlistConfig {
-  /** The same identity store `Auth` uses */
-  identityStore: IdentityStore
-  /** The same user store `Auth` uses */
-  userStore: UserStore
+  /**
+   * No longer needed to create users: the verify step does that. Still read
+   * by `onApproved`, to hand the app the identities of the user it just
+   * approved.
+   */
+  identityStore?: IdentityStore
+  /**
+   * @deprecated Unused since the waitlist moved to `onVerified`: the verify
+   * step creates the user.
+   */
+  userStore?: UserStore
   /** Where each user's approval status lives */
   approvalStore: ApprovalStore
-  /** Where waiting users are sent instead of receiving a sign-in message */
+  /** Where waiting users are sent once verified, instead of being signed in */
   waitlistUrl: string
   /**
    * Where blocked users are sent. Defaults to `waitlistUrl`, so a blocked
@@ -113,14 +119,19 @@ export type WaitlistActionResult =
  */
 export interface Waitlist extends InitiateGate {
   /**
-   * Decide one initiate: approved users proceed, blocked users go to
-   * `blockedUrl`, waiting users go to `waitlistUrl` unless `autoApprove` lets
-   * them in. An identifier with no account gets a PENDING user and its
-   * identity here, so it shows up on the admin dashboard and the verify step
-   * later finds the same user. Link initiates always proceed: they come from
-   * a signed-in user, whose status the per-request check covers.
+   * Always allows. The waitlist acts only on verified identifiers, so an
+   * initiate for an address the caller does not own creates nothing and
+   * tells no one.
    */
   onInitiate(input: InitiateGateInput): Promise<InitiateGateDecision>
+  /**
+   * Decide one verified sign-in: approved users proceed, blocked users go to
+   * `blockedUrl`, waiting users go to `waitlistUrl` unless `autoApprove` lets
+   * them in. A user with no status becomes PENDING here and admins are told.
+   * Links always proceed: they come from a signed-in user, whose status the
+   * per-request check covers.
+   */
+  onVerified(input: VerifiedGateInput): Promise<InitiateGateDecision>
   /**
    * Where to send a signed-in user who may not use the app: null when they
    * are approved, otherwise `blockedUrl` or `waitlistUrl`. The initiate gate
@@ -144,12 +155,13 @@ export interface Waitlist extends InitiateGate {
 }
 
 /**
- * Create a waitlist: identifiers without an approved account are sent to
- * `waitlistUrl` instead of being sent a code, admins are told through
- * `notify`, and approve/block decisions go through the {@link ApprovalStore}.
+ * Create a waitlist: once they verify their identifier, users without an
+ * approved account are sent to `waitlistUrl` instead of being signed in,
+ * admins are told through `notify`, and approve/block decisions go through
+ * the {@link ApprovalStore}.
  */
 export function createWaitlist(config: WaitlistConfig): Waitlist {
-  const { identityStore, userStore, approvalStore, waitlistUrl } = config
+  const { identityStore, approvalStore, waitlistUrl } = config
   const blockedUrl = config.blockedUrl ?? waitlistUrl
 
   async function notify(notice: WaitlistNotice): Promise<void> {
@@ -172,7 +184,7 @@ export function createWaitlist(config: WaitlistConfig): Waitlist {
     // admin) must not send them a second welcome
     if (previous === "APPROVED" || !config.onApproved) return
     try {
-      const identities = await identityStore.findByUserId(userId)
+      const identities = (await identityStore?.findByUserId(userId)) ?? []
       await config.onApproved({
         userId,
         identities: identities.map(({ provider, identifier }) => ({
@@ -188,28 +200,6 @@ export function createWaitlist(config: WaitlistConfig): Waitlist {
     }
   }
 
-  async function findOrCreateUser(
-    provider: string,
-    identifier: string,
-  ): Promise<{ userId: string; isNewUser: boolean }> {
-    const identity = await identityStore.findByProviderAndIdentifier(
-      provider,
-      identifier,
-    )
-    if (identity) return { userId: identity.userId, isNewUser: false }
-
-    // The same two calls the verify step makes for an unknown identifier, so
-    // verify finds this identity instead of creating a second user
-    const user = await userStore.create({ provider, identifier })
-    await identityStore.create({
-      userId: user.id,
-      provider,
-      identifier,
-      providerState: {},
-    })
-    return { userId: user.id, isNewUser: true }
-  }
-
   async function setStatus(
     userId: string,
     status: ApprovalStatus,
@@ -218,19 +208,23 @@ export function createWaitlist(config: WaitlistConfig): Waitlist {
   }
 
   return {
-    async onInitiate(input) {
+    async onInitiate() {
+      return "allow"
+    },
+
+    async onVerified(input) {
       if (input.mode === "link") return "allow"
 
       const { provider, identifier } = input
-      const { userId, isNewUser } = await findOrCreateUser(provider, identifier)
-      // Read even for a new identity: a userStore that upserts by email can
-      // hand back an existing user, who may already be BLOCKED
+      const userId = input.user.id
+      // Read even for a new user: a userStore that upserts by email can hand
+      // back an existing user, who may already be BLOCKED
       const status = await approvalStore.getApprovalStatus(userId)
 
       if (status === "APPROVED") return "allow"
       if (status === "BLOCKED") return { redirect: blockedUrl }
 
-      if (await config.autoApprove?.({ ...input, userId, isNewUser })) {
+      if (await config.autoApprove?.({ ...input, userId })) {
         await setStatus(userId, "APPROVED")
         await notify({ reason: "auto-approved", userId, provider, identifier })
         return "allow"

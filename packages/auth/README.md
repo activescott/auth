@@ -64,7 +64,7 @@ npm install @activescott/auth
 | `ChallengeStore`, `InMemoryChallengeStore`                        | Storage for short-lived, single-use challenges (see below).                                                           |
 | `AbuseConfig`, `RateLimitStore`, `InMemoryRateLimitStore`         | Abuse protection for the initiate endpoints — on by default (see below).                                              |
 | `InitiateGate`                                                    | Your own policy on who may start a sign-in or link (see below).                                                       |
-| `createWaitlist`, `waitlistNotificationEmail`                     | Waitlist with admin approval, built on the initiate gate (see below).                                                 |
+| `createWaitlist`, `waitlistNotificationEmail`                     | Waitlist with admin approval, built on the gate's `onVerified` (see below).                                           |
 | `BotCheckProvider`, `createFormToken`, `FORM_TOKEN_FIELD`         | Bot-check interface and the login form's anti-bot fields.                                                             |
 | `generateOtpCode`, `hashOtpCode`, `verifyOtpCode`                 | One-time-code utilities used by OTP-capable providers.                                                                |
 | `AuthUser`, `Identity`, `Session`, `AuthResult`, `AuthInitResult` | Core data types.                                                                                                      |
@@ -245,6 +245,8 @@ Return one of:
 
 A gate that throws fails the initiate. Per-IP and per-recipient abuse limits run before the gate, so a throttled request still gets the silent "sent" answer.
 
+Anyone can start a sign-in for an address they do not own, so a rule that writes something or tells someone about the identifier belongs in the optional `gate.onVerified` instead. It runs after the provider has verified the identifier and before the session is created, with the same `provider`, `identifier`, `mode`, and `request` (the verify request), plus the `user` and `identity` the verify resolved and `isNewUser`. It returns the same decisions: `"allow"` creates the session, `{ redirect }` answers with a 302 and no session, `{ error }` fails the verify like a bad code. It sees email and SMS verifies; passkey sign-ins skip it.
+
 The built-in email and SMS providers consult the gate. With `gate` set, `new Auth` throws if any provider that serves an initiate route does not declare `consultsInitiateGate: true` — an older provider package would otherwise skip your policy without a trace. A custom provider opts in by calling `context.gate?.check({ provider, identifier, mode })` once its identifier is valid, returning the result when there is one, and setting `consultsInitiateGate = true`.
 
 ## Admin subpath
@@ -291,7 +293,7 @@ Each declined destination logs one WARN naming the parameter it came from and th
 
 ## Waitlist
 
-`createWaitlist` is an initiate gate for apps that approve new users by hand. An identifier without an account gets a PENDING user and lands on your waitlist page instead of receiving a code; admins hear about it through `notify`; an admin approves or blocks from the dashboard. Approved users sign in as usual.
+`createWaitlist` is a gate for apps that approve new users by hand. Everyone gets a code. Once they verify it, a user without an approved account becomes PENDING and lands on your waitlist page with no session; admins hear about it through `notify`; an admin approves or blocks from the dashboard. Approved users sign in as usual.
 
 The status lives in your database, behind an `ApprovalStore`. Its values, `"PENDING" | "APPROVED" | "BLOCKED"`, match the enum apps usually already have:
 
@@ -309,8 +311,8 @@ const emailOptions = {
 }
 
 export const waitlist = createWaitlist({
+  // Only needed so onApproved below can look up an address to email
   identityStore,
-  userStore,
   approvalStore: {
     getApprovalStatus: async (userId) =>
       (await db.user.findUnique({ where: { id: userId } }))?.approvalStatus ??
@@ -344,13 +346,13 @@ export const waitlist = createWaitlist({
 const auth = new Auth({ /* ... */ gate: waitlist })
 ```
 
-A new user's identity row is created at initiate, with the same calls the verify step would make, so the admin dashboard lists them before they ever get a code and verify finds that row instead of creating a second user. `notify` fires once when a user joins the waitlist (`reason: "waitlisted"`) and whenever `autoApprove` lets someone in (`reason: "auto-approved"`); a throw there is logged and does not fail the sign-in. The email is plain and generic on purpose: app name, domain, sender, and a link to `/admin/users` (`adminPath` changes it). Sending it is yours, so the core takes no mail dependency.
+The waitlist acts only after verification, so starting a sign-in for someone else's address creates no user and sends admins nothing. The verify step creates the user as it would without a waitlist; the waitlist then records their status. `notify` fires once when a user joins the waitlist (`reason: "waitlisted"`) and whenever `autoApprove` lets someone in (`reason: "auto-approved"`); a throw there is logged and does not fail the sign-in. The email is plain and generic on purpose: app name, domain, sender, and a link to `/admin/users` (`adminPath` changes it). Sending it is yours, so the core takes no mail dependency.
 
 `onApproved` fires when an admin approves a user who was not already approved, through `approve` or `handleAdminAction`, with the user's identities so you can pick an address (an SMS-only user has no email identity). It does not fire for `autoApprove`, whose user is already signing in. `waitlistApprovalEmail` renders the message, linking to `/login` (`signInPath` changes it). A throw is logged and the approval stands.
 
 A user with no recorded status counts as not approved. Mark existing users APPROVED before turning the waitlist on.
 
-The gate only sees email and SMS sign-ins, and only at initiate. Passkey sign-ins and a user you block after they signed in need a per-request check; `waitlist.redirectFor(userId)` returns null for approved users and the URL to send anyone else to. With the React Router adapter:
+The gate only sees email and SMS sign-ins, and only when they verify. Passkey sign-ins and a user you block after they signed in need a per-request check; `waitlist.redirectFor(userId)` returns null for approved users and the URL to send anyone else to. With the React Router adapter:
 
 ```ts
 createAuthHandlers(auth, {

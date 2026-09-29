@@ -83,6 +83,9 @@ jobs:
       - name: Run release script
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # @simple-release/core's change-log renames its temp file into
+          # packages/*; runner.temp keeps that on the checkout's filesystem.
+          TMPDIR: ${{ runner.temp }}
         run: npx tsx scripts/release.ts
 
       - name: Get packages to publish

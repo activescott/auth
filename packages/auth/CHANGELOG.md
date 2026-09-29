@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.6.1](https://github.com/activescott/auth/compare/auth@5.6.0...auth@5.6.1) (2026-09-29)
+
+### Bug Fixes
+
+* waitlist addresses only once verified ([#144](https://github.com/activescott/auth/issues/144)) ([f110f8d](https://github.com/activescott/auth/commit/f110f8dc62add434623b970a50e2b95da6839a88)), closes [#142](https://github.com/activescott/auth/issues/142)
+
 ## [5.6.0](https://github.com/activescott/auth/compare/auth@5.5.0...auth@5.6.0) (2026-09-20)
 
 ### Features

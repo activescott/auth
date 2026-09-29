@@ -1,4 +1,10 @@
-import type { AuthError, AuthInitResult, AuthLogger } from "./types.js"
+import type {
+  AuthError,
+  AuthInitResult,
+  AuthLogger,
+  AuthUser,
+  Identity,
+} from "./types.js"
 import { buildReturnUrl, isBrowserFormPost } from "./provider-util.js"
 
 /**
@@ -31,6 +37,19 @@ export interface InitiateGateInput {
 }
 
 /**
+ * What {@link InitiateGate.onVerified} is told about a sign-in or link whose
+ * identifier the user has just proven they own.
+ */
+export interface VerifiedGateInput extends InitiateGateInput {
+  /** The user the verify resolved: the signed-in user for a link */
+  user: AuthUser
+  /** The identity that was verified */
+  identity: Identity
+  /** True when this verify created the user */
+  isNewUser: boolean
+}
+
+/**
  * The gate's verdict:
  * - `"allow"` — carry on and send the message;
  * - `{ redirect }` — send nothing and answer with a 302 to this URL (for
@@ -57,6 +76,21 @@ export interface InitiateGate {
    */
   onInitiate(
     input: InitiateGateInput,
+  ): InitiateGateDecision | Promise<InitiateGateDecision>
+  /**
+   * Called after a provider verifies the identifier, and before a session is
+   * created. Policy that writes something or tells someone about an
+   * identifier belongs here rather than in `onInitiate`, which anyone can
+   * call with an address they do not own. `"allow"` creates the session;
+   * `{ redirect }` answers with a 302 and no session; `{ error }` fails the
+   * verify like a bad code. `request` is the verify request, its body
+   * already read. A thrown error fails the verify.
+   *
+   * Runs inside `Auth.handleRequest` for routes declared
+   * `handler: "verify"`, so passkey sign-ins (served as actions) skip it.
+   */
+  onVerified?(
+    input: VerifiedGateInput,
   ): InitiateGateDecision | Promise<InitiateGateDecision>
 }
 

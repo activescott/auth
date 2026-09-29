@@ -8,6 +8,7 @@ import type {
   AuthProvider,
   AuthResponders,
   AuthResult,
+  AuthSuccess,
   AuthUser,
   ChallengeStore,
   Identity,
@@ -209,6 +210,15 @@ export class Auth {
         case "verify": {
           const result = await provider.verify(request, context)
           if (result instanceof Response) return result
+          if (result.success) {
+            const gated = await this.checkVerifiedGate(
+              result,
+              providerId,
+              request,
+              responders,
+            )
+            if (gated) return gated
+          }
           return await this.authResultToResponse(result, request, responders)
         }
         case "action": {
@@ -569,6 +579,50 @@ export class Auth {
           "Set-Cookie": clearingCookie,
         },
       },
+    )
+  }
+
+  /**
+   * Consult `gate.onVerified` about a successful verify. Returns undefined
+   * when the session may be created, otherwise the response to send instead:
+   * a redirect carrying no session, or the gate's error answered like any
+   * failed verify. Either way the provider's cookies (the cleared challenge)
+   * still go out.
+   */
+  private async checkVerifiedGate(
+    result: AuthSuccess,
+    providerId: string,
+    request: Request,
+    responders?: AuthResponders,
+  ): Promise<Response | undefined> {
+    const onVerified = this.config.gate?.onVerified
+    if (!onVerified) return undefined
+
+    const decision = await onVerified.call(this.config.gate, {
+      provider: providerId,
+      identifier: result.identity.identifier,
+      mode: result.mode ?? "signin",
+      request,
+      user: result.user,
+      identity: result.identity,
+      isNewUser: result.isNewUser ?? false,
+    })
+    if (decision === "allow") return undefined
+    if ("redirect" in decision) {
+      const headers = new Headers({ Location: decision.redirect })
+      for (const cookie of result.setCookies ?? []) {
+        headers.append("Set-Cookie", cookie)
+      }
+      return new Response(null, { status: 302, headers })
+    }
+    return this.authResultToResponse(
+      {
+        success: false,
+        error: decision.error,
+        ...(result.setCookies ? { setCookies: result.setCookies } : {}),
+      },
+      request,
+      responders,
     )
   }
 
