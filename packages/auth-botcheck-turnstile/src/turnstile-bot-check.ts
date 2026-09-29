@@ -61,6 +61,7 @@ interface SiteVerifyResponse {
  * <div id="turnstile"></div>
  * <button type="submit" id="send" disabled>Send magic link</button>
  * <script>
+ *   const send = document.getElementById("send")
  *   function onTurnstileLoad() {
  *     turnstile.render("#turnstile", {
  *       sitekey: "YOUR_SITE_KEY",
