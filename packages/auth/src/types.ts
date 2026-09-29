@@ -138,6 +138,7 @@ export type AuthErrorCode =
   | "SESSION_EXPIRED"
   | "SESSION_INVALID"
   | "IDENTITY_CONFLICT"
+  | "BOT_CHECK_INCOMPLETE"
 
 /**
  * Identity storage adapter interface.

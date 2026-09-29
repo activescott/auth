@@ -164,6 +164,8 @@ Blocked attempts are always logged (`console.warn`) with the reason, provider, I
 
 By design a throttled or bot-flagged request gets exactly the response a real send would produce — the same 302 back to `?sent=1`, or the same `{success: true, message}` — minus the challenge cookie. Nothing is sent and nothing is stored. This is what keeps a bot from mapping which addresses or IPs are throttled. If you would rather return `429 RATE_LIMITED` (reasonable for an API-only deployment), set `abuse.respondWith: "rateLimited"`.
 
+One block is answered differently in both modes: a bot check reporting `incomplete` (a hosted widget that had not issued its token yet when the form was submitted) gets `BOT_CHECK_INCOMPLETE`, as a 302 back with `?error=BOT_CHECK_INCOMPLETE` or a 400. That verdict comes from the request alone, never from the identifier, so it tells the caller nothing they did not send, and it lets a real user on a slow connection know to try again. It is still logged and passed to `onBlocked` as `bot_check_failed`.
+
 ### Tuning
 
 ```ts

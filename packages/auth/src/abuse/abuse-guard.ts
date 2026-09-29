@@ -1,6 +1,10 @@
 import { parseRequestBody } from "../provider-util.js"
 import { InMemoryRateLimitStore } from "../stores/in-memory-rate-limit-store.js"
-import type { BotCheckInput, BotCheckProvider } from "./bot-check.js"
+import type {
+  BotCheckInput,
+  BotCheckProvider,
+  BotCheckResult,
+} from "./bot-check.js"
 import {
   DEFAULT_MIN_FORM_FILL_SECONDS,
   FormTokenBotCheck,
@@ -49,7 +53,13 @@ export interface AbuseEvent {
 
 export type AbuseDecision =
   | { allowed: true }
-  | { allowed: false; event: AbuseEvent; retryAfterSeconds?: number }
+  | {
+      allowed: false
+      event: AbuseEvent
+      retryAfterSeconds?: number
+      /** A bot check had not finished client side; see BotCheckResult */
+      botCheckIncomplete?: boolean
+    }
 
 /**
  * Abuse protection for the initiate endpoints. Every field is optional:
@@ -80,7 +90,8 @@ export interface AbuseConfig {
    * What a blocked caller receives: "generic" (default) answers exactly as a
    * successful send would, so bots learn nothing and no enumeration signal
    * leaks; "rateLimited" returns the RATE_LIMITED error instead, which suits
-   * API-only deployments with their own client-side handling.
+   * API-only deployments with their own client-side handling. Either way, a
+   * bot check the client had not finished answers BOT_CHECK_INCOMPLETE.
    */
   respondWith?: "generic" | "rateLimited"
 }
@@ -203,13 +214,16 @@ export class AbuseGuard {
         providerId,
       })
       if (!result.ok) {
-        return this.blocked({
+        const decision = this.blocked({
           reason: "bot_check_failed",
           detail: `${check.id}:${result.reason}`,
           providerId,
           ip,
           at: new Date(),
         })
+        return result.incomplete
+          ? { ...decision, botCheckIncomplete: true }
+          : decision
       }
     }
 
@@ -283,7 +297,7 @@ export class AbuseGuard {
   private blocked(
     event: AbuseEvent,
     retryAfterSeconds?: number,
-  ): AbuseDecision {
+  ): AbuseDecision & { allowed: false } {
     const parts = [
       `reason=${event.reason}`,
       event.detail ? `detail=${event.detail}` : null,
@@ -310,7 +324,7 @@ export class AbuseGuard {
   private async runBotCheck(
     check: BotCheckProvider,
     input: BotCheckInput,
-  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  ): Promise<BotCheckResult> {
     try {
       return await check.verify(input)
     } catch (error) {

@@ -26,8 +26,16 @@ export interface BotCheckInput {
 /**
  * Verdict from a bot check. `reason` is recorded in the abuse log and is
  * never shown to the caller.
+ *
+ * Set `incomplete` when the client had not finished the check yet (the
+ * widget's token is absent). The caller then gets `BOT_CHECK_INCOMPLETE`
+ * and can retry, instead of the opaque block response. Only use it for a
+ * verdict that depends on the request alone, never on the identifier or on
+ * anything the check learned from the vendor: the distinct response must
+ * tell the caller nothing it did not send.
  */
-export type BotCheckResult = { ok: true } | { ok: false; reason: string }
+export type BotCheckResult =
+  { ok: true } | { ok: false; reason: string; incomplete?: boolean }
 
 /**
  * A check that decides whether an initiate request came from a human.
