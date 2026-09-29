@@ -52,12 +52,29 @@ interface SiteVerifyResponse {
  * ```
  *
  * Client side, render the widget inside the login form so it posts the
- * `cf-turnstile-response` field:
+ * `cf-turnstile-response` field. The token is issued asynchronously, so the
+ * form must wait for it: keep submit disabled until the widget's `callback`
+ * fires and disable it again on `expired-callback`. A form posted without a
+ * token is answered with `BOT_CHECK_INCOMPLETE`.
  *
  * ```html
- * <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
- * <div class="cf-turnstile" data-sitekey="YOUR_SITE_KEY"></div>
+ * <div id="turnstile"></div>
+ * <button type="submit" id="send" disabled>Send magic link</button>
+ * <script>
+ *   function onTurnstileLoad() {
+ *     turnstile.render("#turnstile", {
+ *       sitekey: "YOUR_SITE_KEY",
+ *       callback: () => (send.disabled = false),
+ *       "expired-callback": () => (send.disabled = true),
+ *       "error-callback": () => (send.disabled = true),
+ *     })
+ *   }
+ * </script>
+ * <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoad" async defer></script>
  * ```
+ *
+ * In React Router apps, `useTurnstile` from
+ * `@activescott/auth-adapter-react-router/client` does this wiring.
  */
 export class TurnstileBotCheck implements BotCheckProvider {
   public readonly id = "turnstile"
@@ -66,8 +83,11 @@ export class TurnstileBotCheck implements BotCheckProvider {
 
   public async verify(input: BotCheckInput): Promise<BotCheckResult> {
     const token = input.body[this.config.fieldName ?? DEFAULT_FIELD_NAME]
+    // No token means the widget had not issued one when the form was
+    // submitted, which is about this request only; report it as incomplete
+    // so the user is asked to retry
     if (typeof token !== "string" || token === "") {
-      return { ok: false, reason: "missing_token" }
+      return { ok: false, reason: "missing_token", incomplete: true }
     }
 
     const form = new URLSearchParams({

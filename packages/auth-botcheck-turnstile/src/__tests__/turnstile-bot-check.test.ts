@@ -73,7 +73,7 @@ describe("TurnstileBotCheck", () => {
     })
   })
 
-  it("blocks a submission with no widget token", async () => {
+  it("blocks a submission with no widget token as incomplete", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
     const check = new TurnstileBotCheck({
       secretKey: SECRET_KEY,
@@ -82,7 +82,7 @@ describe("TurnstileBotCheck", () => {
 
     expect(
       await check.verify(inputWith({ email: "user@example.com" })),
-    ).toEqual({ ok: false, reason: "missing_token" })
+    ).toEqual({ ok: false, reason: "missing_token", incomplete: true })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
