@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.7.0](https://github.com/activescott/auth/compare/auth@5.6.1...auth@5.7.0) (2026-09-29)
+
+### Features
+
+* email users when approved ([#141](https://github.com/activescott/auth/issues/141)) ([f35d84f](https://github.com/activescott/auth/commit/f35d84f002c971e17d5cbbe063b0ca2aef9dee0a))
+
 ## [5.6.1](https://github.com/activescott/auth/compare/auth@5.6.0...auth@5.6.1) (2026-09-29)
 
 ### Bug Fixes
