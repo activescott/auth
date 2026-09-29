@@ -7,6 +7,7 @@ import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
 import type {
   AuthConfig,
   AuthProvider,
+  AuthSuccess,
   ChallengeStore,
   IdentityStore,
   UserStore,
@@ -1326,5 +1327,126 @@ describe("Auth initiate gate", () => {
     expect(response.headers.get("Location")).toBe(
       `${TEST_BASE_URL}/login?error=INVALID_CREDENTIALS`,
     )
+  })
+})
+
+describe("Auth verified gate", () => {
+  let auth: Auth
+
+  afterEach(() => {
+    auth?.destroy()
+  })
+
+  function verifyRequest(): Request {
+    return new Request(`${TEST_BASE_URL}/auth/email/verify?token=t`)
+  }
+
+  function createVerifyingProvider(
+    result: Partial<AuthSuccess> = {},
+  ): AuthProvider {
+    return createMockProvider({
+      consultsInitiateGate: true,
+      verify: vi.fn().mockResolvedValue({
+        success: true,
+        user: { id: "user-1" },
+        identity: createMockIdentity(),
+        setCookies: ["email_challenge=; Max-Age=0"],
+        ...result,
+      }),
+    })
+  }
+
+  it("tells the gate who verified", async () => {
+    const onVerified = vi.fn().mockReturnValue("allow")
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createVerifyingProvider({ isNewUser: true })],
+        gate: { onInitiate: () => "allow", onVerified },
+      }),
+    )
+
+    const response = await auth.handleRequest(verifyRequest())
+
+    expect(response.status).toBe(200)
+    expect(onVerified).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "email",
+        identifier: "user@example.com",
+        mode: "signin",
+        user: { id: "user-1" },
+        isNewUser: true,
+      }),
+    )
+  })
+
+  it("answers { redirect } with a 302 carrying the provider's cookies and no session", async () => {
+    const onSuccess = vi.fn()
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createVerifyingProvider()],
+        gate: {
+          onInitiate: () => "allow",
+          onVerified: () => ({ redirect: "/waitlist" }),
+        },
+      }),
+    )
+
+    const response = await auth.handleRequest(verifyRequest(), { onSuccess })
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get("Location")).toBe("/waitlist")
+    expect(response.headers.get("Set-Cookie")).toBe(
+      "email_challenge=; Max-Age=0",
+    )
+    expect(onSuccess).not.toHaveBeenCalled()
+  })
+
+  it("answers { error } through the failure responder", async () => {
+    const onFailure = vi.fn(async () => new Response(null, { status: 303 }))
+    const error = {
+      code: "INVALID_CREDENTIALS" as const,
+      message: "Invite only",
+    }
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createVerifyingProvider()],
+        gate: { onInitiate: () => "allow", onVerified: () => ({ error }) },
+      }),
+    )
+
+    const response = await auth.handleRequest(verifyRequest(), { onFailure })
+
+    expect(response.status).toBe(303)
+    expect(onFailure).toHaveBeenCalledWith(
+      {
+        success: false,
+        error,
+        setCookies: ["email_challenge=; Max-Age=0"],
+      },
+      expect.any(Request),
+    )
+  })
+
+  it("is not consulted when the verify fails", async () => {
+    const onVerified = vi.fn()
+    auth = new Auth(
+      createAuthConfig({
+        providers: [
+          createMockProvider({
+            consultsInitiateGate: true,
+            verify: vi.fn().mockResolvedValue({
+              success: false,
+              error: { code: "INVALID_TOKEN", message: "Bad code" },
+            }),
+          }),
+        ],
+        gate: { onInitiate: () => "allow", onVerified },
+      }),
+    )
+
+    const response = await auth.handleRequest(verifyRequest())
+
+    expect(response.status).toBe(401)
+    expect(onVerified).not.toHaveBeenCalled()
   })
 })

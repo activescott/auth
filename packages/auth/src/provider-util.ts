@@ -307,6 +307,7 @@ export async function authenticateWithIdentifier(
   )
 
   let user
+  const isNewUser = !identity
 
   if (identity) {
     user = await context.userStore.findById(identity.userId)
@@ -338,6 +339,8 @@ export async function authenticateWithIdentifier(
     success: true,
     user,
     identity: verified,
+    mode: "signin",
+    isNewUser,
   }
 }
 
@@ -417,14 +420,14 @@ export async function completeLinkVerification(
       verifiedAt: new Date(),
     })
     await context.userStore.onIdentityLinked?.(session.user, identity)
-    return { success: true, user: session.user, identity }
+    return { success: true, user: session.user, identity, mode: "link" }
   }
 
   if (existing.userId === session.user.id) {
     const identity = await context.identityStore.update(existing.id, {
       verifiedAt: new Date(),
     })
-    return { success: true, user: session.user, identity }
+    return { success: true, user: session.user, identity, mode: "link" }
   }
 
   const ticketId = crypto.randomUUID()
