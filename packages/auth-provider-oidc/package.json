@@ -1,0 +1,50 @@
+{
+  "name": "@activescott/auth-provider-oidc",
+  "version": "0.1.0",
+  "description": "OpenID Connect provider for @activescott/auth, with a Sign in with Slack adapter",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "authentication",
+    "oidc",
+    "openid-connect",
+    "slack"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-provider-oidc"
+  },
+  "dependencies": {
+    "jose": "^6.2.6"
+  },
+  "peerDependencies": {
+    "@activescott/auth": "^5.7.0"
+  },
+  "devDependencies": {
+    "@activescott/auth": "*",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  }
+}
