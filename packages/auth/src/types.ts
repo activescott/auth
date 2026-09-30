@@ -6,6 +6,11 @@ import type {
   AbuseContext,
   AbuseDescription,
 } from "./abuse/abuse-guard.js"
+import type {
+  InitiateGate,
+  InitiateGateContext,
+  InitiateMode,
+} from "./initiate-gate.js"
 
 /**
  * Minimal user representation for authentication.
@@ -71,6 +76,13 @@ export interface AuthSuccess {
   success: true
   user: AuthUser
   identity: Identity
+  /**
+   * Whether the verify was a sign-in or attached the identifier to the
+   * signed-in user. Absent is treated as a sign-in.
+   */
+  mode?: InitiateMode
+  /** True when this verify created the user */
+  isNewUser?: boolean
   /**
    * Set-Cookie header values the caller must include in the HTTP response
    * (e.g., clearing a challenge cookie after OTP verification).
@@ -410,6 +422,16 @@ export interface SessionConfig {
   issuer?: string
   /** JWT audience claim */
   audience?: string
+  /**
+   * How long `verifySession` may answer from its in-process cache of verified
+   * sessions before reading the user and identity from your stores again, in
+   * milliseconds. Defaults to two minutes. `0` turns the cache off, so every
+   * request reads the stores and a user you delete or block stops being
+   * authenticated on their next request. That is the reason to pay for it.
+   * The cache also holds a bounded number of entries, so a large number of
+   * concurrent sessions evicts the oldest rather than growing without limit.
+   */
+  cacheTtlMs?: number
 }
 
 /**
@@ -444,6 +466,13 @@ export interface AuthConfig {
    * only needed to tune limits, supply shared storage, add a hosted bot check,
    * or turn it off. */
   abuse?: AbuseConfig
+  /** Application policy on who may start a sign-in or link (an allowlist,
+   * an invite-only beta). Consulted inside `handleRequest` with the
+   * identifier the provider has already validated and normalized — see
+   * {@link InitiateGate}. Every provider serving an initiate route must set
+   * `consultsInitiateGate`, or the Auth constructor throws. Its optional
+   * `onVerified` runs again once the identifier is verified. */
+  gate?: InitiateGate
   /** Where to report conditions worth a WARN — see {@link AuthLogger}.
    * Nothing is logged through it when absent. */
   logger?: AuthLogger
@@ -546,6 +575,10 @@ export interface AuthContext {
    * have parsed and normalized the recipient (email address, phone number)
    * and before sending anything to it. */
   abuse?: AbuseContext
+  /** The application's initiate gate, present when `AuthConfig.gate` is set.
+   * Providers call `gate.check` right after `abuse.checkIdentifier` and
+   * return its answer when there is one. */
+  gate?: InitiateGateContext
   /** The application's logger, if it configured one. Providers pass it to
    * utilities that take an {@link AuthLogger} — e.g.
    * `resolveRedirectTarget` — so a declined redirect destination is visible
@@ -604,6 +637,14 @@ export interface AuthProvider {
    * abusive initiate, so a blocked caller cannot tell the two apart.
    */
   readonly initiateSentMessage?: string
+
+  /**
+   * True when `initiate` calls `context.gate.check` for every identifier
+   * before sending to it. With `AuthConfig.gate` set, Auth refuses to start
+   * if a provider serving an initiate route does not declare this, so an
+   * older provider cannot silently skip the application's gate.
+   */
+  readonly consultsInitiateGate?: boolean
 
   /**
    * Initialize authentication flow.

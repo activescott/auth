@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer"
+import nodemailer, { type Transporter } from "nodemailer"
 import type {
   EmailTransport,
   EmailProviderConfig,
@@ -12,7 +12,7 @@ const SMTPS_PORT = 465
  * Nodemailer-based email transport
  */
 export class NodemailerTransport implements EmailTransport {
-  private transporter: nodemailer.Transporter | null = null
+  private transporter: Transporter | null = null
   private isDevelopment: boolean
 
   public constructor(isDevelopment = false) {
@@ -74,7 +74,7 @@ Magic Link: ${magicLink}${code ? `\nCode: ${code}` : ""}
     }
   }
 
-  private getTransporter(config: EmailProviderConfig): nodemailer.Transporter {
+  private getTransporter(config: EmailProviderConfig): Transporter {
     if (this.transporter) {
       return this.transporter
     }

@@ -11,6 +11,7 @@
     "packages/auth-provider-passkey",
     "packages/auth-sms-twilio",
     "packages/auth-botcheck-turnstile",
+    "packages/auth-store-prisma",
     "packages/auth-adapter-react-router",
     "examples/react-router",
     "examples/react-router/tests"

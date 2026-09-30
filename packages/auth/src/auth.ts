@@ -8,6 +8,7 @@ import type {
   AuthProvider,
   AuthResponders,
   AuthResult,
+  AuthSuccess,
   AuthUser,
   ChallengeStore,
   Identity,
@@ -18,8 +19,10 @@ import type {
 } from "./types.js"
 import { REDACTED } from "./types.js"
 import { SessionManager } from "./session/session-manager.js"
+import { SessionCache } from "./session/session-cache.js"
 import { AuthenticationError, AuthErrors } from "./errors.js"
 import { AbuseGuard } from "./abuse/abuse-guard.js"
+import { initiateGateContextFor } from "./initiate-gate.js"
 import {
   buildChallengeClearingCookie,
   buildReturnUrl,
@@ -33,8 +36,6 @@ import {
 // Time constants
 const MS_PER_SECOND = 1000
 const SECONDS_PER_MINUTE = 60
-/** Default session cache TTL in minutes */
-const DEFAULT_CACHE_TTL_MINUTES = 2
 /** Interval between cache cleanups in minutes */
 const CACHE_CLEANUP_INTERVAL_MINUTES = 5
 
@@ -57,58 +58,21 @@ function describeStoreType(store: object): string {
 }
 
 /**
- * In-memory cache for session verification to reduce DB queries
+ * Refuse a gate that some provider would bypass. A provider built before the
+ * gate existed serves its initiate route without consulting it, and nothing
+ * at request time would reveal that the application's policy was skipped.
  */
-interface SessionCacheEntry {
-  user: AuthUser | null
-  identity: Identity | null
-  timestamp: number
-}
-
-class SessionCache {
-  private cache = new Map<string, SessionCacheEntry>()
-  private readonly ttl: number
-
-  public constructor(
-    ttlMs: number = DEFAULT_CACHE_TTL_MINUTES *
-      SECONDS_PER_MINUTE *
-      MS_PER_SECOND,
-  ) {
-    this.ttl = ttlMs
-  }
-
-  public get(token: string): SessionCacheEntry | undefined {
-    const entry = this.cache.get(token)
-    if (!entry) return undefined
-
-    // Check if expired
-    if (Date.now() - entry.timestamp > this.ttl) {
-      this.cache.delete(token)
-      return undefined
-    }
-
-    return entry
-  }
-
-  public set(
-    token: string,
-    user: AuthUser | null,
-    identity: Identity | null,
-  ): void {
-    this.cache.set(token, {
-      user,
-      identity,
-      timestamp: Date.now(),
-    })
-  }
-
-  public cleanup(): void {
-    const now = Date.now()
-    for (const [token, entry] of this.cache.entries()) {
-      if (now - entry.timestamp > this.ttl) {
-        this.cache.delete(token)
-      }
-    }
+function assertProvidersConsultGate(providers: AuthProvider[]): void {
+  const bypassing = providers.filter(
+    (provider) =>
+      !provider.consultsInitiateGate &&
+      provider.getRoutes().some((route) => route.handler === "initiate"),
+  )
+  if (bypassing.length > 0) {
+    throw new AuthenticationError(
+      "CONFIGURATION_ERROR",
+      `AuthConfig.gate is set, but these providers serve an initiate route without consulting it: ${bypassing.map((provider) => provider.id).join(", ")}. Upgrade them to a version that sets consultsInitiateGate.`,
+    )
   }
 }
 
@@ -124,19 +88,22 @@ export class Auth {
 
   public constructor(private readonly config: AuthConfig) {
     this.sessionManager = new SessionManager(config.session)
-    this.sessionCache = new SessionCache()
+    this.sessionCache = new SessionCache(config.session.cacheTtlMs)
     this.abuseGuard = new AbuseGuard(config.abuse, config.session.secret)
 
     // Register providers
     for (const provider of config.providers) {
       this.providers.set(provider.id, provider)
     }
+    if (config.gate) assertProvidersConsultGate(config.providers)
 
-    // Start cache cleanup interval
-    this.cleanupInterval = setInterval(
-      () => this.sessionCache.cleanup(),
-      CACHE_CLEANUP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
-    )
+    // Start cache cleanup interval. Nothing to sweep when the cache is off.
+    if (this.sessionCache.enabled) {
+      this.cleanupInterval = setInterval(
+        () => this.sessionCache.cleanup(),
+        CACHE_CLEANUP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
+      )
+    }
   }
 
   /**
@@ -243,6 +210,15 @@ export class Auth {
         case "verify": {
           const result = await provider.verify(request, context)
           if (result instanceof Response) return result
+          if (result.success) {
+            const gated = await this.checkVerifiedGate(
+              result,
+              providerId,
+              request,
+              responders,
+            )
+            if (gated) return gated
+          }
           return await this.authResultToResponse(result, request, responders)
         }
         case "action": {
@@ -474,6 +450,15 @@ export class Auth {
       challengeStore: this.config.challengeStore,
       getSession: (sessionRequest) => this.verifySession(sessionRequest),
       abuse: this.abuseGuard.contextFor(request),
+      ...(this.config.gate
+        ? {
+            gate: initiateGateContextFor(
+              this.config.gate,
+              request,
+              this.config.logger,
+            ),
+          }
+        : {}),
       logger: this.config.logger,
     }
   }
@@ -594,6 +579,50 @@ export class Auth {
           "Set-Cookie": clearingCookie,
         },
       },
+    )
+  }
+
+  /**
+   * Consult `gate.onVerified` about a successful verify. Returns undefined
+   * when the session may be created, otherwise the response to send instead:
+   * a redirect carrying no session, or the gate's error answered like any
+   * failed verify. Either way the provider's cookies (the cleared challenge)
+   * still go out.
+   */
+  private async checkVerifiedGate(
+    result: AuthSuccess,
+    providerId: string,
+    request: Request,
+    responders?: AuthResponders,
+  ): Promise<Response | undefined> {
+    const onVerified = this.config.gate?.onVerified
+    if (!onVerified) return undefined
+
+    const decision = await onVerified.call(this.config.gate, {
+      provider: providerId,
+      identifier: result.identity.identifier,
+      mode: result.mode ?? "signin",
+      request,
+      user: result.user,
+      identity: result.identity,
+      isNewUser: result.isNewUser ?? false,
+    })
+    if (decision === "allow") return undefined
+    if ("redirect" in decision) {
+      const headers = new Headers({ Location: decision.redirect })
+      for (const cookie of result.setCookies ?? []) {
+        headers.append("Set-Cookie", cookie)
+      }
+      return new Response(null, { status: 302, headers })
+    }
+    return this.authResultToResponse(
+      {
+        success: false,
+        error: decision.error,
+        ...(result.setCookies ? { setCookies: result.setCookies } : {}),
+      },
+      request,
+      responders,
     )
   }
 

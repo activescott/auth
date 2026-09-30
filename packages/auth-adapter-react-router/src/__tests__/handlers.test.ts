@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { createAuthHandlers } from "../handlers.js"
+import { createAuthHandlers, type AuthHandlers } from "../handlers.js"
 import { Auth, InMemoryChallengeStore } from "@activescott/auth"
 import type {
   AuthLogger,
@@ -42,6 +42,7 @@ function createMockAuth(overrides: Partial<Auth> = {}): Auth {
     }),
     getSessionManager: vi.fn(),
     getSessionConfig: vi.fn(),
+    getLogger: vi.fn().mockReturnValue(undefined),
     destroy: vi.fn(),
     ...overrides,
   } as unknown as Auth
@@ -96,6 +97,30 @@ describe("createAuthHandlers", () => {
         expect(response.headers.get("Location")).toContain("/custom-login")
       }
     })
+
+    it.each([
+      [
+        "a v8 data request",
+        "/docs/coach.data?tab=2&_routes=root,routes/docs",
+        "/docs/coach?tab=2",
+      ],
+      ["a v8 root data request", "/_.data?_routes=root", "/"],
+      ["a v7 root data request", "/_root.data", "/"],
+      ["a plain page request", "/docs/coach?tab=2", "/docs/coach?tab=2"],
+    ])(
+      "should return the visitor to the page, not %s",
+      async (_label, raw, page) => {
+        const handlers = createAuthHandlers(createMockAuth())
+
+        const thrown = await handlers
+          .requireAuth(new Request(`${TEST_BASE_URL}${raw}`))
+          .catch((error: unknown) => error)
+
+        expect((thrown as Response).headers.get("Location")).toBe(
+          `/login?redirectTo=${encodeURIComponent(page)}`,
+        )
+      },
+    )
   })
 
   describe("optionalAuth", () => {
@@ -182,6 +207,148 @@ describe("createAuthHandlers", () => {
     })
   })
 
+  describe("onSessionVerified", () => {
+    /** Auth with a live session, and the three ways an app reads one */
+    function signedInAuth(): Auth {
+      return createMockAuth({
+        verifySession: vi.fn().mockResolvedValue({
+          user: { id: "user-1" },
+          identity: createMockIdentity(),
+        }),
+      })
+    }
+
+    const entryPoints = [
+      [
+        "requireAuth",
+        (handlers: AuthHandlers, request: Request) =>
+          handlers.requireAuth(request),
+      ],
+      [
+        "optionalAuth",
+        (handlers: AuthHandlers, request: Request) =>
+          handlers.optionalAuth(request),
+      ],
+      [
+        "getSession",
+        (handlers: AuthHandlers, request: Request) =>
+          handlers.getSession(request),
+      ],
+    ] as const
+
+    it.each(entryPoints)("should run in %s", async (_name, call) => {
+      const onSessionVerified = vi.fn()
+      const handlers = createAuthHandlers(signedInAuth(), {
+        onSessionVerified,
+      })
+      const request = new Request(`${TEST_BASE_URL}/dashboard`)
+
+      await call(handlers, request)
+
+      expect(onSessionVerified).toHaveBeenCalledTimes(1)
+      expect(onSessionVerified).toHaveBeenCalledWith(
+        { user: { id: "user-1" }, identity: expect.anything() },
+        request,
+      )
+    })
+
+    it.each(entryPoints)(
+      "should bounce %s with a Response the hook throws",
+      async (_name, call) => {
+        const handlers = createAuthHandlers(signedInAuth(), {
+          onSessionVerified: () => {
+            throw new Response(null, {
+              status: 302,
+              headers: { Location: "/waitlist" },
+            })
+          },
+        })
+
+        try {
+          await call(handlers, new Request(`${TEST_BASE_URL}/dashboard`))
+          expect.fail("Should have thrown")
+        } catch (error) {
+          const response = error as Response
+          expect(response.status).toBe(302)
+          expect(response.headers.get("Location")).toBe("/waitlist")
+        }
+      },
+    )
+
+    it.each(entryPoints)(
+      "should bounce %s with a Response the hook returns",
+      async (_name, call) => {
+        const handlers = createAuthHandlers(signedInAuth(), {
+          onSessionVerified: () => new Response("Blocked", { status: 403 }),
+        })
+
+        try {
+          await call(handlers, new Request(`${TEST_BASE_URL}/dashboard`))
+          expect.fail("Should have thrown")
+        } catch (error) {
+          expect((error as Response).status).toBe(403)
+        }
+      },
+    )
+
+    it("should not run when there is no session", async () => {
+      const onSessionVerified = vi.fn()
+      const handlers = createAuthHandlers(createMockAuth(), {
+        onSessionVerified,
+      })
+
+      expect(await handlers.optionalAuth(new Request(TEST_BASE_URL))).toBeNull()
+      expect(onSessionVerified).not.toHaveBeenCalled()
+    })
+
+    it("should see the user mapUser produced", async () => {
+      const onSessionVerified =
+        vi.fn<(session: { user: { email: string } }) => void>()
+      const handlers = createAuthHandlers<{ id: string; email: string }>(
+        signedInAuth(),
+        {
+          mapUser: (user, identity) => ({
+            id: user.id,
+            email: identity.identifier,
+          }),
+          onSessionVerified,
+        },
+      )
+
+      await handlers.requireAuth(new Request(`${TEST_BASE_URL}/dashboard`))
+
+      expect(onSessionVerified.mock.calls[0]?.[0].user.email).toBe(
+        "user@example.com",
+      )
+    })
+
+    it("should let the session through when the hook returns nothing", async () => {
+      const handlers = createAuthHandlers(signedInAuth(), {
+        onSessionVerified: async () => {
+          await Promise.resolve()
+        },
+      })
+
+      const user = await handlers.requireAuth(
+        new Request(`${TEST_BASE_URL}/dashboard`),
+      )
+
+      expect(user.id).toBe("user-1")
+    })
+  })
+
+  describe("clearSessionCookie", () => {
+    it("should return the header that expires the session cookie", () => {
+      const mockAuth = createMockAuth()
+      const handlers = createAuthHandlers(mockAuth)
+
+      expect(handlers.clearSessionCookie()).toBe(
+        "auth_session=; Max-Age=0; Path=/; HttpOnly",
+      )
+      expect(mockAuth.destroySessionCookie).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe("handleAuth", () => {
     const trackedAuths: Auth[] = []
 
@@ -257,6 +424,34 @@ describe("createAuthHandlers", () => {
 
       expect(provider.initiate).toHaveBeenCalledTimes(1)
       expect(response.status).toBe(200)
+    })
+
+    it("should route a POST from the app's own origin", async () => {
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider))
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { Origin: TEST_BASE_URL },
+      })
+      const response = await handlers.handleAuth({ request })
+
+      expect(provider.initiate).toHaveBeenCalledTimes(1)
+      expect(response.status).toBe(200)
+    })
+
+    it("should refuse a POST from another origin", async () => {
+      const provider = createTestProvider()
+      const handlers = createAuthHandlers(createRealAuth(provider))
+
+      const request = new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+        method: "POST",
+        headers: { Origin: "https://evil.example" },
+      })
+      const response = await handlers.handleAuth({ request })
+
+      expect(response.status).toBe(400)
+      expect(provider.initiate).not.toHaveBeenCalled()
     })
 
     it("should route action routes to handleAction, not verify", async () => {
@@ -466,22 +661,52 @@ describe("createAuthHandlers", () => {
   })
 
   describe("logout", () => {
-    it("should return redirect with destroy cookie", () => {
+    it("should refuse the removed logout(redirectTo) form", () => {
       const mockAuth = createMockAuth()
       const handlers = createAuthHandlers(mockAuth)
 
-      const response = handlers.logout("/goodbye")
+      // @ts-expect-error the request is required
+      expect(() => handlers.logout("/goodbye")).toThrow(TypeError)
+      expect(mockAuth.destroySessionCookie).not.toHaveBeenCalled()
+    })
+
+    it("should sign out a POST from the app's own origin", () => {
+      const handlers = createAuthHandlers(createMockAuth())
+
+      const response = handlers.logout(
+        new Request(`${TEST_BASE_URL}/logout`, {
+          method: "POST",
+          headers: { Origin: TEST_BASE_URL },
+        }),
+        "/goodbye",
+      )
 
       expect(response.status).toBe(302)
       expect(response.headers.get("Location")).toBe("/goodbye")
       expect(response.headers.get("Set-Cookie")).toContain("Max-Age=0")
     })
 
-    it("should default redirect to /", () => {
+    it("should refuse a POST from another origin", () => {
       const mockAuth = createMockAuth()
       const handlers = createAuthHandlers(mockAuth)
 
-      const response = handlers.logout()
+      const response = handlers.logout(
+        new Request(`${TEST_BASE_URL}/logout`, {
+          method: "POST",
+          headers: { Origin: "https://evil.example" },
+        }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(mockAuth.destroySessionCookie).not.toHaveBeenCalled()
+    })
+
+    it("should default redirect to / when given only a request", () => {
+      const handlers = createAuthHandlers(createMockAuth())
+
+      const response = handlers.logout(
+        new Request(`${TEST_BASE_URL}/logout`, { method: "POST" }),
+      )
 
       expect(response.headers.get("Location")).toBe("/")
     })
@@ -518,6 +743,114 @@ describe("createAuthHandlers", () => {
       await expect(
         handlers.refreshSessionCookie(request, { id: "user-1" }),
       ).rejects.toThrow("no active session")
+    })
+  })
+
+  describe("renewSessionCookie", () => {
+    const SECONDS_PER_DAY = 86400
+    const identity = createMockIdentity()
+
+    // A session issued `ageDays` ago that still resolves to a user.
+    function createAgingAuth(ageDays: number): Auth {
+      const issuedAt =
+        Math.floor(Date.now() / 1000) - Math.round(ageDays * SECONDS_PER_DAY)
+      return createMockAuth({
+        getSessionManager: vi.fn().mockReturnValue({
+          getSession: vi.fn().mockResolvedValue({
+            userId: "user-1",
+            identifier: "user@example.com",
+            provider: "email",
+            issuedAt,
+            expiresAt: issuedAt + 30 * SECONDS_PER_DAY,
+          }),
+        }),
+        verifySession: vi.fn().mockResolvedValue({
+          user: { id: "user-1" },
+          identity,
+        }),
+      })
+    }
+
+    function createHandlers(auth: Auth, renewAfter = "7d") {
+      return createAuthHandlers(auth, { session: { renewAfter } })
+    }
+
+    const request = new Request(TEST_BASE_URL, {
+      headers: { Cookie: "auth_session=token" },
+    })
+
+    it("should return a cookie once the session is older than renewAfter", async () => {
+      const mockAuth = createAgingAuth(10)
+      const handlers = createHandlers(mockAuth)
+
+      const cookie = await handlers.renewSessionCookie(request, {
+        id: "user-1",
+      })
+
+      expect(cookie).toContain("auth_session=")
+      expect(mockAuth.createSessionCookie).toHaveBeenCalledWith(
+        { id: "user-1" },
+        identity,
+      )
+    })
+
+    it("should return null while the session is still fresh", async () => {
+      const mockAuth = createAgingAuth(2)
+      const handlers = createHandlers(mockAuth)
+
+      const cookie = await handlers.renewSessionCookie(request, {
+        id: "user-1",
+      })
+
+      expect(cookie).toBeNull()
+      expect(mockAuth.createSessionCookie).not.toHaveBeenCalled()
+    })
+
+    it("should not verify the session when it is still fresh", async () => {
+      const mockAuth = createAgingAuth(2)
+      const handlers = createHandlers(mockAuth)
+
+      await handlers.renewSessionCookie(request, { id: "user-1" })
+
+      expect(mockAuth.verifySession).not.toHaveBeenCalled()
+    })
+
+    it("should return null when there is no session", async () => {
+      const mockAuth = createMockAuth({
+        getSessionManager: vi.fn().mockReturnValue({
+          getSession: vi.fn().mockResolvedValue(null),
+        }),
+      })
+      const handlers = createHandlers(mockAuth)
+
+      expect(await handlers.renewSessionCookie(request, { id: "user-1" })).toBe(
+        null,
+      )
+    })
+
+    it("should return null when the session no longer resolves to a user", async () => {
+      const mockAuth = createAgingAuth(10)
+      mockAuth.verifySession = vi.fn().mockResolvedValue(null)
+      const handlers = createHandlers(mockAuth)
+
+      expect(await handlers.renewSessionCookie(request, { id: "user-1" })).toBe(
+        null,
+      )
+      expect(mockAuth.createSessionCookie).not.toHaveBeenCalled()
+    })
+
+    it("should throw when renewAfter was not configured", async () => {
+      const handlers = createAuthHandlers(createAgingAuth(10))
+
+      await expect(
+        handlers.renewSessionCookie(request, { id: "user-1" }),
+      ).rejects.toThrow("session.renewAfter")
+    })
+
+    it("should reject an unparseable renewAfter at construction", () => {
+      expect(() => createHandlers(createMockAuth(), "7 days")).toThrow(
+        "Invalid session.renewAfter",
+      )
     })
   })
 })

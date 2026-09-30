@@ -6,3 +6,5 @@ export {
 } from "./credential-metadata.js"
 export type { PasskeyCredentialMetadata } from "./credential-metadata.js"
 export { base64urlToUint8Array, uint8ArrayToBase64url } from "./base64url.js"
+export { listPasskeys } from "./list-passkeys.js"
+export type { PasskeySummary } from "./list-passkeys.js"

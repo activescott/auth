@@ -7,6 +7,7 @@ import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
 import type {
   AuthConfig,
   AuthProvider,
+  AuthSuccess,
   ChallengeStore,
   IdentityStore,
   UserStore,
@@ -94,6 +95,16 @@ function createMockChallengeStore(): ChallengeStore {
     incrementAttempts: vi.fn().mockResolvedValue(1),
     delete: vi.fn(),
   }
+}
+
+/** A request carrying a valid session cookie for the mock user */
+async function createSessionRequest(auth: Auth): Promise<Request> {
+  const cookie = await auth
+    .getSessionManager()
+    .createSessionCookie({ id: "user-1" }, createMockIdentity())
+  return new Request(TEST_BASE_URL, {
+    headers: { Cookie: cookie.split(";")[0] as string },
+  })
 }
 
 function createAuthConfig(overrides: Partial<AuthConfig> = {}): AuthConfig {
@@ -464,6 +475,53 @@ describe("Auth", () => {
       const result = await auth.verifySession(request)
 
       expect(result).toBeNull()
+    })
+
+    it("should reuse the cached session instead of reading the stores again", async () => {
+      const stores = createMockStores()
+      const config = createAuthConfig({
+        userStore: stores.userStore,
+        identityStore: stores.identityStore,
+      })
+      auth = new Auth(config)
+      const request = await createSessionRequest(auth)
+
+      await auth.verifySession(request)
+      await auth.verifySession(request)
+
+      expect(stores.userStore.findById).toHaveBeenCalledTimes(1)
+    })
+
+    it("should read the stores on every request when cacheTtlMs is 0", async () => {
+      const stores = createMockStores()
+      const config = createAuthConfig({
+        userStore: stores.userStore,
+        identityStore: stores.identityStore,
+      })
+      config.session.cacheTtlMs = 0
+      auth = new Auth(config)
+      const request = await createSessionRequest(auth)
+
+      await auth.verifySession(request)
+      await auth.verifySession(request)
+
+      expect(stores.userStore.findById).toHaveBeenCalledTimes(2)
+    })
+
+    it("should stop authenticating a deleted user on the next request when cacheTtlMs is 0", async () => {
+      const stores = createMockStores()
+      const config = createAuthConfig({
+        userStore: stores.userStore,
+        identityStore: stores.identityStore,
+      })
+      config.session.cacheTtlMs = 0
+      auth = new Auth(config)
+      const request = await createSessionRequest(auth)
+
+      expect(await auth.verifySession(request)).not.toBeNull()
+      vi.mocked(stores.userStore.findById).mockResolvedValue(null)
+
+      expect(await auth.verifySession(request)).toBeNull()
     })
   })
 
@@ -1064,5 +1122,331 @@ describe("Auth abuse protection", () => {
     expect(console.warn).toHaveBeenCalledWith(
       expect.stringContaining("identifier=user@example.com"),
     )
+  })
+})
+
+describe("Auth initiate gate", () => {
+  let auth: Auth
+
+  afterEach(() => {
+    auth?.destroy()
+  })
+
+  /**
+   * A provider that, like the real ones, validates the identifier itself and
+   * consults the gate only once it is valid and normalized
+   */
+  function createGatedProvider(): AuthProvider {
+    return createMockProvider({
+      consultsInitiateGate: true,
+      initiate: vi.fn(async (request: Request, context) => {
+        const body = new URLSearchParams(await request.text())
+        const email = body.get("email")?.trim().toLowerCase() ?? ""
+        if (!email.includes("@")) {
+          return {
+            success: false,
+            error: { code: "INVALID_CREDENTIALS", message: "Invalid email" },
+          }
+        }
+        const gated = await context.gate?.check({
+          provider: "email",
+          identifier: email,
+          mode: body.get("mode") === "link" ? "link" : "signin",
+        })
+        if (gated) return gated
+        return { success: true, message: "Sent" }
+      }),
+    })
+  }
+
+  function initiateRequest(
+    body: Record<string, string>,
+    accept = "application/json",
+  ): Request {
+    return new Request(`${TEST_BASE_URL}/auth/email/initiate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: accept,
+        Referer: `${TEST_BASE_URL}/login`,
+      },
+      body: new URLSearchParams(body).toString(),
+    })
+  }
+
+  it("refuses to start when a provider serving initiate does not consult the gate", () => {
+    expect(
+      () =>
+        new Auth(
+          createAuthConfig({
+            providers: [createMockProvider()],
+            gate: { onInitiate: () => "allow" },
+          }),
+        ),
+    ).toThrow(/email/)
+  })
+
+  it("accepts providers without an initiate route, and any provider without a gate", () => {
+    const actionOnly = createMockProvider({
+      id: "passkey",
+      getRoutes: vi
+        .fn()
+        .mockReturnValue([
+          { method: "POST", path: "/passkey/auth-options", handler: "action" },
+        ]),
+    })
+    auth = new Auth(
+      createAuthConfig({
+        providers: [actionOnly, createGatedProvider()],
+        gate: { onInitiate: () => "allow" },
+      }),
+    )
+    auth.destroy()
+    auth = new Auth(createAuthConfig({ providers: [createMockProvider()] }))
+  })
+
+  it("passes the provider's normalized identifier, the mode, and a readable request", async () => {
+    let seenBody = ""
+    const onInitiate = vi.fn(async ({ request }: { request: Request }) => {
+      seenBody = await request.text()
+      return "allow" as const
+    })
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createGatedProvider()],
+        gate: { onInitiate },
+      }),
+    )
+
+    const response = await auth.handleRequest(
+      initiateRequest({ email: "  User@Example.COM " }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(onInitiate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "email",
+        identifier: "user@example.com",
+        mode: "signin",
+      }),
+    )
+    expect(seenBody).toContain("email=")
+  })
+
+  it("reports link mode", async () => {
+    const onInitiate = vi.fn().mockReturnValue("allow")
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createGatedProvider()],
+        gate: { onInitiate },
+      }),
+    )
+
+    await auth.handleRequest(
+      initiateRequest({ email: "user@example.com", mode: "link" }),
+    )
+
+    expect(onInitiate).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "link" }),
+    )
+  })
+
+  it("never calls the gate for an identifier the provider rejects", async () => {
+    const onInitiate = vi.fn().mockReturnValue("allow")
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createGatedProvider()],
+        gate: { onInitiate },
+      }),
+    )
+
+    const response = await auth.handleRequest(
+      initiateRequest({ email: "not-an-email" }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(onInitiate).not.toHaveBeenCalled()
+  })
+
+  it("answers { redirect } with a 302 to that URL", async () => {
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createGatedProvider()],
+        gate: { onInitiate: () => ({ redirect: "/waitlist" }) },
+      }),
+    )
+
+    const response = await auth.handleRequest(
+      initiateRequest({ email: "user@example.com" }),
+    )
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get("Location")).toBe("/waitlist")
+  })
+
+  it("answers { error } as JSON for fetch callers", async () => {
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createGatedProvider()],
+        gate: {
+          onInitiate: () => ({
+            error: { code: "INVALID_CREDENTIALS", message: "Invite only" },
+          }),
+        },
+      }),
+    )
+
+    const response = await auth.handleRequest(
+      initiateRequest({ email: "user@example.com" }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(await response.json()).toEqual({
+      success: false,
+      error: { code: "INVALID_CREDENTIALS", message: "Invite only" },
+    })
+  })
+
+  it("answers { error } on a browser form post with a redirect back carrying the code", async () => {
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createGatedProvider()],
+        gate: {
+          onInitiate: () => ({
+            error: { code: "INVALID_CREDENTIALS", message: "Invite only" },
+          }),
+        },
+      }),
+    )
+
+    const response = await auth.handleRequest(
+      initiateRequest({ email: "user@example.com" }, "text/html"),
+    )
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get("Location")).toBe(
+      `${TEST_BASE_URL}/login?error=INVALID_CREDENTIALS`,
+    )
+  })
+})
+
+describe("Auth verified gate", () => {
+  let auth: Auth
+
+  afterEach(() => {
+    auth?.destroy()
+  })
+
+  function verifyRequest(): Request {
+    return new Request(`${TEST_BASE_URL}/auth/email/verify?token=t`)
+  }
+
+  function createVerifyingProvider(
+    result: Partial<AuthSuccess> = {},
+  ): AuthProvider {
+    return createMockProvider({
+      consultsInitiateGate: true,
+      verify: vi.fn().mockResolvedValue({
+        success: true,
+        user: { id: "user-1" },
+        identity: createMockIdentity(),
+        setCookies: ["email_challenge=; Max-Age=0"],
+        ...result,
+      }),
+    })
+  }
+
+  it("tells the gate who verified", async () => {
+    const onVerified = vi.fn().mockReturnValue("allow")
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createVerifyingProvider({ isNewUser: true })],
+        gate: { onInitiate: () => "allow", onVerified },
+      }),
+    )
+
+    const response = await auth.handleRequest(verifyRequest())
+
+    expect(response.status).toBe(200)
+    expect(onVerified).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "email",
+        identifier: "user@example.com",
+        mode: "signin",
+        user: { id: "user-1" },
+        isNewUser: true,
+      }),
+    )
+  })
+
+  it("answers { redirect } with a 302 carrying the provider's cookies and no session", async () => {
+    const onSuccess = vi.fn()
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createVerifyingProvider()],
+        gate: {
+          onInitiate: () => "allow",
+          onVerified: () => ({ redirect: "/waitlist" }),
+        },
+      }),
+    )
+
+    const response = await auth.handleRequest(verifyRequest(), { onSuccess })
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get("Location")).toBe("/waitlist")
+    expect(response.headers.get("Set-Cookie")).toBe(
+      "email_challenge=; Max-Age=0",
+    )
+    expect(onSuccess).not.toHaveBeenCalled()
+  })
+
+  it("answers { error } through the failure responder", async () => {
+    const onFailure = vi.fn(async () => new Response(null, { status: 303 }))
+    const error = {
+      code: "INVALID_CREDENTIALS" as const,
+      message: "Invite only",
+    }
+    auth = new Auth(
+      createAuthConfig({
+        providers: [createVerifyingProvider()],
+        gate: { onInitiate: () => "allow", onVerified: () => ({ error }) },
+      }),
+    )
+
+    const response = await auth.handleRequest(verifyRequest(), { onFailure })
+
+    expect(response.status).toBe(303)
+    expect(onFailure).toHaveBeenCalledWith(
+      {
+        success: false,
+        error,
+        setCookies: ["email_challenge=; Max-Age=0"],
+      },
+      expect.any(Request),
+    )
+  })
+
+  it("is not consulted when the verify fails", async () => {
+    const onVerified = vi.fn()
+    auth = new Auth(
+      createAuthConfig({
+        providers: [
+          createMockProvider({
+            consultsInitiateGate: true,
+            verify: vi.fn().mockResolvedValue({
+              success: false,
+              error: { code: "INVALID_TOKEN", message: "Bad code" },
+            }),
+          }),
+        ],
+        gate: { onInitiate: () => "allow", onVerified },
+      }),
+    )
+
+    const response = await auth.handleRequest(verifyRequest())
+
+    expect(response.status).toBe(401)
+    expect(onVerified).not.toHaveBeenCalled()
   })
 })

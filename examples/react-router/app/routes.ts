@@ -5,6 +5,8 @@ export default [
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
   route("dashboard", "routes/dashboard.tsx"),
+  // Where the waitlist sends anyone without an approved account
+  route("waitlist", "routes/waitlist.tsx"),
   route("auth/:provider/:action", "routes/auth.$provider.$action.tsx"),
   // The admin dashboard the library ships. Two routes, both a loader and a
   // one-line component; everything else comes from the adapter.

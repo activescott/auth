@@ -3,6 +3,54 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.7.0](https://github.com/activescott/auth/compare/auth@5.6.1...auth@5.7.0) (2026-09-29)
+
+### Features
+
+* email users when approved ([#141](https://github.com/activescott/auth/issues/141)) ([f35d84f](https://github.com/activescott/auth/commit/f35d84f002c971e17d5cbbe063b0ca2aef9dee0a))
+
+## [5.6.1](https://github.com/activescott/auth/compare/auth@5.6.0...auth@5.6.1) (2026-09-29)
+
+### Bug Fixes
+
+* waitlist addresses only once verified ([#144](https://github.com/activescott/auth/issues/144)) ([f110f8d](https://github.com/activescott/auth/commit/f110f8dc62add434623b970a50e2b95da6839a88)), closes [#142](https://github.com/activescott/auth/issues/142)
+
+## [5.6.0](https://github.com/activescott/auth/compare/auth@5.5.0...auth@5.6.0) (2026-09-20)
+
+### Features
+
+* add waitlist with admin approval ([#118](https://github.com/activescott/auth/issues/118)) ([2d3e81d](https://github.com/activescott/auth/commit/2d3e81d001d3ae7d8d9412df934c1419feb18bb3))
+
+## [5.5.0](https://github.com/activescott/auth/compare/auth@5.4.0...auth@5.5.0) (2026-09-20)
+
+### Features
+
+* add getAuthErrorMessage overrides ([#116](https://github.com/activescott/auth/issues/116)) ([112d4ef](https://github.com/activescott/auth/commit/112d4ef73ab568ffd9db64b65faab98e798a3d70))
+
+## [5.4.0](https://github.com/activescott/auth/compare/auth@5.3.0...auth@5.4.0) (2026-09-20)
+
+### Features
+
+* export the admin allowlist check ([#107](https://github.com/activescott/auth/issues/107)) ([41cdcb5](https://github.com/activescott/auth/commit/41cdcb5ac845f80cbda5f33b274a2863f88c178a)), closes [#101](https://github.com/activescott/auth/issues/101)
+
+## [5.3.0](https://github.com/activescott/auth/compare/auth@5.2.1...auth@5.3.0) (2026-09-19)
+
+### Features
+
+* add gate.onInitiate for app sign-in policy ([#113](https://github.com/activescott/auth/issues/113)) ([bbd68ce](https://github.com/activescott/auth/commit/bbd68ce3a61e854411cbe5fcf58baab62cd1589f)), closes [#100](https://github.com/activescott/auth/issues/100)
+
+## [5.2.1](https://github.com/activescott/auth/compare/auth@5.2.0...auth@5.2.1) (2026-09-19)
+
+### Bug Fixes
+
+* return the identity after the update ([#105](https://github.com/activescott/auth/issues/105)) ([8c043f4](https://github.com/activescott/auth/commit/8c043f4fd625a5ff52d14153e8c77333fd0753bf)), closes [#102](https://github.com/activescott/auth/issues/102)
+
+## [5.2.0](https://github.com/activescott/auth/compare/auth@5.1.0...auth@5.2.0) (2026-09-18)
+
+### Features
+
+* make the session cache TTL configurable ([8ab4eaa](https://github.com/activescott/auth/commit/8ab4eaad71e9f0580ccd690fb9d0af3adec5f2fd))
+
 ## [5.1.0](https://github.com/activescott/auth/compare/auth@5.0.0...auth@5.1.0) (2026-09-18)
 
 ### Features

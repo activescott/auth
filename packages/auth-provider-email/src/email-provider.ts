@@ -55,6 +55,7 @@ export class EmailProvider implements AuthProvider {
   public readonly name = "Email"
   public readonly initiateSentMessage =
     "Magic link sent. Please check your email."
+  public readonly consultsInitiateGate = true
 
   private transport: EmailTransport
 
@@ -131,6 +132,15 @@ export class EmailProvider implements AuthProvider {
           context.logger,
         )
       }
+
+      // The application's own policy (allowlist, invite-only beta) sees the
+      // address only now that it is validated, so it never acts on a malformed one.
+      const gated = await context.gate?.check({
+        provider: this.id,
+        identifier: email,
+        mode: linkUserId ? "link" : "signin",
+      })
+      if (gated) return gated
 
       // Only a destination on this app's own origin rides into the link
       const resolvedRedirect = resolveRedirectTarget(
@@ -520,6 +530,7 @@ export class EmailProvider implements AuthProvider {
         "smtp.host": this.config.smtp.host,
         "smtp.port": this.config.smtp.port,
         "smtp.secure": this.config.smtp.secure ?? null,
+        allowDotlessDomain: this.config.allowDotlessDomain ?? false,
         transport: this.transport.constructor.name,
       },
     }
@@ -569,9 +580,14 @@ export class EmailProvider implements AuthProvider {
   }
 
   /**
-   * Basic email validation
+   * Basic email validation. Requires a dot in the domain (rejects typos
+   * like `scott@willeke`) unless `allowDotlessDomain` is set, for setups
+   * that sign in to a bare hostname like `user@localhost`.
    */
   private isValidEmail(email: string): boolean {
+    if (this.config.allowDotlessDomain) {
+      return /^[^\s@]+@[^\s@]+$/.test(email)
+    }
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   }
 }
