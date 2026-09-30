@@ -1,0 +1,47 @@
+{
+  "name": "@activescott/auth-store-prisma",
+  "version": "0.1.0",
+  "description": "Prisma IdentityStore for @activescott/auth",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "authentication",
+    "prisma",
+    "identity",
+    "store"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-store-prisma"
+  },
+  "peerDependencies": {
+    "@activescott/auth": ">=5.0.0"
+  },
+  "devDependencies": {
+    "@activescott/auth": "*",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  }
+}

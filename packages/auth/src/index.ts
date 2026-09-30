@@ -58,6 +58,15 @@ export type {
   AbuseReason,
 } from "./abuse/abuse-guard.js"
 export { AbuseGuard } from "./abuse/abuse-guard.js"
+
+// Initiate gate
+export type {
+  InitiateGate,
+  InitiateGateContext,
+  InitiateGateDecision,
+  InitiateGateInput,
+  InitiateMode,
+} from "./initiate-gate.js"
 export type { RateLimitRule, RateLimitVerdict } from "./abuse/rate-limiter.js"
 export { RateLimiter } from "./abuse/rate-limiter.js"
 export type { RateLimitHit, RateLimitStore } from "./abuse/rate-limit-store.js"
@@ -78,6 +87,28 @@ export {
   DEFAULT_MIN_FORM_FILL_SECONDS,
   FORM_TOKEN_FIELD,
 } from "./abuse/bot-check.js"
+
+// Waitlist
+export type {
+  ApprovalNotice,
+  ApprovalStatus,
+  ApprovalStore,
+  AutoApproveInput,
+  Waitlist,
+  WaitlistActionResult,
+  WaitlistConfig,
+  WaitlistNotice,
+} from "./waitlist.js"
+export { createWaitlist } from "./waitlist.js"
+export type {
+  WaitlistApprovalEmailOptions,
+  WaitlistEmail,
+  WaitlistEmailOptions,
+} from "./waitlist-email.js"
+export {
+  waitlistApprovalEmail,
+  waitlistNotificationEmail,
+} from "./waitlist-email.js"
 
 // Utilities for provider authors
 export {

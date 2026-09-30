@@ -1,6 +1,7 @@
 import type { Auth, AuthConfigDescription, AuthUser } from "@activescott/auth"
 import type { AdminUserRow } from "@activescott/auth/admin"
 import { createAdminData } from "@activescott/auth/admin"
+import { pageUrl } from "../page-url.js"
 import type { AdminOptions } from "./admin-options.js"
 import {
   DEFAULT_BASE_PATH,
@@ -133,7 +134,8 @@ export function createAdminHandlers<TUser = AuthUser>(
     async adminUsersLoader({ request }): Promise<AdminUsersLoaderData> {
       await requireAdmin(request)
 
-      const url = new URL(request.url)
+      // The query string goes back out in the page's sort and page links
+      const url = pageUrl(request)
       const limit = readLimit(url.searchParams.get("limit"), pageSize)
       const page = readPage(url.searchParams.get("page"))
       const sortBy = url.searchParams.get("sortBy") ?? defaultSort?.sortBy

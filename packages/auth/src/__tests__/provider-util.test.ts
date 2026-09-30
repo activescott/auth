@@ -412,6 +412,42 @@ describe("authenticateWithIdentifier", () => {
     )
   })
 
+  it("should return the identity as the store holds it after the update", async () => {
+    // a store that persists, so verifiedAt is absent until the update lands
+    const stored = new Map<string, Identity>()
+    const context = createMockContext({
+      userStore: {
+        findById: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: "user-1" }),
+      },
+      identityStore: {
+        findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+        findByUserId: vi.fn().mockResolvedValue([]),
+        create: vi.fn(async () => {
+          const identity = createMockIdentity({ verifiedAt: undefined })
+          stored.set(identity.id, identity)
+          return identity
+        }),
+        update: vi.fn(async (id: string, data: Partial<Identity>) => {
+          const updated = { ...stored.get(id)!, ...data }
+          stored.set(id, updated)
+          return updated
+        }),
+      },
+    })
+
+    const result = await authenticateWithIdentifier(
+      "sms",
+      "+14155550100",
+      context,
+    )
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.identity.verifiedAt).toBeInstanceOf(Date)
+    expect(result.identity).toEqual(stored.get(result.identity.id))
+  })
+
   it("should fail when the identity's user no longer exists", async () => {
     const context = createMockContext({
       userStore: {

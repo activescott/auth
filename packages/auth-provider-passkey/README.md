@@ -25,61 +25,51 @@ const auth = new Auth({
     // a passkey while signed in, so another provider handles first sign-in
     new PasskeyProvider({
       rpName: "MyApp",
+      // Bind passkeys to your canonical domain in production; leave unset in
+      // dev so rpID and origin derive from each request (e.g. localhost).
+      appUrl:
+        process.env.NODE_ENV === "production" ? process.env.APP_URL : undefined,
       challengeSecret: process.env.JWT_SECRET!,
     }),
   ],
 })
 ```
 
-Browser (all four endpoints are fetch/JSON — WebAuthn ceremonies run in page JavaScript, not form navigations):
+Browser (all four endpoints are fetch/JSON — WebAuthn ceremonies run in page JavaScript, not form navigations). `createPasskeyClient` fetches the options, runs the ceremony, and posts the result:
 
 ```ts
-import {
-  startRegistration,
-  startAuthentication,
-} from "@activescott/auth-provider-passkey/browser"
+import { createPasskeyClient } from "@activescott/auth-provider-passkey/browser"
+
+const passkeys = createPasskeyClient() // basePath defaults to "/auth"
 
 // Add a passkey (user must be signed in):
-const regOptions = await fetch("/auth/passkey/register-options", {
-  method: "POST",
-}).then((r) => r.json())
-const registration = await startRegistration(regOptions)
-await fetch("/auth/passkey/register-verify", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(registration),
-})
+await passkeys.registerPasskey()
 
 // Sign in with a passkey:
-const authOptions = await fetch("/auth/passkey/authenticate-options", {
-  method: "POST",
-}).then((r) => r.json())
-const assertion = await startAuthentication(authOptions)
-const result = await fetch("/auth/passkey/authenticate-verify", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(assertion),
-})
-if (result.ok) location.assign("/dashboard") // session cookie is set
+await passkeys.signInWithPasskey()
+location.assign("/dashboard") // session cookie is set
 ```
+
+Both throw when the user cancels or the server rejects the request. A server rejection's `Error.message` is the most specific text the response carries — the error's `details.reason` (e.g. `"Unknown credential"`, a passkey saved in a password manager whose identity the server no longer has), else its `message` — so it is fit to show the user.
 
 For conditional UI (passkey autofill on the login form), add `autocomplete="username webauthn"` to your username/email input and start a conditional request on page load:
 
 ```ts
 import {
-  startAuthentication,
+  createPasskeyClient,
   isConditionalUIAvailable,
 } from "@activescott/auth-provider-passkey/browser"
 
 if (await isConditionalUIAvailable()) {
-  const options = await fetch("/auth/passkey/authenticate-options", {
-    method: "POST",
-  }).then((r) => r.json())
-  // Resolves when the user picks a passkey from the autofill suggestions
-  const assertion = await startAuthentication(options, { conditional: true })
-  // POST to /auth/passkey/authenticate-verify as above
+  // Resolves once the user picks a passkey from the autofill suggestions and
+  // the server has set the session cookie. A later signInWithPasskey() call
+  // (e.g. from a button) aborts this pending request.
+  await createPasskeyClient().signInWithPasskey({ conditional: true })
+  location.assign("/dashboard")
 }
 ```
+
+`startRegistration` and `startAuthentication` are still exported for code that runs the HTTP round trips itself, but are deprecated in favor of the client.
 
 ## Endpoints
 
@@ -94,14 +84,15 @@ Registration model: **add-passkey-while-signed-in**. Users sign in with another 
 
 ## Configuration
 
-| Option                | Default                    | Description                                                             |
-| --------------------- | -------------------------- | ----------------------------------------------------------------------- |
-| `rpName`              | (required)                 | Relying party name shown in authenticator prompts                       |
-| `rpID`                | request hostname           | Relying party ID; set explicitly in production (e.g. `"myapp.example"`) |
-| `expectedOrigin`      | request origin             | Expected WebAuthn origin (e.g. `"https://myapp.example"`)               |
-| `challengeSecret`     | (required)                 | Signs the short-lived challenge cookie                                  |
-| `challengeExpiry`     | `"5m"`                     | Challenge lifetime                                                      |
-| `challengeCookieName` | `"auth_passkey_challenge"` | Challenge cookie name                                                   |
+| Option                | Default                                  | Description                                                           |
+| --------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
+| `rpName`              | (required)                               | Relying party name shown in authenticator prompts                     |
+| `appUrl`              | (unset)                                  | Canonical app URL (e.g. `"https://myapp.example"`); set in production |
+| `rpID`                | `appUrl` hostname, else request hostname | Relying party ID; overrides `appUrl` (e.g. a parent domain)           |
+| `expectedOrigin`      | `appUrl` origin, else request origin     | Expected WebAuthn origin; overrides `appUrl`                          |
+| `challengeSecret`     | (required)                               | Signs the short-lived challenge cookie                                |
+| `challengeExpiry`     | `"5m"`                                   | Challenge lifetime                                                    |
+| `challengeCookieName` | `"auth_passkey_challenge"`               | Challenge cookie name                                                 |
 
 ## Storage: passkeys are identities
 
@@ -123,18 +114,17 @@ CREATE INDEX identities_user_id ON identities (user_id);
 
 Metadata may contain sensitive material — treat it like credential data (encryption at rest is a reasonable default). Integrity matters more than secrecy here: anyone who can write this column can register their own key, so guard writes accordingly.
 
-To list a user's passkeys (for a settings page), filter their identities to `provider === "passkey"` and validate each row's metadata:
+To list a user's passkeys for a settings page, `listPasskeys` filters their identities to passkeys, validates each row's provider state (skipping invalid rows), and returns plain JSON you can hand straight to the page:
 
 ```ts
-import { parsePasskeyCredentialMetadata } from "@activescott/auth-provider-passkey"
+import { listPasskeys } from "@activescott/auth-provider-passkey"
 
-const passkeys = (await identityStore.findByUserId(user.id))
-  .filter((identity) => identity.provider === "passkey")
-  .flatMap((identity) => {
-    const credential = parsePasskeyCredentialMetadata(identity.metadata)
-    return credential ? [{ identity, credential }] : []
-  })
+const passkeys = await listPasskeys(identityStore, user.id)
+// [{ credentialId, nickname: string | null, synced: boolean,
+//    createdAt: ISO string, lastUsedAt: ISO string | null }, ...]
 ```
+
+The markup is yours; `synced` is true for passkeys synced to a cloud keychain or password manager.
 
 ## Challenges
 

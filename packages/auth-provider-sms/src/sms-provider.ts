@@ -64,6 +64,7 @@ export class SmsProvider implements AuthProvider {
   public readonly id = "sms"
   public readonly name = "SMS"
   public readonly initiateSentMessage = "Code sent. Check your phone."
+  public readonly consultsInitiateGate = true
 
   public constructor(
     private readonly config: SmsProviderConfig,
@@ -137,6 +138,15 @@ export class SmsProvider implements AuthProvider {
           context.logger,
         )
       }
+
+      // The application's own policy (allowlist, invite-only beta) sees the
+      // number only now that it is validated, so it never acts on a malformed one.
+      const gated = await context.gate?.check({
+        provider: this.id,
+        identifier: phone,
+        mode: linkUserId ? "link" : "signin",
+      })
+      if (gated) return gated
 
       const challengeId = crypto.randomUUID()
       const expirySeconds = parseDuration(this.config.expiry ?? DEFAULT_EXPIRY)

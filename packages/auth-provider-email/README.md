@@ -61,6 +61,8 @@ There are no signing secrets to manage for sign-in emails — both the link key 
 
 Tuning: `expiry` (top-level, e.g. `"15m"`) and `otp: { length?, maxAttempts?, cookieName? }`, or env vars `EMAIL_EXPIRY`, `EMAIL_OTP_LENGTH`, `EMAIL_OTP_MAX_ATTEMPTS` with `emailConfigFromEnvironment`.
 
+`initiate` rejects an address whose domain has no dot (e.g. `scott@willeke`) before any store write or send, since it's almost always a missing TLD rather than a real destination. Set `allowDotlessDomain: true` for intranet or dev setups that sign in to a bare hostname like `user@localhost`.
+
 ## Dev mode (no SMTP needed)
 
 `NodemailerTransport` accepts an `isDevelopment` flag. When `true`, it buffers the email via Nodemailer's stream transport (no real SMTP connection) and prints the magic link to the server console — useful for local dev, examples, and CI:
