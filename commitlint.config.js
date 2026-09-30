@@ -9,6 +9,7 @@ export default {
         "auth-provider-email",
         "auth-provider-sms",
         "auth-provider-passkey",
+        "auth-provider-oidc",
         "auth-sms-twilio",
         "auth-botcheck-turnstile",
         "auth-store-prisma",
