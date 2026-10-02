@@ -1,4 +1,5 @@
 import { Form, redirect } from "react-router"
+import { AUTH_ERROR_CODES } from "@activescott/auth"
 import {
   usePasskeySignIn,
   usePreservedInput,
@@ -28,7 +29,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function Login({ loaderData }: Route.ComponentProps) {
-  const { via, sent, error, formToken, turnstileSiteKey } = loaderData
+  const { via, sent, error, errorCode, formToken, turnstileSiteKey } =
+    loaderData
   const formProps = { sent, formToken, turnstileSiteKey }
 
   return (
@@ -50,7 +52,17 @@ export default function Login({ loaderData }: Route.ComponentProps) {
         <EmailLogin {...formProps} />
       )}
 
-      {error && <p className="text-red-700 mt-3">Error: {error}</p>}
+      {/* BOT_CHECK_INCOMPLETE means the form went out before the Turnstile
+          widget had issued its token (a slow connection, usually). Nothing
+          is wrong with the address, so ask for a retry rather than showing
+          an error; the address is still in the field. */}
+      {errorCode === AUTH_ERROR_CODES.BOT_CHECK_INCOMPLETE ? (
+        <p className="text-amber-700 mt-3" data-testid="bot-check-incomplete">
+          {error}
+        </p>
+      ) : (
+        error && <p className="text-red-700 mt-3">Error: {error}</p>
+      )}
 
       <PasskeyLogin />
 

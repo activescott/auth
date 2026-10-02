@@ -631,12 +631,34 @@ export class Auth {
    * provider would have returned on success (minus the challenge cookie),
    * so bots get no feedback about which addresses or IPs are throttled;
    * `abuse.respondWith: "rateLimited"` opts into an explicit 429 instead.
+   *
+   * The exception, in both modes, is a bot check the client had not
+   * finished: that verdict comes from the request alone, so answering it
+   * with BOT_CHECK_INCOMPLETE tells the caller nothing about the address,
+   * and a real user whose widget was slow learns to try again.
    */
   private blockedInitiateResponse(
     request: Request,
     provider: AuthProvider,
-    decision: { retryAfterSeconds?: number },
+    decision: { retryAfterSeconds?: number; botCheckIncomplete?: boolean },
   ): Response {
+    if (decision.botCheckIncomplete) {
+      const error = AuthErrors.botCheckIncomplete()
+      if (isBrowserFormPost(request)) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: buildReturnUrl(
+              request,
+              { error: error.code },
+              this.config.logger,
+            ),
+          },
+        })
+      }
+      return this.errorToResponse(error)
+    }
+
     if (this.abuseGuard.respondWith === "rateLimited") {
       const response = this.errorToResponse(
         AuthErrors.rateLimited(
@@ -753,6 +775,7 @@ export class Auth {
       IDENTITY_NOT_FOUND: 404,
       IDENTITY_CONFLICT: 409,
       RATE_LIMITED: 429,
+      BOT_CHECK_INCOMPLETE: 400,
       CONFIGURATION_ERROR: 500,
       PROVIDER_ERROR: 500,
     }

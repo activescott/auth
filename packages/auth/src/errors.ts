@@ -26,6 +26,7 @@ export const AUTH_ERROR_CODES = {
   SESSION_EXPIRED: "SESSION_EXPIRED",
   SESSION_INVALID: "SESSION_INVALID",
   IDENTITY_CONFLICT: "IDENTITY_CONFLICT",
+  BOT_CHECK_INCOMPLETE: "BOT_CHECK_INCOMPLETE",
 } as const satisfies Record<AuthErrorCode, AuthErrorCode>
 
 /**
@@ -54,6 +55,8 @@ export const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
   SESSION_INVALID: "Invalid session. Please sign in again.",
   IDENTITY_CONFLICT:
     "That sign-in method already belongs to another account. You can merge the two accounts.",
+  BOT_CHECK_INCOMPLETE:
+    "We hadn't finished checking that you're human. Please wait a moment and try again.",
 }
 
 const DEFAULT_ERROR_MESSAGE =
@@ -212,6 +215,13 @@ export const AuthErrors = {
     createAuthError(
       "IDENTITY_CONFLICT",
       "This identifier already belongs to another account",
+      details,
+    ),
+
+  botCheckIncomplete: (details?: Record<string, unknown>) =>
+    createAuthError(
+      "BOT_CHECK_INCOMPLETE",
+      "The bot check had not finished when the form was submitted",
       details,
     ),
 } as const

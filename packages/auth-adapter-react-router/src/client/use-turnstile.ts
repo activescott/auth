@@ -88,10 +88,11 @@ function loadTurnstileScript(): Promise<TurnstileApi> {
 /**
  * Cloudflare Turnstile for a form that posts to an initiate endpoint:
  * renders the widget into `containerRef` and reports whether the form may
- * submit yet. Posting before the widget has a token gets the request blocked
- * by the bot check, and the block looks exactly like a successful send, so
- * the user waits for a message that never comes; disable the submit button
- * until `ready`.
+ * submit yet. Posting before the widget has a token gets the request
+ * blocked by the bot check. A core release with `BOT_CHECK_INCOMPLETE`
+ * answers that with a retryable error; an older `@activescott/auth` still
+ * answers it like a successful send, and every other bot-check rejection
+ * stays opaque either way. Disable the submit button until `ready`.
  *
  * The widget is rendered explicitly from an effect rather than by Cloudflare's
  * scan for `.cf-turnstile` elements. The scan races hydration: it can render
