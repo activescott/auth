@@ -84,6 +84,10 @@ try {
       name: "@activescott/auth-store-prisma",
       dir: "packages/auth-store-prisma",
     },
+    "auth-oauth-server": {
+      name: "@activescott/auth-oauth-server",
+      dir: "packages/auth-oauth-server",
+    },
     "auth-adapter-react-router": {
       name: "@activescott/auth-adapter-react-router",
       dir: "packages/auth-adapter-react-router",
