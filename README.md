@@ -375,6 +375,7 @@ An `Identity` is a `(provider, identifier)` pair (e.g. `("email", "alice@example
 | [`@activescott/auth-sms-twilio`](./packages/auth-sms-twilio)                     | Twilio transports: Messages API (SMS, or RCS via a Messaging Service) and Twilio Verify (no A2P 10DLC registration). Raw fetch, zero dependencies.                                              |
 | [`@activescott/auth-botcheck-turnstile`](./packages/auth-botcheck-turnstile)     | Cloudflare Turnstile bot check for the initiate endpoints. Optional — the core's rate limits and form-token check need no third party. Raw fetch, zero dependencies.                            |
 | [`@activescott/auth-store-prisma`](./packages/auth-store-prisma)                 | Prisma `IdentityStore`: `createPrismaIdentityStore({ model: prisma.identity, providerStateField })`. Typed structurally, so no dependency on `@prisma/client`.                                  |
+| [`@activescott/auth-oauth-server`](./packages/auth-oauth-server)                 | OAuth 2.1 authorization server, so MCP clients and other apps can act for your users: PKCE, CIMD and DCR, consent, rotating refresh tokens. You implement `OAuthStore`.                         |
 | [`@activescott/auth-adapter-react-router`](./packages/auth-adapter-react-router) | React Router v8 adapter. Provides `createAuthHandlers`, `requireAuth`, `optionalAuth`, `getSession`, `logout`, the admin dashboard at the `/admin` subpath, and the profile page at `/profile`. |
 
 Adapters for other frameworks (Hono, Next.js, SvelteKit, plain Fetch handlers) can be added — they're thin wrappers around `Auth.handleRequest(request)` and `Auth.verifySession(request)`, both of which take a standard `Request`.
@@ -397,7 +398,7 @@ Sign-in links are redeemable exactly once. To make that safe alongside email sec
 
 ### Why no OAuth / social login?
 
-Out of scope, on purpose — see [Why direct, passwordless authentication?](#why-direct-passwordless-authentication) above. If you need OAuth providers, [BetterAuth](https://www.better-auth.com/) is a good fit.
+Out of scope, on purpose — see [Why direct, passwordless authentication?](#why-direct-passwordless-authentication) above. If you need OAuth providers, [BetterAuth](https://www.better-auth.com/) is a good fit. Signing in _with_ another provider stays out of scope; letting other apps sign in _with your app_ is what [`@activescott/auth-oauth-server`](./packages/auth-oauth-server) does.
 
 ## Contributing
 
