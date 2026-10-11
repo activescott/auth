@@ -72,6 +72,10 @@ try {
       name: "@activescott/auth-provider-passkey",
       dir: "packages/auth-provider-passkey",
     },
+    "auth-provider-oidc": {
+      name: "@activescott/auth-provider-oidc",
+      dir: "packages/auth-provider-oidc",
+    },
     "auth-sms-twilio": {
       name: "@activescott/auth-sms-twilio",
       dir: "packages/auth-sms-twilio",
@@ -83,6 +87,10 @@ try {
     "auth-store-prisma": {
       name: "@activescott/auth-store-prisma",
       dir: "packages/auth-store-prisma",
+    },
+    "auth-oauth-server": {
+      name: "@activescott/auth-oauth-server",
+      dir: "packages/auth-oauth-server",
     },
     "auth-adapter-react-router": {
       name: "@activescott/auth-adapter-react-router",

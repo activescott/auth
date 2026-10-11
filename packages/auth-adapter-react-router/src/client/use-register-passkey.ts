@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 /**
  * The part of the passkey browser client this hook calls.
@@ -7,6 +7,12 @@ import { useRef, useState } from "react"
  */
 export interface PasskeyRegistrationClient {
   registerPasskey(): Promise<void>
+  /**
+   * Fetch registration options ahead of the tap; the hook calls it on mount
+   * and the returned function on unmount. See
+   * {@link PasskeySignInClient.prepareSignIn}.
+   */
+  prepareRegistration?(): () => void
 }
 
 /** Options for {@link useRegisterPasskey} */
@@ -55,6 +61,8 @@ export function useRegisterPasskey(
   const [error, setError] = useState<string | null>(null)
   const latest = useRef(options)
   latest.current = options
+
+  useEffect(() => options.client.prepareRegistration?.(), [options.client])
 
   async function register(): Promise<void> {
     setStatus("pending")

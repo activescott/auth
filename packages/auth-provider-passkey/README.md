@@ -52,6 +52,29 @@ location.assign("/dashboard") // session cookie is set
 
 Both throw when the user cancels or the server rejects the request. A server rejection's `Error.message` is the most specific text the response carries — the error's `details.reason` (e.g. `"Unknown credential"`, a passkey saved in a password manager whose identity the server no longer has), else its `message` — so it is fit to show the user.
 
+### Fetch options before the tap
+
+Safari (iOS and macOS) shows the passkey sheet only while the tap that asked for it is still being handled. Called on its own, `signInWithPasskey()` fetches the options first and only then calls `navigator.credentials.get`, and Safari fails that with `NotAllowedError`. Call `prepareSignIn()` when the sign-in UI mounts, and `prepareRegistration()` on the page with the "Add a passkey" button:
+
+```tsx
+// Create the client once, at module scope
+export const passkeys = createPasskeyClient()
+
+// In the component that renders the button; the returned function is the cleanup
+useEffect(() => passkeys.prepareSignIn(), [])
+```
+
+Once the options have arrived, a tap reaches `navigator.credentials.get` (or `create`) before `signInWithPasskey()` (or `registerPasskey()`) returns. While preparing, the client:
+
+- fetches again before the challenge expires, every `optionsMaxAge` milliseconds (`createPasskeyClient({ optionsMaxAge })`, default 4 minutes, a minute under the default `challengeExpiry`). Set it below `challengeExpiry` if you change that.
+- fetches again after each attempt fails, since every challenge is single-use (see [Challenges](#challenges)), and after a passkey is added, since the next options exclude it.
+- never starts a second fetch while one is in flight, while the passkey sheet is open, or while an autofill request is bound to the options. Each options response replaces the challenge cookie, and there is one per origin.
+- drops its options when anything else on the origin fetches options, since their challenge is gone: the other prepare call, another client, or another tab (told over `BroadcastChannel`, or `localStorage` where that is missing). A hidden tab does not refresh, and fetches again when shown if its options are gone or stale.
+
+A tap still waits for a fetch, and Safari refuses the sheet that time, when it comes before the first options arrive, during a refresh, after something else replaced the cookie, or after the tab sat hidden or in the back/forward cache past `optionsMaxAge` and before its refetch lands. With a pending autofill request the options are not refreshed, so a tap after `optionsMaxAge` waits too. Two tabs that both stay visible, such as two windows side by side, cannot both be ready: the one that fetched last is. The client has no readiness signal to disable the button with. After a refused tap it fetches again, and the next tap works once that lands.
+
+Without the prepare call, both methods still work. They fetch at the tap, which Chrome, Firefox, and Edge allow.
+
 For conditional UI (passkey autofill on the login form), add `autocomplete="username webauthn"` to your username/email input and start a conditional request on page load:
 
 ```ts
@@ -129,6 +152,8 @@ The markup is yours; `synced` is true for passkeys synced to a cloud keychain or
 ## Challenges
 
 The options endpoints set an HttpOnly, SameSite=Lax cookie containing a signed JWT (`challengeSecret`, 5-minute expiry) that binds the ceremony to the browser, and record the challenge in the core `challengeStore`. The verify endpoints require both and consume the stored challenge on the first redemption attempt — success or not — so every challenge is strictly single-use.
+
+`prepareSignIn()` and `prepareRegistration()` fetch options every few minutes while a page is open, and most of those challenges are never redeemed. `InMemoryChallengeStore` sweeps expired rows; a `ChallengeStore` you write has to delete rows past `expiresAt` itself.
 
 ## Cross-platform notes
 

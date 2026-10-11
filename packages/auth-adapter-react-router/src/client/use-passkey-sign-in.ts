@@ -8,6 +8,12 @@ import { useEffect, useRef, useState } from "react"
  */
 export interface PasskeySignInClient {
   signInWithPasskey(options?: { conditional?: boolean }): Promise<void>
+  /**
+   * Fetch sign-in options ahead of the tap; the hook calls it on mount and
+   * the returned function on unmount. Safari refuses a passkey ceremony
+   * that starts after an awaited fetch, so without it sign-in fails there.
+   */
+  prepareSignIn?(): () => void
 }
 
 /** Options for {@link usePasskeySignIn} */
@@ -65,6 +71,8 @@ export function usePasskeySignIn(
   // or string on each render, so it reads these through a ref
   const latest = useRef(options)
   latest.current = options
+
+  useEffect(() => options.client.prepareSignIn?.(), [options.client])
 
   useEffect(() => {
     if (!options.autofill) return
