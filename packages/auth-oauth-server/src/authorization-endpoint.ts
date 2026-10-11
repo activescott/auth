@@ -3,9 +3,9 @@ import {
   clientFromMetadataDocument,
   looksLikeMetadataDocumentUrl,
   metadataDocumentUrlProblem,
-  normalizeHost,
 } from "./client-id-metadata-document.js"
 import { randomToken, sha256Hex } from "./crypto.js"
+import { normalizeHost } from "./own-hosts.js"
 import {
   mediaType,
   readBodyText,
@@ -334,6 +334,7 @@ async function resolveClient(
     fetched.document,
     fetched.maxAgeSeconds,
     now,
+    context.ownHosts,
   )
   if ("error" in client) {
     return { error: "invalid_client", description: client.description }

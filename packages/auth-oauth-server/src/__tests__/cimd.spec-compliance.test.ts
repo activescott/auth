@@ -3,7 +3,8 @@
  * - draft-ietf-oauth-client-id-metadata-document §3 (client_id URL), §4
  *   (document), §5 (fetching and caching)
  * - MCP authorization (2026-07-28): CIMD before DCR
- * - Own-host rule: a CIMD client_id on the app's own host is refused
+ * - Own-host rule: a CIMD client_id or redirect URI on the app's own host,
+ *   or a subdomain of it, is refused
  */
 import { describe, expect, it } from "vitest"
 import {
@@ -83,6 +84,10 @@ describe("Client ID Metadata Documents", () => {
         "https://app.example./u-raw/alice/client.json",
       ],
       ["another host the app serves", "https://www.app.example/client.json"],
+      [
+        "a subdomain of the issuer host",
+        "https://pages.app.example/x/client.json",
+      ],
     ])(
       "refuses a client_id on %s without fetching",
       async (_label, clientId) => {
@@ -92,6 +97,24 @@ describe("Client ID Metadata Documents", () => {
         expect(response.headers.get("Location")).toBeNull()
         expect(t.errors.at(-1)?.description).toMatch(/hosted on this server/)
         expect(t.fetchClientMetadata).not.toHaveBeenCalled()
+      },
+    )
+
+    it.each([
+      ["the issuer host", "https://app.example/u/attacker/page.html"],
+      ["a subdomain of the issuer host", "https://pages.app.example/cb"],
+    ])(
+      "refuses a document whose redirect URI is on %s",
+      async (_label, redirectUri) => {
+        const t = createTestServer()
+        serve(t, cimdDocument({ redirect_uris: [redirectUri] }))
+        const response = await authorizeCimd(t, CIMD_CLIENT_ID, {
+          redirect_uri: redirectUri,
+        })
+        expect(response.headers.get("Location")).toBeNull()
+        expect(t.errors.at(-1)?.error).toBe("invalid_client")
+        expect(t.prompts).toHaveLength(0)
+        expect(await t.store.getClient(CIMD_CLIENT_ID)).toBeNull()
       },
     )
 

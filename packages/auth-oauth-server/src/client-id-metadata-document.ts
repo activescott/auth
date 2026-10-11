@@ -3,6 +3,7 @@ import {
   validateClientMetadata,
   type ClientMetadataError,
 } from "./client-metadata.js"
+import { isOwnHost, normalizeHost } from "./own-hosts.js"
 import type { OAuthClient } from "./types.js"
 
 const SECONDS_PER_MINUTE = 60
@@ -18,18 +19,14 @@ export function looksLikeMetadataDocumentUrl(clientId: string): boolean {
   return clientId.startsWith("https://")
 }
 
-/** Lowercase host without a trailing dot, so `Example.com.` equals `example.com`. */
-export function normalizeHost(host: string): string {
-  return host.toLowerCase().replace(/\.+$/, "")
-}
-
 /**
  * Check a CIMD `client_id` before anything is fetched: the URL rules of the
  * CIMD draft (§3: https, a path, no dot segments, fragment, or userinfo),
  * port 443 only, a DNS name rather than an IP literal, and a host that is
- * not one of the app's own. The last rule stops a metadata document hosted
- * on the app itself (say, a user's public file) from borrowing the app's
- * host on the consent page. Returns an error description, or null.
+ * not one of the app's own or a subdomain of one. The last rule stops a
+ * metadata document hosted on the app itself (say, a user's public file)
+ * from borrowing the app's host on the consent page. Returns an error
+ * description, or null.
  */
 export function metadataDocumentUrlProblem(
   clientId: string,
@@ -70,7 +67,7 @@ export function metadataDocumentUrlProblem(
   if (/^[\d.]+$/.test(host) || host.startsWith("[")) {
     return "client_id must use a DNS name, not an IP address"
   }
-  if (ownHosts.has(host)) {
+  if (isOwnHost(host, ownHosts)) {
     return "client_id must not be hosted on this server"
   }
   if (url.toString() !== clientId) {
@@ -89,6 +86,7 @@ export function clientFromMetadataDocument(
   document: unknown,
   maxAgeSeconds: number | null,
   now: Date,
+  ownHosts: ReadonlySet<string>,
 ): OAuthClient | ClientMetadataError {
   if (typeof document !== "object" || document === null) {
     return {
@@ -109,7 +107,7 @@ export function clientFromMetadataDocument(
       description: "metadata document must not contain a client secret",
     }
   }
-  const metadata = validateClientMetadata(document, "none")
+  const metadata = validateClientMetadata(document, "none", ownHosts)
   if (isClientMetadataError(metadata)) return metadata
   if (metadata.tokenEndpointAuthMethod !== "none") {
     return {

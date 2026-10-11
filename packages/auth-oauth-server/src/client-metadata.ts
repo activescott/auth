@@ -1,6 +1,8 @@
+import { isOwnHost } from "./own-hosts.js"
 import {
   MAX_REDIRECT_URIS,
   inferApplicationType,
+  isLoopbackUrl,
   redirectUriProblem,
 } from "./redirect-uri.js"
 import { sanitizeClientName } from "./client-name.js"
@@ -33,10 +35,17 @@ export interface ClientMetadataError {
  * Validate client metadata (RFC 7591 §2) from a registration request or a
  * metadata document. `logo_uri` and every other display field but
  * `client_name` are ignored: the consent page never renders them.
+ *
+ * A redirect URI on one of `ownHosts`, or a subdomain of one, is refused.
+ * Otherwise a client could send codes to a page on the app's own host (a
+ * user's public file, an open redirect) while the consent page shows the
+ * app's host as the destination. Loopback URIs are exempt: they never leave
+ * the user's machine, and an issuer on `localhost` is a development setup.
  */
 export function validateClientMetadata(
   input: unknown,
   defaultAuthMethod: TokenEndpointAuthMethod,
+  ownHosts: ReadonlySet<string>,
 ): ValidatedClientMetadata | ClientMetadataError {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     return metadataError("client metadata must be a JSON object")
@@ -84,6 +93,13 @@ export function validateClientMetadata(
   for (const uri of redirectUris) {
     const problem = redirectUriProblem(uri, applicationType)
     if (problem) return { error: "invalid_redirect_uri", description: problem }
+    const url = new URL(uri)
+    if (!isLoopbackUrl(url) && isOwnHost(url.hostname, ownHosts)) {
+      return {
+        error: "invalid_redirect_uri",
+        description: "redirect_uris must not be on this server's host",
+      }
+    }
   }
 
   const authMethod = metadata.token_endpoint_auth_method ?? defaultAuthMethod

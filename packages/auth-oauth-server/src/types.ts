@@ -332,8 +332,9 @@ export interface OAuthServerConfig {
    */
   fetchClientMetadata?: ClientMetadataFetcher
   /**
-   * Hosts that route to this app besides the issuer's. A CIMD `client_id` on
-   * any of them, or on the issuer host, is refused.
+   * Hosts that route to this app besides the issuer's. A CIMD `client_id` or
+   * a client's redirect URI on any of them, on the issuer host, or on a
+   * subdomain of one, is refused.
    */
   ownHosts?: string[]
   /** Accept Dynamic Client Registration (default true). */

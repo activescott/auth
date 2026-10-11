@@ -81,6 +81,11 @@ the client the way the prompt describes it:
   first, the self-asserted name second
 - `warnings.loopbackRedirects` and `warnings.redirectHostDiffers` as warnings
 
+Those hosts are never the app's own. A CIMD `client_id` or a redirect URI on
+the issuer host, a host in `ownHosts`, or a subdomain of either is refused, so
+a client cannot borrow the app's host by putting a file or a callback on it.
+Loopback redirects are exempt.
+
 The server adds `Content-Security-Policy: frame-ancestors 'none'`,
 `X-Frame-Options: DENY`, `Cache-Control: no-store` and
 `Referrer-Policy: no-referrer` to whatever `renderConsent` and `renderError`

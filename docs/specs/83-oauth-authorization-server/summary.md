@@ -61,6 +61,10 @@ spec-compliance style of tests.
   rather than a custom undici `connect`. Same effect (the socket connects to
   the checked address, TLS still verifies the host name) without a
   dependency.
+- A redirect URI or CIMD `client_id` on the issuer host, an `ownHosts`
+  entry, or a subdomain of either is refused, for DCR and CIMD alike. The
+  consent page leads with those hosts, and an attacker's page on the app's
+  own host would read as the app asking. Loopback redirects are exempt.
 - Reserved client names match as whole words, case-insensitively, after
   stripping control and format characters. `Claude Code` is refused when
   `Claude` is reserved.

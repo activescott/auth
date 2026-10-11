@@ -66,7 +66,11 @@ export async function handleRegistration(
     return oauthError("invalid_client_metadata", "request body is not JSON")
   }
 
-  const metadata = validateClientMetadata(body, "client_secret_basic")
+  const metadata = validateClientMetadata(
+    body,
+    "client_secret_basic",
+    context.ownHosts,
+  )
   if (isClientMetadataError(metadata)) {
     return oauthError(metadata.error, metadata.description)
   }

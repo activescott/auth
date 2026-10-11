@@ -3,7 +3,7 @@ import {
   RateLimiter,
   type RateLimitStore,
 } from "@activescott/auth"
-import { normalizeHost } from "./client-id-metadata-document.js"
+import { normalizeHost } from "./own-hosts.js"
 import type {
   OAuthLifetimes,
   OAuthRateLimits,

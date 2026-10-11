@@ -2,6 +2,8 @@
  * Dynamic Client Registration spec compliance:
  * - RFC 7591 OAuth 2.0 Dynamic Client Registration
  * - MCP authorization (2026-07-28): `application_type` decides redirects
+ * - Own-host rule: a redirect URI on the app's own host or a subdomain of it
+ *   is refused
  */
 import { describe, expect, it } from "vitest"
 import { sha256Hex } from "../crypto.js"
@@ -193,6 +195,58 @@ describe("Dynamic Client Registration (RFC 7591)", () => {
         ),
       })
       expect(status).toBe(400)
+    })
+  })
+
+  describe("own-host rule", () => {
+    /**
+     * The attack: a client registers a redirect on the issuer's host under
+     * the app's name, so the consent page shows the app's own host as the
+     * destination, and the code lands on a page the attacker controls there.
+     */
+    it("refuses a redirect URI on the issuer host posing as the app", async () => {
+      const { status, body } = await register({
+        redirect_uris: ["https://app.example/u/attacker/page.html"],
+        client_name: "Fernfiles",
+        token_endpoint_auth_method: "none",
+      })
+      expect(status).toBe(400)
+      expect(body.error).toBe("invalid_redirect_uri")
+    })
+
+    it.each([
+      ["the issuer host in upper case", "https://APP.example/cb"],
+      ["the issuer host with a trailing dot", "https://app.example./cb"],
+      ["the issuer host on another port", "https://app.example:8443/cb"],
+      ["a subdomain of the issuer host", "https://pages.app.example/x/cb"],
+      ["another host the app serves", "https://www.app.example/cb"],
+      ["a subdomain of another own host", "https://u.files.example/cb"],
+    ])("refuses a redirect URI on %s", async (_label, uri) => {
+      const { status, body } = await register(
+        { redirect_uris: [WEB_REDIRECT, uri] },
+        createTestServer({ ownHosts: ["files.example"] }),
+      )
+      expect(status).toBe(400)
+      expect(body.error).toBe("invalid_redirect_uri")
+    })
+
+    it("accepts a host that only ends with the issuer host's name", async () => {
+      const { status } = await register({
+        redirect_uris: ["https://notapp.example/cb"],
+        token_endpoint_auth_method: "none",
+      })
+      expect(status).toBe(201)
+    })
+
+    it("lets a native client use loopback when the issuer is on localhost", async () => {
+      const { status } = await register(
+        {
+          redirect_uris: ["http://localhost/callback"],
+          token_endpoint_auth_method: "none",
+        },
+        createTestServer({ issuer: "http://localhost:5173" }),
+      )
+      expect(status).toBe(201)
     })
   })
 
