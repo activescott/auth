@@ -56,6 +56,15 @@ export async function verifyAccessToken(
   if (!(await context.isUserActive(token.userId))) {
     return unauthorized(context, "the user can no longer use this application")
   }
+  // Before the scope check, since a token refused for scope was still
+  // presented. Conditional, so the refresh grace path either sees this token as used
+  // or has already revoked it and the request is refused.
+  if (
+    !token.accessTokenUsedAt &&
+    !(await store.markAccessTokenUsed(token.id, now))
+  ) {
+    return unauthorized(context, "the access token was revoked")
+  }
   const missing = requiredScopes.filter(
     (scope) => !token.scopes.includes(scope),
   )
@@ -75,14 +84,6 @@ export async function verifyAccessToken(
         },
       }),
     }
-  }
-  // Conditional, so the refresh grace path either sees this token as used
-  // or has already revoked it and the request is refused.
-  if (
-    !token.accessTokenUsedAt &&
-    !(await store.markAccessTokenUsed(token.id, now))
-  ) {
-    return unauthorized(context, "the access token was revoked")
   }
   await store.touchGrant(grant.id, now)
   return {

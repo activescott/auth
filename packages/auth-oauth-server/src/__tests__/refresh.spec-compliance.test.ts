@@ -124,6 +124,22 @@ describe("Token endpoint: refresh_token (RFC 6749 §6)", () => {
       expect([...t.store.grants.values()][0]!.revokedAt).not.toBeNull()
     })
 
+    it("counts an access token refused for scope as used", async () => {
+      const t = createTestServer()
+      const first = await obtainTokens(t)
+      const rotated = await refresh(t, first.clientId, first.refreshToken)
+      const refused = await t.server.verifyAccessToken(
+        resourceRequest(rotated.body.access_token),
+        { scopes: ["admin"] },
+      )
+      expect(refused.ok).toBe(false)
+      if (!refused.ok) expect(refused.response.status).toBe(403)
+      t.clock.advance(30)
+      const stolen = await refresh(t, first.clientId, first.refreshToken)
+      expect(stolen.body.error).toBe("invalid_grant")
+      expect([...t.store.grants.values()][0]!.revokedAt).not.toBeNull()
+    })
+
     it("revokes the grant when a thief rotated first and used the access token", async () => {
       const t = createTestServer()
       const first = await obtainTokens(t)
