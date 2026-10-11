@@ -312,6 +312,22 @@ describe("Dynamic Client Registration (RFC 7591)", () => {
     })
   })
 
+  describe("error text", () => {
+    it.each([
+      `<img src=x onerror="alert(1)">`,
+      `http://client.example/<img src=x onerror="alert(1)">`,
+      `https://client.example/cb#<img src=x onerror="alert(1)">`,
+    ])("does not repeat the redirect URI %j", async (uri) => {
+      const { status, body } = await register({
+        redirect_uris: [uri],
+        application_type: "web",
+      })
+      expect(status).toBe(400)
+      expect(body.error).toBe("invalid_redirect_uri")
+      expect(body.error_description).not.toContain("<")
+    })
+  })
+
   describe("client names", () => {
     it.each(["Claude", "claude", "Claude Desktop", "My ChatGPT helper"])(
       "refuses the reserved name %j",

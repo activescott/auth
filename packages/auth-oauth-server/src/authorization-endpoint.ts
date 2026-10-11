@@ -9,6 +9,7 @@ import { normalizeHost } from "./own-hosts.js"
 import {
   mediaType,
   readBodyText,
+  repeatedParamDescription,
   singleValuedParams,
   withHeaders,
 } from "./http.js"
@@ -73,7 +74,7 @@ async function beginAuthorization(
   if ("repeated" in parsed) {
     return errorPage(context, request, {
       error: "invalid_request",
-      description: `${parsed.repeated} was sent more than once`,
+      description: repeatedParamDescription(parsed.repeated),
     })
   }
   const params = parsed.values

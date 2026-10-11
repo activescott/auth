@@ -100,6 +100,19 @@ describe("Authorization endpoint", () => {
       expect(response.headers.get("Location")).toBeNull()
       expect(t.errors.at(-1)?.error).toBe("invalid_request")
     })
+
+    it("does not repeat a parameter name with HTML in it on the error page", async () => {
+      const { t, clientId, challenge } = await setup()
+      const query = new URLSearchParams(authorizeParams(clientId, challenge))
+      query.append("<b>x", "1")
+      query.append("<b>x", "2")
+      await t.server.handleAuthorization(
+        new Request(`${ISSUER}/oauth/authorize?${query.toString()}`),
+        { userId: USER },
+      )
+      expect(t.errors.at(-1)?.error).toBe("invalid_request")
+      expect(t.errors.at(-1)?.description).not.toContain("<")
+    })
   })
 
   describe("OAuth 2.1 §8.4.2: loopback redirect URIs ignore the port", () => {

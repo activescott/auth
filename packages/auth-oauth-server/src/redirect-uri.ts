@@ -27,7 +27,8 @@ export function parseUrl(value: string): URL | null {
 /**
  * Check one redirect URI a client registers, against the rules for its
  * application type. Returns an error description, or null if it is
- * acceptable.
+ * acceptable. The description never repeats the URI: it can reach an error
+ * page, and the URI is attacker text.
  */
 export function redirectUriProblem(
   value: string,
@@ -37,19 +38,19 @@ export function redirectUriProblem(
     return "redirect_uri is too long"
   }
   const url = parseUrl(value)
-  if (!url) return `redirect_uri is not an absolute URL: ${value}`
+  if (!url) return "redirect_uri is not an absolute URL"
   if (url.hash || value.includes("#")) {
-    return `redirect_uri must not contain a fragment: ${value}`
+    return "redirect_uri must not contain a fragment"
   }
   if (url.username || url.password) {
-    return `redirect_uri must not contain userinfo: ${value}`
+    return "redirect_uri must not contain userinfo"
   }
   if (applicationType === "native") {
     if (url.protocol !== "http:" || !isLoopbackUrl(url)) {
-      return `a native client may only register loopback http redirect URIs: ${value}`
+      return "a native client may only register loopback http redirect URIs"
     }
   } else if (url.protocol !== "https:" || isLoopbackUrl(url)) {
-    return `a web client may only register https redirect URIs: ${value}`
+    return "a web client may only register https redirect URIs"
   }
   return null
 }

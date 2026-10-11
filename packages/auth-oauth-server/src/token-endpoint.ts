@@ -7,6 +7,7 @@ import {
   mediaType,
   oauthError,
   readBodyText,
+  repeatedParamDescription,
   singleValuedParams,
 } from "./http.js"
 import { addSeconds, type ServerContext } from "./server-context.js"
@@ -58,7 +59,7 @@ export async function parseClientRequest(
     return {
       response: oauthError(
         "invalid_request",
-        `${parsed.repeated} was sent more than once`,
+        repeatedParamDescription(parsed.repeated),
       ),
     }
   }

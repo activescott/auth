@@ -81,6 +81,12 @@ the client the way the prompt describes it:
   first, the self-asserted name second
 - `warnings.loopbackRedirects` and `warnings.redirectHostDiffers` as warnings
 
+`client.name`, `client.clientId` and `client.redirectUri` are whatever the
+client registered, so escape them as untrusted text. JSX and most template
+engines do; a hand-built HTML string must not interpolate them raw.
+`AuthorizeErrorPage.description` is the server's own text and never repeats
+the request.
+
 Lead with the host. `reservedClientNames` refuses a dynamic client named
 `Claude`, `C1aude` or `Сlaude` (Cyrillic `С`), and any dynamic client name
 that mixes Latin with Cyrillic or Greek, but no list of lookalikes is

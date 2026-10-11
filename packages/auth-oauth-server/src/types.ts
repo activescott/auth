@@ -233,7 +233,9 @@ export interface OAuthResource {
 
 /**
  * What the consent page needs to show. Every field here comes from the
- * stored request, not from the query string the browser sent.
+ * stored request, not from the query string the browser sent. The strings
+ * under `client` are chosen by whoever registered the client, so escape them
+ * like any other untrusted input (JSX and most template engines do).
  */
 export interface ConsentPrompt {
   userId: string
@@ -244,10 +246,14 @@ export interface ConsentPrompt {
   client: {
     clientId: string
     kind: OAuthClientKind
-    /** Self-asserted; show it secondary to a host for dynamic clients. */
+    /**
+     * Self-asserted and attacker-supplied; show it secondary to a host for
+     * dynamic clients, and escape it.
+     */
     name: string | null
     /** Host of a CIMD `client_id`; null for dynamic and preregistered clients. */
     clientIdHost: string | null
+    /** Exactly as the client registered it: attacker-supplied, escape it. */
     redirectUri: string
     redirectHost: string
   }
@@ -276,6 +282,7 @@ export interface AuthorizeErrorPage {
     | "invalid_request"
     | "request_expired"
     | "temporarily_unavailable"
+  /** Written by the server; never repeats text from the request. */
   description: string
 }
 

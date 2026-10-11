@@ -72,6 +72,22 @@ describe("Client ID Metadata Documents", () => {
     })
   })
 
+  describe("error page text", () => {
+    it("does not repeat a document's redirect URI with HTML in it", async () => {
+      const t = createTestServer()
+      serve(
+        t,
+        cimdDocument({
+          redirect_uris: [`not a url <img src=x onerror="alert(1)">`],
+          application_type: "web",
+        }),
+      )
+      await authorizeCimd(t)
+      expect(t.errors.at(-1)?.error).toBe("invalid_client")
+      expect(t.errors.at(-1)?.description).not.toContain("<")
+    })
+  })
+
   describe("own-host rule", () => {
     it.each([
       ["the issuer host", "https://app.example/u-raw/alice/client.json"],

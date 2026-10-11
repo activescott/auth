@@ -91,6 +91,17 @@ export function singleValuedParams(
   return { values }
 }
 
+/**
+ * The error description for a repeated parameter. It names the parameter
+ * only when the name looks like an OAuth one (lowercase letters and
+ * underscores), so request text never reaches an error page.
+ */
+export function repeatedParamDescription(name: string): string {
+  return /^[a-z_]{1,40}$/.test(name)
+    ? `${name} was sent more than once`
+    : "a parameter was sent more than once"
+}
+
 /** Return a copy of `response` with `headers` added. */
 export function withHeaders(
   response: Response,
