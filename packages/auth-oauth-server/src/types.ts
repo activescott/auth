@@ -357,7 +357,9 @@ export interface OAuthServerConfig {
   /**
    * Hosts that route to this app besides the issuer's. A CIMD `client_id` or
    * a client's redirect URI on any of them, on the issuer host, or on a
-   * subdomain of one, is refused.
+   * subdomain of one, is refused. Each entry is a bare host name such as
+   * `files.example`; the constructor throws on a scheme, port, path or
+   * wildcard.
    */
   ownHosts?: string[]
   /** Accept Dynamic Client Registration (default true). */

@@ -3,7 +3,7 @@ import {
   RateLimiter,
   type RateLimitStore,
 } from "@activescott/auth"
-import { normalizeHost } from "./own-hosts.js"
+import { normalizeHost, parseOwnHost } from "./own-hosts.js"
 import type {
   OAuthLifetimes,
   OAuthRateLimits,
@@ -100,9 +100,10 @@ export function createServerContext(config: OAuthServerConfig): ServerContext {
       ),
       revocation: endpoint(config.endpoints?.revocation ?? "/oauth/revoke"),
     },
-    ownHosts: new Set(
-      [issuerUrl.hostname, ...(config.ownHosts ?? [])].map(normalizeHost),
-    ),
+    ownHosts: new Set([
+      normalizeHost(issuerUrl.hostname),
+      ...(config.ownHosts ?? []).map(parseOwnHost),
+    ]),
     optionalScopes: new Set(config.resource.optionalScopes ?? []),
     dynamicRegistration: config.dynamicRegistration ?? true,
     dynamicClientIdPrefix: config.dynamicClientIdPrefix ?? "dyn_",

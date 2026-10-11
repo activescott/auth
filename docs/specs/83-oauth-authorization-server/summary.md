@@ -70,6 +70,10 @@ spec-compliance style of tests.
   entry, or a subdomain of either is refused, for DCR and CIMD alike. The
   consent page leads with those hosts, and an attacker's page on the app's
   own host would read as the app asking. Loopback redirects are exempt.
+  `ownHosts` entries are parsed like the issuer's host, so an
+  internationalized entry matches its `xn--` form, and an entry with a
+  scheme, port, path or wildcard throws at startup instead of never
+  matching.
 - Reserved client names match as whole words, case-insensitively, after
   stripping control and format characters and folding lookalikes to a
   UTS #39 style skeleton. `Claude Code` and `C1aude` are refused when

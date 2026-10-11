@@ -230,6 +230,48 @@ describe("Dynamic Client Registration (RFC 7591)", () => {
       expect(body.error).toBe("invalid_redirect_uri")
     })
 
+    it.each([
+      "files.example:8443",
+      "files.example:443",
+      "https://files.example",
+      ".files.example",
+      "*.files.example",
+      "files.example/",
+      " files.example",
+      "files.example?x",
+      "user@files.example",
+      "",
+    ])("refuses the ownHosts entry %j at startup", (entry) => {
+      expect(() => createTestServer({ ownHosts: [entry] })).toThrow(
+        /bare host name/,
+      )
+    })
+
+    it.each([
+      [
+        "an internationalized entry",
+        "bücher.example",
+        "https://bücher.example/cb",
+      ],
+      [
+        "a subdomain of an internationalized entry",
+        "bücher.example",
+        "https://u.xn--bcher-kva.example/cb",
+      ],
+      [
+        "an entry in upper case with a dot",
+        "Files.Example.",
+        "https://files.example/cb",
+      ],
+    ])("refuses a redirect URI on %s", async (_label, entry, uri) => {
+      const { status, body } = await register(
+        { redirect_uris: [uri] },
+        createTestServer({ ownHosts: [entry] }),
+      )
+      expect(status).toBe(400)
+      expect(body.error).toBe("invalid_redirect_uri")
+    })
+
     it("accepts a host that only ends with the issuer host's name", async () => {
       const { status } = await register({
         redirect_uris: ["https://notapp.example/cb"],
