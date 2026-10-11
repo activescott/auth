@@ -409,6 +409,10 @@ describe("Dynamic Client Registration (RFC 7591)", () => {
       ["a digit one", "C1aude"],
       ["an accent", "Cla\u0301ude"],
       ["a vertical bar", "C|aude"],
+      ["Cherokee letters", "\u13DF\u13BB\u13AA\u13A2\u13C0\u13E2\u13A2"],
+      ["Lisu letters", "\uA4DA\uA4E1\uA4EE\uA4F4\uA4D3\uA4F0"],
+      ["Latin small capitals", "\u1D04\u029F\u1D00\u1D1C\u1D05\u1D07"],
+      ["a Latin iota", "C\u0269aude"],
     ])("refuses a reserved name spelled with %s", async (_, name) => {
       const { status, body } = await register({
         redirect_uris: [WEB_REDIRECT],
@@ -419,8 +423,20 @@ describe("Dynamic Client Registration (RFC 7591)", () => {
       expect(body.error).toBe("invalid_client_metadata")
     })
 
-    it.each(["Мой клиент", "Ελληνικά", "Files 日本語 アプリ", "Café Files"])(
-      "allows the single-script or CJK-with-Latin name %j",
+    it.each([
+      "Мой клиент",
+      "Ελληνικά",
+      "Files 日本語 アプリ",
+      "Café Files",
+      "Яндекс Go",
+      "Google Диск",
+      "Mail.ru Почта",
+      "μTorrent Remote",
+      "LINE ไทย",
+      "Notion हिंदी",
+      "Notes for Λ",
+    ])(
+      "allows the name %j, whose words do not borrow lookalike letters",
       async (name) => {
         const { status } = await register({
           redirect_uris: [WEB_REDIRECT],

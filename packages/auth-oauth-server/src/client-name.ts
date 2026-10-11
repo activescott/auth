@@ -1,3 +1,5 @@
+import { CONFUSABLES } from "./confusables-data.js"
+
 /** Longest client name kept, in code points. */
 export const MAX_CLIENT_NAME_LENGTH = 64
 
@@ -21,10 +23,7 @@ export function sanitizeClientName(name: unknown): string | null {
 /**
  * Whether a sanitized name contains one of the reserved names as a whole
  * word, ignoring case and lookalike characters: with `["Claude"]`, `claude`,
- * `Claude Desktop` and `C1aude` match, `Claudette` does not. Lookalikes are
- * folded to a skeleton in the spirit of UTS #39: accents are dropped, Greek
- * and Cyrillic letters that look Latin become Latin, and `1`, `i`, `|`, `0`,
- * `rn` and `vv` become `l`, `l`, `l`, `o`, `m` and `w`.
+ * `Claude Desktop`, `C1aude` and `ᴄʟᴀᴜᴅᴇ` match, `Claudette` does not.
  */
 export function isReservedClientName(
   name: string,
@@ -44,41 +43,42 @@ function toWords(value: string): string {
     .join(" ")
 }
 
+/**
+ * The UTS #39 skeleton, made case insensitive: map each character through
+ * confusables.txt, drop accents, lowercase, and repeat until nothing
+ * changes, since lowercasing can produce a letter with its own mapping.
+ * `i` and `w` are then folded to `l` and `vv`, which confusables.txt keeps
+ * apart.
+ */
 function skeleton(value: string): string {
-  const folded = Array.from(
-    value.normalize("NFKD").replace(/\p{M}/gu, ""),
-    (char) => LATIN_LOOKALIKES.get(char) ?? char,
-  ).join("")
-  return folded
-    .toLowerCase()
-    .replace(/rn/g, "m")
-    .replace(/vv/g, "w")
-    .replace(/[1i|]/g, "l")
-    .replace(/0/g, "o")
+  let current = value
+  for (let pass = 0; pass < 4; pass++) {
+    const next = Array.from(
+      current.normalize("NFKD"),
+      (char) => CONFUSABLE_MAP.get(char) ?? char,
+    )
+      .join("")
+      .normalize("NFKD")
+      .replace(/\p{M}/gu, "")
+      .toLowerCase()
+    if (next === current) break
+    current = next
+  }
+  return current.replace(/i/g, "l").replace(/w/g, "vv")
 }
 
-/**
- * Greek and Cyrillic letters, and a few Latin ones, that render like a
- * Latin letter. Mapped before lowercasing, since `Η` looks like `H` while
- * its lowercase `η` looks like `n`.
- */
-const LATIN_LOOKALIKES: ReadonlyMap<string, string> = new Map(
-  [
-    // Cyrillic
-    ["АВСЕНІЈКМОРЅТХУҮԌԚԜӀ", "ABCEHIJKMOPSTXYYGQWl"],
-    ["асекорхуѕіјԁһӏԛԝү", "acekopxysijdhlqwy"],
-    // Greek
-    ["ΑΒΕΖΗΙΚΜΝΟΡΤΥΧ", "ABEZHIKMNOPTYX"],
-    ["αικνορυχγ", "aikvopuxy"],
-    // Latin
-    ["ıɑɡ", "iag"],
-  ].flatMap(([from, to]) =>
-    Array.from(from!, (char, index): [string, string] => [char, to![index]!]),
-  ),
+const CONFUSABLE_MAP: ReadonlyMap<string, string> = new Map(
+  CONFUSABLES.flatMap((line) => line.split(" ")).map((entry) => {
+    const [from, to] = entry.split(">") as [string, string]
+    return [
+      String.fromCodePoint(parseInt(from, 16)),
+      String.fromCodePoint(...to.split("+").map((hex) => parseInt(hex, 16))),
+    ]
+  }),
 )
 
 /**
- * Scripts a name may combine with Latin, following the UTS #39 "highly
+ * Scripts a word may combine with Latin, following the UTS #39 "highly
  * restrictive" profile: Japanese, Chinese and Korean writing mix with Latin
  * routinely, while Latin with Cyrillic or Greek is how a lookalike is built.
  */
@@ -95,6 +95,7 @@ const SCRIPTS: ReadonlyArray<readonly [string, RegExp]> = [
   ["Armenian", /\p{Script=Armenian}/u],
   ["Georgian", /\p{Script=Georgian}/u],
   ["Cherokee", /\p{Script=Cherokee}/u],
+  ["Lisu", /\p{Script=Lisu}/u],
   ["Hebrew", /\p{Script=Hebrew}/u],
   ["Arabic", /\p{Script=Arabic}/u],
   ["Han", /\p{Script=Han}/u],
@@ -104,26 +105,47 @@ const SCRIPTS: ReadonlyArray<readonly [string, RegExp]> = [
   ["Bopomofo", /\p{Script=Bopomofo}/u],
 ]
 
+function scriptOf(char: string): string | null {
+  if (
+    !/\p{L}/u.test(char) ||
+    /[\p{Script=Common}\p{Script=Inherited}]/u.test(char)
+  ) {
+    return null
+  }
+  return SCRIPTS.find(([, pattern]) => pattern.test(char))?.[0] ?? "Other"
+}
+
 /**
- * Whether a name's letters come from scripts that do not belong together,
- * such as `Сlaude` with a Cyrillic `С`. Digits, punctuation and combining
- * marks belong to every script and are ignored.
+ * Whether a word of the name borrows a lookalike letter from another script
+ * in that word, such as `Сlaude` with a Cyrillic `С`. Words are checked one
+ * at a time, so `Google Диск` passes, and a word mixing scripts passes when
+ * none of its letters imitates another script in it, as in `μTorrent`.
+ * Digits, punctuation and combining marks belong to every script.
  */
 export function isMixedScriptName(name: string): boolean {
-  const scripts = new Set<string>()
-  for (const char of name) {
+  return name.split(/\s+/u).some((word) => {
+    const letters = Array.from(word).flatMap((char) => {
+      const script = scriptOf(char)
+      return script ? [{ char, script }] : []
+    })
+    const scripts = new Set(letters.map(({ script }) => script))
+    if (scripts.size <= 1) return false
     if (
-      !/\p{L}/u.test(char) ||
-      /[\p{Script=Common}\p{Script=Inherited}]/u.test(char)
+      ALLOWED_SCRIPT_SETS.some((allowed) =>
+        [...scripts].every((script) => allowed.has(script)),
+      )
     ) {
-      continue
+      return false
     }
-    scripts.add(
-      SCRIPTS.find(([, pattern]) => pattern.test(char))?.[0] ?? "Other",
+    return letters.some(({ char, script }) =>
+      Array.from(CONFUSABLE_MAP.get(char) ?? "").some((target) => {
+        const targetScript = scriptOf(target)
+        return (
+          targetScript !== null &&
+          targetScript !== script &&
+          scripts.has(targetScript)
+        )
+      }),
     )
-  }
-  if (scripts.size <= 1) return false
-  return !ALLOWED_SCRIPT_SETS.some((allowed) =>
-    [...scripts].every((script) => allowed.has(script)),
-  )
+  })
 }
