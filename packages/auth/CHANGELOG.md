@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.8.0](https://github.com/activescott/auth/compare/auth@5.7.0...auth@5.8.0) (2026-10-11)
+
+### Features
+
+* distinct error for missing bot-check token ([#149](https://github.com/activescott/auth/issues/149)) ([6dade43](https://github.com/activescott/auth/commit/6dade43316a518ad5e2c57293df012828ba50d39))
+
 ## [5.7.0](https://github.com/activescott/auth/compare/auth@5.6.1...auth@5.7.0) (2026-09-29)
 
 ### Features
