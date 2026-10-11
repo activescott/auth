@@ -124,6 +124,29 @@ describe("Token endpoint: refresh_token (RFC 6749 §6)", () => {
       expect([...t.store.grants.values()][0]!.revokedAt).not.toBeNull()
     })
 
+    it("accepts two parallel first uses of an access token", async () => {
+      // Hold each request at the user check, after it has read the token and
+      // before it marks it used, until both have read it.
+      let gated = false
+      let arrived = 0
+      let release = (): void => {}
+      const bothArrived = new Promise<void>((resolve) => (release = resolve))
+      const t = createTestServer({
+        isUserActive: async () => {
+          if (gated && ++arrived === 2) release()
+          if (gated) await bothArrived
+          return true
+        },
+      })
+      const { accessToken } = await obtainTokens(t)
+      gated = true
+      const results = await Promise.all([
+        accessWorks(t, accessToken),
+        accessWorks(t, accessToken),
+      ])
+      expect(results).toEqual([true, true])
+    })
+
     it("counts an access token refused for scope as used", async () => {
       const t = createTestServer()
       const first = await obtainTokens(t)

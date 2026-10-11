@@ -131,10 +131,13 @@ user and client), and `OAuthToken` (an access token and its refresh token).
 Every secret is stored as a SHA-256 hex hash.
 
 Four methods must be one conditional update each, since they are what stops
-concurrent requests from redeeming the same code or refresh token twice:
-`markCodeUsed`, `markTokenRotated`, `markAccessTokenUsed`, and
-`revokeUnusedToken` (in SQL, `UPDATE ... WHERE used_at IS NULL` and check the
-row count).
+concurrent requests from redeeming the same code or refresh token twice.
+`markCodeUsed`, `markTokenRotated` and `revokeUnusedToken` succeed only for
+the request that changes the row (in SQL, `UPDATE ... WHERE used_at IS NULL`
+and check the row count). `markAccessTokenUsed` is different: it succeeds for
+every request while the token is unrevoked, so two first uses at once both
+get through (`SET access_token_used_at = COALESCE(access_token_used_at, $at)
+WHERE revoked_at IS NULL`, then check the row count).
 `consumeAuthorizationRequest` must return a request at most once.
 `InMemoryOAuthStore` implements all of it for tests.
 
