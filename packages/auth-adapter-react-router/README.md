@@ -167,7 +167,7 @@ The hooks are at the `./client` subpath and need React, not React Router:
 | `useOtpAutoSubmit(length)`                     | `inputProps` for the code field (autofill attributes included) that submit the form when the last digit lands.                                        |
 | `usePreservedInput(key)`                       | Keeps the typed address or number across the round trip through the auth routes, in sessionStorage.                                                   |
 
-The passkey hooks take `createPasskeyClient()` from `@activescott/auth-provider-passkey/browser` as `client`, so apps without passkeys never install the WebAuthn library. A Turnstile token matters more than it looks: a form posted without one is blocked, and the block answers exactly like a successful send, so the user waits for an email that never comes.
+The passkey hooks take `createPasskeyClient()` from `@activescott/auth-provider-passkey/browser` as `client`, so apps without passkeys never install the WebAuthn library. On mount they call the client's `prepareSignIn` or `prepareRegistration`, which fetches the ceremony options before the tap; Safari refuses a passkey ceremony that starts after an awaited fetch. A Turnstile token matters more than it looks: a form posted without one is blocked, and the block answers exactly like a successful send, so the user waits for an email that never comes.
 
 [`examples/react-router`](https://github.com/activescott/auth/tree/main/examples/react-router) uses all of them: `app/routes/login.tsx` and `app/routes/dashboard.tsx`.
 

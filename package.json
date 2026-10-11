@@ -9,6 +9,7 @@
     "packages/auth-provider-email",
     "packages/auth-provider-sms",
     "packages/auth-provider-passkey",
+    "packages/auth-provider-oidc",
     "packages/auth-sms-twilio",
     "packages/auth-botcheck-turnstile",
     "packages/auth-store-prisma",

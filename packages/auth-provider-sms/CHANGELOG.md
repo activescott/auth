@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+<!-- gate.onInitiate support (#113) is republished by the commit below; it
+merged as part of a squash-merged commit scoped "auth" and never released. -->
+
+## [2.3.0](https://github.com/activescott/auth/compare/auth-provider-sms@2.2.0...auth-provider-sms@2.3.0) (2026-10-07)
+
+### Features
+
+* republish gate.onInitiate support ([#159](https://github.com/activescott/auth/issues/159)) ([30b11e6](https://github.com/activescott/auth/commit/30b11e62246941e6cd7877f879e4f9777b5c7119)), closes [#113](https://github.com/activescott/auth/issues/113) [#103](https://github.com/activescott/auth/issues/103)
+
 ## [2.2.0](https://github.com/activescott/auth/compare/auth-provider-sms@2.1.0...auth-provider-sms@2.2.0) (2026-09-18)
 
 ### Features

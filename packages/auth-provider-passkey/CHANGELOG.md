@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.2.0](https://github.com/activescott/auth/compare/auth-provider-passkey@2.1.0...auth-provider-passkey@2.2.0) (2026-10-03)
+
+### Features
+
+* prepare options before tap ([#151](https://github.com/activescott/auth/issues/151)) ([ffd5d02](https://github.com/activescott/auth/commit/ffd5d0282ce24e381b90d1bd23577093f84e31a4))
+
 ## [2.1.0](https://github.com/activescott/auth/compare/auth-provider-passkey@2.0.0...auth-provider-passkey@2.1.0) (2026-09-19)
 
 ### Features

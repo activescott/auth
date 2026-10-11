@@ -177,7 +177,63 @@ describe("usePasskeySignIn", () => {
   })
 })
 
+describe("usePasskeySignIn prepareSignIn", () => {
+  it("prepares on mount and stops on unmount", () => {
+    const stop = vi.fn()
+    const client = {
+      signInWithPasskey: vi.fn().mockResolvedValue(undefined),
+      prepareSignIn: vi.fn(() => stop),
+    }
+    const { unmount } = renderHook(() =>
+      usePasskeySignIn({ client, redirectTo: "/" }),
+    )
+    expect(client.prepareSignIn).toHaveBeenCalledTimes(1)
+    expect(stop).not.toHaveBeenCalled()
+
+    unmount()
+
+    expect(stop).toHaveBeenCalledTimes(1)
+  })
+
+  // Safari refuses the ceremony unless it starts while the tap is handled
+  it("calls the client before signIn returns", () => {
+    const client = {
+      signInWithPasskey: vi.fn(() => new Promise<void>(() => {})),
+    }
+    const { result } = renderHook(() =>
+      usePasskeySignIn({ client, redirectTo: "/" }),
+    )
+
+    act(() => void result.current.signIn())
+
+    expect(client.signInWithPasskey).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe("useRegisterPasskey", () => {
+  it("prepares on mount and stops on unmount", () => {
+    const stop = vi.fn()
+    const client = {
+      registerPasskey: vi.fn().mockResolvedValue(undefined),
+      prepareRegistration: vi.fn(() => stop),
+    }
+    const { unmount } = renderHook(() => useRegisterPasskey({ client }))
+    expect(client.prepareRegistration).toHaveBeenCalledTimes(1)
+
+    unmount()
+
+    expect(stop).toHaveBeenCalledTimes(1)
+  })
+
+  it("calls the client before register returns", () => {
+    const client = { registerPasskey: vi.fn(() => new Promise<void>(() => {})) }
+    const { result } = renderHook(() => useRegisterPasskey({ client }))
+
+    act(() => void result.current.register())
+
+    expect(client.registerPasskey).toHaveBeenCalledTimes(1)
+  })
+
   it("registers, reports added, then calls onRegistered", async () => {
     const client = { registerPasskey: vi.fn().mockResolvedValue(undefined) }
     const onRegistered = vi.fn()
