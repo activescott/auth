@@ -129,7 +129,7 @@ With the widget-passes, server-rejects pair, submit the email form and watch the
 [auth] blocked initiate: reason=bot_check_failed detail=turnstile:invalid-input-response provider=email ip=...
 ```
 
-The browser gets the same `?sent=1` page a real send produces — a blocked caller is told nothing — but no email is sent and no challenge is created. Deleting the widget's hidden input in devtools before submitting produces `detail=turnstile:missing_token` the same way. That silence is why the submit button waits for the token: a form posted before the widget finished would be blocked the same way, and the user would wait for an email that never comes. With the widget-blocks site key no token is ever issued, so the button never enables and the page asks the user to reload instead.
+The browser gets the same `?sent=1` page a real send produces — a blocked caller is told nothing — but no email is sent and no challenge is created. Deleting the widget's hidden input in devtools before submitting is logged as `detail=turnstile:missing_token`, but that one is not silent: the page comes back with `?error=BOT_CHECK_INCOMPLETE` and asks the user to try again, because a missing token says nothing about the address. The submit button still waits for the token so a real user rarely sees that message. With the widget-blocks site key no token is ever issued, so the button never enables and the page asks the user to reload instead.
 
 If Cloudflare is unreachable, `TurnstileBotCheck` fails **open** by default (logging `turnstile unavailable ...`) so an outage there can't lock everyone out of signing in; the rate limits still apply. Pass `failOpen: false` to fail closed instead.
 

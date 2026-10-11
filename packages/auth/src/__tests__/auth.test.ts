@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest"
 import { SignJWT } from "jose"
 import { Auth } from "../auth.js"
 import { createFormToken } from "../abuse/bot-check.js"
+import type { BotCheckProvider, BotCheckResult } from "../abuse/bot-check.js"
 import { SessionManager } from "../session/session-manager.js"
 import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
 import type {
@@ -1065,6 +1066,209 @@ describe("Auth abuse protection", () => {
 
     expect(blocked.status).toBe(429)
     expect(blocked.headers.get("Retry-After")).toBeTruthy()
+  })
+
+  describe("bot check outcomes", () => {
+    const MISSING_TOKEN: BotCheckResult = {
+      ok: false,
+      reason: "missing_token",
+      incomplete: true,
+    }
+    const FAILED: BotCheckResult = { ok: false, reason: "invalid-input" }
+
+    function authWithBotCheck(
+      result: BotCheckResult,
+      abuse: { respondWith?: "generic" | "rateLimited" } = {},
+    ) {
+      const provider = createMockProvider({
+        initiateSentMessage: "Magic link sent. Please check your email.",
+        initiate: vi.fn().mockResolvedValue({
+          success: true,
+          message: "Magic link sent. Please check your email.",
+        }),
+      })
+      const onBlocked = vi.fn()
+      auth = new Auth(
+        createAuthConfig({
+          providers: [provider],
+          abuse: {
+            ...abuse,
+            onBlocked,
+            botChecks: [{ id: "stub", verify: () => result }],
+          },
+        }),
+      )
+      return { provider, onBlocked }
+    }
+
+    it("answers a missing token with BOT_CHECK_INCOMPLETE", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {})
+      const { provider, onBlocked } = authWithBotCheck(MISSING_TOKEN)
+
+      const response = await auth.handleRequest(
+        initiateRequest({ email: "user@example.com" }),
+      )
+
+      expect(provider.initiate).not.toHaveBeenCalled()
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({
+        success: false,
+        error: { code: "BOT_CHECK_INCOMPLETE" },
+      })
+      // Logged and reported exactly like any other bot-check block
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "reason=bot_check_failed detail=stub:missing_token",
+        ),
+      )
+      expect(onBlocked).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: "bot_check_failed",
+          detail: "stub:missing_token",
+        }),
+      )
+    })
+
+    it("redirects a browser form post back with ?error=BOT_CHECK_INCOMPLETE", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {})
+      authWithBotCheck(MISSING_TOKEN)
+      const request = initiateRequest({ email: "user@example.com" })
+      request.headers.set("Accept", "text/html")
+      request.headers.set("Referer", `${TEST_BASE_URL}/login?via=email`)
+
+      const response = await auth.handleRequest(request)
+
+      expect(response.status).toBe(302)
+      const location = new URL(response.headers.get("Location") ?? "")
+      expect(location.pathname).toBe("/login")
+      expect(location.searchParams.get("via")).toBe("email")
+      expect(location.searchParams.get("error")).toBe("BOT_CHECK_INCOMPLETE")
+    })
+
+    it("answers a missing token with BOT_CHECK_INCOMPLETE when respondWith is rateLimited", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {})
+      authWithBotCheck(MISSING_TOKEN, { respondWith: "rateLimited" })
+
+      const response = await auth.handleRequest(
+        initiateRequest({ email: "user@example.com" }),
+      )
+
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({
+        error: { code: "BOT_CHECK_INCOMPLETE" },
+      })
+    })
+
+    describe("with an identifier check alongside", () => {
+      // Rejects one address whatever else the request carries, the way an
+      // app's own blocklist check would.
+      const blocklist: BotCheckProvider = {
+        id: "blocklist",
+        verify: ({ body }) =>
+          body.email === "listed@example.com"
+            ? { ok: false, reason: "listed" }
+            : { ok: true },
+      }
+      const turnstileLike: BotCheckProvider = {
+        id: "turnstile-like",
+        verify: ({ body }) => (body.token ? { ok: true } : MISSING_TOKEN),
+      }
+
+      async function answerFor(
+        botChecks: BotCheckProvider[],
+        email: string,
+      ): Promise<{ status: number; body: string }> {
+        auth = new Auth(createAuthConfig({ abuse: { botChecks } }))
+        const response = await auth.handleRequest(initiateRequest({ email }))
+        auth.destroy()
+        return { status: response.status, body: await response.text() }
+      }
+
+      it.each([
+        ["before", [blocklist, turnstileLike]],
+        ["after", [turnstileLike, blocklist]],
+      ])(
+        "answers tokenless requests alike when it runs %s the incomplete check",
+        async (_, botChecks) => {
+          vi.spyOn(console, "warn").mockImplementation(() => {})
+
+          const listed = await answerFor(botChecks, "listed@example.com")
+          const other = await answerFor(botChecks, "other@example.com")
+
+          expect(listed.status).toBe(400)
+          expect(JSON.parse(listed.body)).toMatchObject({
+            error: { code: "BOT_CHECK_INCOMPLETE" },
+          })
+          expect(listed).toEqual(other)
+        },
+      )
+
+      it("still blocks a listed address whose token passes", async () => {
+        vi.spyOn(console, "warn").mockImplementation(() => {})
+        const onBlocked = vi.fn()
+        auth = new Auth(
+          createAuthConfig({
+            abuse: { onBlocked, botChecks: [blocklist, turnstileLike] },
+          }),
+        )
+
+        const response = await auth.handleRequest(
+          initiateRequest({ email: "listed@example.com", token: "t" }),
+        )
+
+        expect(response.status).toBe(200)
+        expect(onBlocked).toHaveBeenCalledWith(
+          expect.objectContaining({ detail: "blocklist:listed" }),
+        )
+      })
+    })
+
+    it("keeps a failed verification indistinguishable from a send", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {})
+      const { provider } = authWithBotCheck(FAILED)
+      const blocked = await auth.handleRequest(
+        initiateRequest({ email: "user@example.com" }),
+      )
+      auth.destroy()
+      authWithBotCheck({ ok: true })
+      const allowed = await auth.handleRequest(
+        initiateRequest({ email: "user@example.com" }),
+      )
+
+      expect(provider.initiate).not.toHaveBeenCalled()
+      expect(blocked.status).toBe(allowed.status)
+      expect(await blocked.text()).toBe(await allowed.text())
+    })
+
+    it("keeps a failed verification a plain RATE_LIMITED when respondWith is rateLimited", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {})
+      authWithBotCheck(FAILED, { respondWith: "rateLimited" })
+
+      const response = await auth.handleRequest(
+        initiateRequest({ email: "user@example.com" }),
+      )
+
+      expect(response.status).toBe(429)
+      expect(await response.json()).toMatchObject({
+        error: { code: "RATE_LIMITED" },
+      })
+    })
+
+    it("lets a passing check through to the provider unchanged", async () => {
+      const { provider, onBlocked } = authWithBotCheck({ ok: true })
+
+      const response = await auth.handleRequest(
+        initiateRequest({ email: "user@example.com" }),
+      )
+
+      expect(provider.initiate).toHaveBeenCalledTimes(1)
+      expect(onBlocked).not.toHaveBeenCalled()
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({
+        success: true,
+        message: "Magic link sent. Please check your email.",
+      })
+    })
   })
 
   it("does nothing when disabled", async () => {

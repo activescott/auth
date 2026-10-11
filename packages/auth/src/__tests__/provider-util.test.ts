@@ -3,6 +3,7 @@ import {
   parseRequestBody,
   isBrowserFormPost,
   buildReturnUrl,
+  initiateAccepted,
   buildChallengeCookie,
   buildChallengeClearingCookie,
   readCookie,
@@ -121,6 +122,25 @@ describe("buildReturnUrl", () => {
     const url = new URL(buildReturnUrl(request, { error: "RATE_LIMITED" }))
     expect(url.origin).toBe("https://example.com")
     expect(url.pathname).toBe("/login")
+  })
+})
+
+describe("initiateAccepted", () => {
+  it("should drop a stale error param when redirecting a form post", () => {
+    const request = new Request(TEST_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "text/html",
+        Referer:
+          "https://example.com/login?via=email&error=BOT_CHECK_INCOMPLETE",
+      },
+    })
+    const response = initiateAccepted(request, "Sent") as Response
+    const url = new URL(response.headers.get("Location") ?? "")
+    expect(url.searchParams.get("via")).toBe("email")
+    expect(url.searchParams.get("sent")).toBe("1")
+    expect(url.searchParams.has("error")).toBe(false)
   })
 })
 

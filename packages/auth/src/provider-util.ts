@@ -214,9 +214,11 @@ export function initiateAccepted(
   logger?: AuthLogger,
 ): AuthInitResult | Response {
   if (isBrowserFormPost(request)) {
-    const headers = new Headers({
-      Location: buildReturnUrl(request, { sent: "1" }, logger),
-    })
+    // The submitting page's URL may still carry the ?error= from an earlier
+    // attempt; drop it so the send reads as a success.
+    const returnUrl = new URL(buildReturnUrl(request, { sent: "1" }, logger))
+    returnUrl.searchParams.delete("error")
+    const headers = new Headers({ Location: returnUrl.toString() })
     for (const cookie of setCookies) {
       headers.append("Set-Cookie", cookie)
     }
