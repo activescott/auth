@@ -81,6 +81,12 @@ the client the way the prompt describes it:
   first, the self-asserted name second
 - `warnings.loopbackRedirects` and `warnings.redirectHostDiffers` as warnings
 
+Lead with the host. `reservedClientNames` refuses a dynamic client named
+`Claude`, `C1aude` or `Сlaude` (Cyrillic `С`), and any dynamic client name
+that mixes Latin with Cyrillic or Greek, but no list of lookalikes is
+complete. A CIMD client skips the check entirely: its name is whatever its
+document says, and `clientIdHost` is what identifies it.
+
 Those hosts are never the app's own. A CIMD `client_id` or a redirect URI on
 the issuer host, a host in `ownHosts`, or a subdomain of either is refused, so
 a client cannot borrow the app's host by putting a file or a callback on it.

@@ -333,6 +333,46 @@ describe("Dynamic Client Registration (RFC 7591)", () => {
       expect(status).toBe(400)
     })
 
+    it.each([
+      ["a Cyrillic Es", "\u0421laude"],
+      ["a Greek omicron", "Files Pr\u03BF"],
+    ])("refuses a name that mixes scripts, with %s", async (_, name) => {
+      const { status, body } = await register({
+        redirect_uris: [WEB_REDIRECT],
+        client_name: name,
+        token_endpoint_auth_method: "none",
+      })
+      expect(status).toBe(400)
+      expect(body.error).toBe("invalid_client_metadata")
+    })
+
+    it.each([
+      ["all Cyrillic", "\u0421\u041D\u0410\u0422\u050C\u0420\u0422"],
+      ["a digit one", "C1aude"],
+      ["an accent", "Cla\u0301ude"],
+      ["a vertical bar", "C|aude"],
+    ])("refuses a reserved name spelled with %s", async (_, name) => {
+      const { status, body } = await register({
+        redirect_uris: [WEB_REDIRECT],
+        client_name: name,
+        token_endpoint_auth_method: "none",
+      })
+      expect(status).toBe(400)
+      expect(body.error).toBe("invalid_client_metadata")
+    })
+
+    it.each(["Мой клиент", "Ελληνικά", "Files 日本語 アプリ", "Café Files"])(
+      "allows the single-script or CJK-with-Latin name %j",
+      async (name) => {
+        const { status } = await register({
+          redirect_uris: [WEB_REDIRECT],
+          client_name: name,
+          token_endpoint_auth_method: "none",
+        })
+        expect(status).toBe(201)
+      },
+    )
+
     it("allows a name that only contains a reserved name inside a word", async () => {
       const { status } = await register({
         redirect_uris: [WEB_REDIRECT],

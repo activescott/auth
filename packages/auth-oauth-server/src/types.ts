@@ -358,8 +358,11 @@ export interface OAuthServerConfig {
   /** Prefix for generated dynamic client ids (default `dyn_`). */
   dynamicClientIdPrefix?: string
   /**
-   * Names a dynamic client may not use, matched case-insensitively as whole
-   * words (e.g. `["Claude", "ChatGPT"]`).
+   * Names a dynamic client may not use, matched as whole words ignoring case
+   * and lookalike characters (e.g. `["Claude", "ChatGPT"]`). A dynamic
+   * client's name that mixes Latin with Cyrillic or Greek is refused too.
+   * CIMD clients skip both checks: their host is what the consent page
+   * should lead with.
    */
   reservedClientNames?: string[]
   /** Token prefixes so secret scanners can find a leaked one. */

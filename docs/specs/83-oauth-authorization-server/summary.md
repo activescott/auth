@@ -71,5 +71,7 @@ spec-compliance style of tests.
   consent page leads with those hosts, and an attacker's page on the app's
   own host would read as the app asking. Loopback redirects are exempt.
 - Reserved client names match as whole words, case-insensitively, after
-  stripping control and format characters. `Claude Code` is refused when
-  `Claude` is reserved.
+  stripping control and format characters and folding lookalikes to a
+  UTS #39 style skeleton. `Claude Code` and `C1aude` are refused when
+  `Claude` is reserved. A dynamic client name mixing Latin with Cyrillic or
+  Greek is refused outright. CIMD clients skip both checks.

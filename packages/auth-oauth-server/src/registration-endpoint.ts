@@ -2,7 +2,7 @@ import {
   isClientMetadataError,
   validateClientMetadata,
 } from "./client-metadata.js"
-import { isReservedClientName } from "./client-name.js"
+import { isMixedScriptName, isReservedClientName } from "./client-name.js"
 import { randomToken, sha256Hex } from "./crypto.js"
 import { jsonResponse, mediaType, oauthError, readBodyText } from "./http.js"
 import type { ServerContext } from "./server-context.js"
@@ -73,6 +73,12 @@ export async function handleRegistration(
   )
   if (isClientMetadataError(metadata)) {
     return oauthError(metadata.error, metadata.description)
+  }
+  if (metadata.name && isMixedScriptName(metadata.name)) {
+    return oauthError(
+      "invalid_client_metadata",
+      "client_name mixes letters from scripts that do not belong together",
+    )
   }
   if (
     metadata.name &&
