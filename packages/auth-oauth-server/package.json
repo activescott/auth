@@ -1,0 +1,55 @@
+{
+  "name": "@activescott/auth-oauth-server",
+  "version": "0.1.0",
+  "description": "OAuth 2.1 authorization server for apps built on @activescott/auth",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "auth",
+    "oauth",
+    "oauth2",
+    "authorization-server",
+    "mcp",
+    "pkce"
+  ],
+  "author": "Scott Willeke",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/activescott/auth.git",
+    "directory": "packages/auth-oauth-server"
+  },
+  "dependencies": {
+    "ipaddr.js": "^2.5.0"
+  },
+  "peerDependencies": {
+    "@activescott/auth": ">=5.7.0"
+  },
+  "devDependencies": {
+    "@activescott/auth": "*",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  }
+}
