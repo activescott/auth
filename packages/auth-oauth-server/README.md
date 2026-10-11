@@ -118,10 +118,11 @@ registrations that never got a grant within 24 hours.
 user and client), and `OAuthToken` (an access token and its refresh token).
 Every secret is stored as a SHA-256 hex hash.
 
-Three methods must be one conditional update each, since they are what stops
+Four methods must be one conditional update each, since they are what stops
 concurrent requests from redeeming the same code or refresh token twice:
-`markCodeUsed`, `markTokenRotated`, and `revokeUnrotatedToken` (in SQL,
-`UPDATE ... WHERE used_at IS NULL` and check the row count).
+`markCodeUsed`, `markTokenRotated`, `markAccessTokenUsed`, and
+`revokeUnusedToken` (in SQL, `UPDATE ... WHERE used_at IS NULL` and check the
+row count).
 `consumeAuthorizationRequest` must return a request at most once.
 `InMemoryOAuthStore` implements all of it for tests.
 
@@ -137,6 +138,11 @@ concurrent requests from redeeming the same code or refresh token twice:
 | Dynamic registrations per IP         | 5 per minute, 20 per hour                      |
 | CIMD fetches per user / across all   | 10 per minute and 50 per hour / 100 per minute |
 | Authorization requests per user      | 20 per minute, 200 per hour                    |
+
+A refresh token presented again within the grace window gets a fresh pair
+only while the pair its rotation issued is unused: not refreshed, and its
+access token never accepted by `verifyAccessToken`. Otherwise the grant is
+revoked.
 
 Rate limits use the core's `RateLimitStore`; pass `rateLimitStore` to share
 counters across instances. The token endpoint is not rate-limited here.

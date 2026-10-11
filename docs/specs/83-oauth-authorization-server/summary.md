@@ -51,6 +51,11 @@ spec-compliance style of tests.
 - The new token pair is stored before the code or refresh token is marked
   used. A concurrent request that loses the conditional update therefore
   always finds, and revokes, what the winner issued.
+- The lost-response grace applies only while the rotated pair is unused:
+  not refreshed, and its access token never accepted by the resource.
+  `verifyAccessToken` records the first use with a conditional update, so
+  a stolen refresh token presented after the client has used its new access
+  token revokes the grant, in either order.
 - Revoking a refresh token revokes every token descended from the same code.
   Revoking an access token revokes it and its paired refresh token. Neither
   counts as reuse later.

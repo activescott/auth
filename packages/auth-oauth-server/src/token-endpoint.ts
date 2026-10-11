@@ -171,8 +171,9 @@ async function redeemCode(
 /**
  * Rotate a refresh token. A refresh token used twice revokes the whole
  * grant, except within the grace window after its rotation when the pair
- * that rotation issued is still unused: that is a client retrying after a
- * lost response, so it gets a fresh pair and the unused pair is revoked.
+ * that rotation issued is still unused, neither refreshed nor its access
+ * token accepted by the resource: that is a client retrying after a lost
+ * response, so it gets a fresh pair and the unused pair is revoked.
  * Presenting a refresh token the grace path revoked counts as reuse.
  */
 async function refresh(
@@ -246,7 +247,7 @@ async function refresh(
     )
     let unused = true
     for (const child of unrevoked) {
-      if (!(await store.revokeUnrotatedToken(child.id, now))) unused = false
+      if (!(await store.revokeUnusedToken(child.id, now))) unused = false
     }
     if (unused) return (await issueFrom(token)).response
   }
@@ -297,6 +298,7 @@ async function issueTokens(
     codeHash: input.codeHash,
     rotatedFromId: input.rotatedFromId,
     rotatedAt: null,
+    accessTokenUsedAt: null,
     revokedAt: null,
     revokedReason: null,
     createdAt: now,

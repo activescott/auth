@@ -185,9 +185,21 @@ export class InMemoryOAuthStore implements OAuthStore {
     return Promise.resolve(true)
   }
 
-  public revokeUnrotatedToken(tokenId: string, at: Date): Promise<boolean> {
+  public markAccessTokenUsed(tokenId: string, at: Date): Promise<boolean> {
     const token = this.tokens.get(tokenId)
-    if (!token || token.rotatedAt || token.revokedAt) {
+    if (!token || token.revokedAt) return Promise.resolve(false)
+    token.accessTokenUsedAt ??= at
+    return Promise.resolve(true)
+  }
+
+  public revokeUnusedToken(tokenId: string, at: Date): Promise<boolean> {
+    const token = this.tokens.get(tokenId)
+    if (
+      !token ||
+      token.rotatedAt ||
+      token.accessTokenUsedAt ||
+      token.revokedAt
+    ) {
       return Promise.resolve(false)
     }
     revoke(token, at, "grace")

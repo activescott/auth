@@ -41,6 +41,27 @@ describe("Access token verification", () => {
     expect([...t.store.grants.values()][0]!.lastUsedAt).toEqual(t.clock.now)
   })
 
+  it("records when the access token was first used, and keeps it", async () => {
+    const t = createTestServer()
+    const { accessToken } = await obtainTokens(t)
+    const firstUse = new Date(t.clock.now.getTime() + 600_000)
+    t.clock.advance(600)
+    await t.server.verifyAccessToken(resourceRequest(accessToken))
+    t.clock.advance(60)
+    await t.server.verifyAccessToken(resourceRequest(accessToken))
+    expect([...t.store.tokens.values()][0]!.accessTokenUsedAt).toEqual(firstUse)
+  })
+
+  it("refuses a token revoked between its lookup and being marked used", async () => {
+    const t = createTestServer()
+    const { accessToken } = await obtainTokens(t)
+    t.store.markAccessTokenUsed = () => Promise.resolve(false)
+    const result = await t.server.verifyAccessToken(
+      resourceRequest(accessToken),
+    )
+    expect(result.ok).toBe(false)
+  })
+
   /** RFC 6750 §3.1: no error code when the request has no authentication. */
   it("challenges a request without a token, naming the metadata and default scope", async () => {
     const t = createTestServer()

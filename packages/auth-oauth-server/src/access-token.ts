@@ -76,6 +76,14 @@ export async function verifyAccessToken(
       }),
     }
   }
+  // Conditional, so the refresh grace path either sees this token as used
+  // or has already revoked it and the request is refused.
+  if (
+    !token.accessTokenUsedAt &&
+    !(await store.markAccessTokenUsed(token.id, now))
+  ) {
+    return unauthorized(context, "the access token was revoked")
+  }
   await store.touchGrant(grant.id, now)
   return {
     ok: true,

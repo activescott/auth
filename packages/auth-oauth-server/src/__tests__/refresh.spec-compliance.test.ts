@@ -111,6 +111,30 @@ describe("Token endpoint: refresh_token (RFC 6749 §6)", () => {
       expect(reuse.body.error).toBe("invalid_grant")
       expect(await accessWorks(t, used.body.access_token)).toBe(false)
     })
+
+    it("revokes the grant when the rotated pair's access token was used, even within the grace window", async () => {
+      const t = createTestServer()
+      const first = await obtainTokens(t)
+      const rotated = await refresh(t, first.clientId, first.refreshToken)
+      expect(await accessWorks(t, rotated.body.access_token)).toBe(true)
+      t.clock.advance(30)
+      const stolen = await refresh(t, first.clientId, first.refreshToken)
+      expect(stolen.body.error).toBe("invalid_grant")
+      expect(await accessWorks(t, rotated.body.access_token)).toBe(false)
+      expect([...t.store.grants.values()][0]!.revokedAt).not.toBeNull()
+    })
+
+    it("revokes the grant when a thief rotated first and used the access token", async () => {
+      const t = createTestServer()
+      const first = await obtainTokens(t)
+      const thief = await refresh(t, first.clientId, first.refreshToken)
+      expect(await accessWorks(t, thief.body.access_token)).toBe(true)
+      t.clock.advance(30)
+      const client = await refresh(t, first.clientId, first.refreshToken)
+      expect(client.body.error).toBe("invalid_grant")
+      expect(await accessWorks(t, thief.body.access_token)).toBe(false)
+      expect([...t.store.grants.values()][0]!.revokedAt).not.toBeNull()
+    })
   })
 
   describe("lost-response exception", () => {

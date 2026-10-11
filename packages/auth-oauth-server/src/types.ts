@@ -120,6 +120,12 @@ export interface OAuthToken {
   rotatedFromId: string | null
   /** When this row's refresh token was exchanged. */
   rotatedAt: Date | null
+  /**
+   * When the protected resource first accepted this row's access token. A
+   * rotated pair whose access token was used is never revoked by the
+   * lost-response grace path: presenting its parent again is reuse.
+   */
+  accessTokenUsedAt: Date | null
   revokedAt: Date | null
   revokedReason: OAuthTokenRevocationReason | null
   createdAt: Date
@@ -180,10 +186,17 @@ export interface OAuthStore {
    */
   markTokenRotated(tokenId: string, at: Date): Promise<boolean>
   /**
-   * Conditional: revoke with reason `grace` only where both `rotatedAt` and
-   * `revokedAt` are null. True if this call revoked it.
+   * Conditional: where `revokedAt` is null, set `accessTokenUsedAt` if it is
+   * null. True unless the row is revoked (SQL: `SET access_token_used_at =
+   * COALESCE(access_token_used_at, $at) WHERE revoked_at IS NULL`).
    */
-  revokeUnrotatedToken(tokenId: string, at: Date): Promise<boolean>
+  markAccessTokenUsed(tokenId: string, at: Date): Promise<boolean>
+  /**
+   * Conditional: revoke with reason `grace` only where `rotatedAt`,
+   * `accessTokenUsedAt` and `revokedAt` are all null. True if this call
+   * revoked it.
+   */
+  revokeUnusedToken(tokenId: string, at: Date): Promise<boolean>
   /** Revoke the row unless it is already revoked. */
   revokeToken(
     tokenId: string,
@@ -294,7 +307,10 @@ export interface OAuthLifetimes {
   refreshToken: number
   code: number
   authorizationRequest: number
-  /** How long after a rotation the old refresh token may be retried. */
+  /**
+   * How long after a rotation the old refresh token may be retried, while
+   * the pair that rotation issued is unused.
+   */
   refreshReuseGrace: number
 }
 
