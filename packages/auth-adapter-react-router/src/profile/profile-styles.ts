@@ -58,6 +58,8 @@ export interface ProfileClassNames {
   cancelButton?: string
   /** Confirms an account merge (`btn btn-warning`) */
   mergeButton?: string
+  /** Removes a sign-in method or passkey (`btn btn-sm btn-outline-danger`) */
+  removeButton?: string
   /** Confirmation message (`alert alert-success`) */
   success?: string
   /** Failure message (`alert alert-danger`) */
@@ -207,6 +209,7 @@ export const PROFILE_STYLES: Record<ProfileSlot, CSSProperties> = {
   submitButton: { ...BUTTON, background: BUTTON_TINT },
   cancelButton: BUTTON,
   mergeButton: { ...BUTTON, background: BUTTON_TINT },
+  removeButton: { ...BUTTON, padding: "2px 8px", fontSize: 12 },
   success: NOTICE,
   // The palette has no system color for danger, so an error is set apart by a
   // heavier edge rather than by hue

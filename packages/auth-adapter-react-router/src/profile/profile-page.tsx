@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import type { LinkFlow, SignInMethod } from "../page-loaders.js"
+import type { LinkFlow, RemovalFlow, SignInMethod } from "../page-loaders.js"
 import type { PasskeyRegistrationClient } from "../client/use-register-passkey.js"
 import type { AccountEntry } from "./account-summary.js"
 import { AccountSummary } from "./account-summary.js"
@@ -31,6 +31,13 @@ export interface ProfilePageProps extends ProfilePresentationProps {
   authBasePath?: string
   /** Offer an account merge on a conflict (default false) */
   allowMerge?: boolean
+  /**
+   * Show a Remove button on each sign-in method and passkey (default false).
+   * Needs `@activescott/auth` 5.9.0 or later for the unlink endpoint.
+   */
+  allowRemove?: boolean
+  /** `removal` from `profileAuthLoader` */
+  removal?: RemovalFlow
   /** Digits in the one-time code, matching the provider's `otp.length` (default 6) */
   codeLength?: number
   /** `passkeys` from `profileAuthLoader`; the block is dropped without `passkeyClient` */
@@ -78,6 +85,8 @@ export function ProfilePage({
   profilePath,
   authBasePath,
   allowMerge,
+  allowRemove,
+  removal,
   codeLength,
   passkeys,
   passkeyClient,
@@ -114,6 +123,8 @@ export function ProfilePage({
         profilePath={profilePath}
         authBasePath={authBasePath}
         allowMerge={allowMerge}
+        allowRemove={allowRemove}
+        removal={removal}
         codeLength={codeLength}
         {...presentation}
       />
@@ -123,6 +134,9 @@ export function ProfilePage({
           passkeys={passkeys ?? []}
           client={passkeyClient}
           onRegistered={onPasskeyRegistered}
+          allowRemove={allowRemove}
+          removal={removal}
+          authBasePath={authBasePath}
           {...presentation}
         />
       )}

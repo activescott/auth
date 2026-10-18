@@ -9,7 +9,7 @@ import type { Auth, AuthErrorCode, IdentityStore } from "@activescott/auth"
 const IDENTITY_CONFLICT: AuthErrorCode = "IDENTITY_CONFLICT"
 
 /** Identity.provider of passkeys, which the profile page lists separately */
-const PASSKEY_PROVIDER_ID = "passkey"
+export const PASSKEY_PROVIDER_ID = "passkey"
 
 /** App messages by error code; they win over the library's own */
 export type AuthErrorMessages = Readonly<Record<string, string>>
@@ -127,6 +127,26 @@ export interface LinkFlow {
 }
 
 /**
+ * Outcome of removing a sign-in method or passkey. The removal posts to
+ * `/auth/{provider}/unlink`, which redirects back here with `?removed=` or
+ * `?removeError=&provider=`.
+ */
+export interface RemovalFlow {
+  /**
+   * The provider whose identity was removed, or whose removal was refused.
+   * Null when the page was not reached from a removal. Lets the passkeys
+   * block and the sign-in methods block each report only their own.
+   */
+  provider: string | null
+  /** True when the removal went through */
+  removed: boolean
+  /** The message for `?removeError=`, or null */
+  error: string | null
+  /** The raw `?removeError=` code, e.g. LAST_SIGN_IN_METHOD */
+  errorCode: string | null
+}
+
+/**
  * What a profile page needs for its sign-in methods section
  * @typeParam TPasskey - What `listPasskeys` returns per passkey
  */
@@ -136,6 +156,7 @@ export interface ProfileAuthLoaderData<TPasskey = never> {
   /** From the `listPasskeys` option; empty without it */
   passkeys: TPasskey[]
   linkFlow: LinkFlow
+  removal: RemovalFlow
 }
 
 /**
@@ -276,6 +297,21 @@ export function createAuthPageLoaders<TPasskey = never>(
           ? (pickProvider(params.get("provider")) ?? add)
           : null
 
+      const removed = params.get("removed")
+      const removeErrorCode = params.get("removeError")
+      const removalProvider = removeErrorCode ? params.get("provider") : removed
+      const removal: RemovalFlow = {
+        provider:
+          removalProvider && auth.getProvider(removalProvider)
+            ? removalProvider
+            : null,
+        removed: Boolean(removed) && !removeErrorCode,
+        error: removeErrorCode
+          ? messageFor(removeErrorCode, callOptions)
+          : null,
+        errorCode: removeErrorCode,
+      }
+
       const [identities, passkeys, formToken] = await Promise.all([
         listSignInMethods(userId),
         options.listPasskeys
@@ -301,6 +337,7 @@ export function createAuthPageLoaders<TPasskey = never>(
           formToken,
           turnstileSiteKey,
         },
+        removal,
       }
     },
 

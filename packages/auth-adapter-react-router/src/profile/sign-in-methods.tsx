@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from "react"
-import type { LinkFlow, SignInMethod } from "../page-loaders.js"
+import type { LinkFlow, RemovalFlow, SignInMethod } from "../page-loaders.js"
+import { PASSKEY_PROVIDER_ID } from "../page-loaders.js"
 import type { AddableSignInMethod } from "./add-sign-in-method.js"
 import { AddSignInMethod, methodNoun } from "./add-sign-in-method.js"
 import type {
@@ -10,6 +11,7 @@ import { Notice, ProfileCard, ProfileLink } from "./profile-chrome.js"
 import type { ProfileStyler } from "./profile-styles.js"
 import { createStyler } from "./profile-styles.js"
 import { formatProfileDate } from "./format-date.js"
+import { RemoveIdentityButton } from "./remove-identity.js"
 
 const DEFAULT_PROFILE_PATH = "/profile"
 const DEFAULT_AUTH_BASE_PATH = "/auth"
@@ -46,9 +48,29 @@ export interface SignInMethodsProps extends ProfilePresentationProps {
   mergeDescription?: ReactNode
   /** Digits in the one-time code, matching the provider's `otp.length` (default 6) */
   codeLength?: number
+  /**
+   * Show a Remove button on each method (default false). Needs
+   * `@activescott/auth` 5.9.0 or later, which serves the unlink endpoint the
+   * button posts to. The server refuses the method the user is signed in
+   * with and the last one that can recover the account, and the refusal
+   * comes back through `removal`.
+   */
+  allowRemove?: boolean
+  /** `removal` from `profileAuthLoader`, to report what a Remove did */
+  removal?: RemovalFlow
   /** Block heading (default "Sign-in methods") */
   title?: string
 }
+
+/** Names the column of Remove buttons for screen readers only */
+const VISUALLY_HIDDEN = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+} as const
 
 /**
  * The email addresses and phone numbers that sign in to the account, and the
@@ -73,6 +95,8 @@ export function SignInMethods({
   allowMerge = false,
   mergeDescription,
   codeLength = DEFAULT_CODE_LENGTH,
+  allowRemove = false,
+  removal,
   title = "Sign-in methods",
   classNames,
   includeDefaultStyles = true,
@@ -87,6 +111,11 @@ export function SignInMethods({
   const errorMessage = conflict
     ? `That ${methodNoun(conflict, addMethods)} already signs in to another account.`
     : linkFlow.error
+  // The passkeys block reports its own removals
+  const ownRemoval =
+    removal?.provider && removal.provider !== PASSKEY_PROVIDER_ID
+      ? removal
+      : null
 
   return (
     <ProfileCard title={title} ui={ui} testId="sign-in-methods">
@@ -111,6 +140,11 @@ export function SignInMethods({
                 <th className={ui.className("th")} style={ui.style("th")}>
                   Added
                 </th>
+                {allowRemove && (
+                  <th className={ui.className("th")} style={ui.style("th")}>
+                    <span style={VISUALLY_HIDDEN}>Remove</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -125,11 +159,33 @@ export function SignInMethods({
                   <td className={ui.className("td")} style={ui.style("td")}>
                     {formatProfileDate(identity.createdAt)}
                   </td>
+                  {allowRemove && (
+                    <td className={ui.className("td")} style={ui.style("td")}>
+                      <RemoveIdentityButton
+                        provider={identity.provider}
+                        identifier={identity.identifier}
+                        label={identity.identifier}
+                        authBasePath={authBasePath}
+                        ui={ui}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {ownRemoval?.removed && (
+        <Notice tone="success" ui={ui} testId="remove-success">
+          Sign-in method removed. It no longer signs in to this account.
+        </Notice>
+      )}
+      {ownRemoval?.error && (
+        <Notice tone="error" ui={ui} testId="remove-error">
+          Error: {ownRemoval.error}
+        </Notice>
       )}
 
       {linkFlow.merged && (
