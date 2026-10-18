@@ -27,6 +27,8 @@ export const AUTH_ERROR_CODES = {
   SESSION_INVALID: "SESSION_INVALID",
   IDENTITY_CONFLICT: "IDENTITY_CONFLICT",
   BOT_CHECK_INCOMPLETE: "BOT_CHECK_INCOMPLETE",
+  LAST_SIGN_IN_METHOD: "LAST_SIGN_IN_METHOD",
+  IDENTITY_IN_USE: "IDENTITY_IN_USE",
 } as const satisfies Record<AuthErrorCode, AuthErrorCode>
 
 /**
@@ -57,6 +59,10 @@ export const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
     "That sign-in method already belongs to another account. You can merge the two accounts.",
   BOT_CHECK_INCOMPLETE:
     "We hadn't finished checking that you're human. Please wait a moment and try again.",
+  LAST_SIGN_IN_METHOD:
+    "That is the last way to recover this account. Add another email address or phone number before removing it.",
+  IDENTITY_IN_USE:
+    "You are signed in with that sign-in method. Sign in another way to remove it.",
 }
 
 const DEFAULT_ERROR_MESSAGE =
@@ -222,6 +228,20 @@ export const AuthErrors = {
     createAuthError(
       "BOT_CHECK_INCOMPLETE",
       "The bot check had not finished when the form was submitted",
+      details,
+    ),
+
+  lastSignInMethod: (details?: Record<string, unknown>) =>
+    createAuthError(
+      "LAST_SIGN_IN_METHOD",
+      "Removing this identity would leave the account without a way to sign in that survives losing a device",
+      details,
+    ),
+
+  identityInUse: (details?: Record<string, unknown>) =>
+    createAuthError(
+      "IDENTITY_IN_USE",
+      "The current session is signed in with this identity",
       details,
     ),
 } as const

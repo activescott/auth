@@ -32,7 +32,7 @@ export type {
 export { REDACTED } from "./types.js"
 
 // Auth class
-export { Auth } from "./auth.js"
+export { Auth, type IdentityReference } from "./auth.js"
 
 // Session management
 export { SessionManager } from "./session/index.js"
