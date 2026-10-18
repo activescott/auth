@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest"
 import { act } from "react"
-import type { LinkFlow } from "../page-loaders.js"
+import type { LinkFlow, RemovalFlow } from "../page-loaders.js"
 import { AccountSummary } from "../profile/account-summary.js"
 import { Passkeys } from "../profile/passkeys.js"
 import { ProfilePage } from "../profile/profile-page.js"
@@ -337,6 +337,112 @@ describe("BOOTSTRAP_PROFILE_CLASS_NAMES", () => {
     expect(container.querySelector("td")?.hasAttribute("class")).toBe(false)
     expect(container.querySelector("table")?.getAttribute("class")).toBe(
       "table",
+    )
+  })
+})
+
+describe("removing a sign-in method", () => {
+  const client = { registerPasskey: vi.fn() }
+  const NO_REMOVAL: RemovalFlow = {
+    provider: null,
+    removed: false,
+    error: null,
+    errorCode: null,
+  }
+  const EMAIL = {
+    id: "identity-1",
+    provider: "email",
+    identifier: "user@example.com",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    verifiedAt: null,
+  }
+
+  function forms(container: HTMLElement) {
+    return [...container.querySelectorAll("form")]
+      .filter((form) => form.action.endsWith("/unlink"))
+      .map((form) => ({
+        action: new URL(form.action).pathname,
+        identifier: (
+          form.querySelector('input[name="identifier"]') as HTMLInputElement
+        ).value,
+        label: form.querySelector("button")?.getAttribute("aria-label"),
+      }))
+  }
+
+  it("offers no Remove button unless asked", () => {
+    const { container } = render(
+      <ProfilePage
+        identities={[EMAIL]}
+        linkFlow={LINK_FLOW}
+        passkeys={[passkey()]}
+        passkeyClient={client}
+      />,
+    )
+    expect(forms(container)).toEqual([])
+  })
+
+  it("posts each method's identifier to its provider's unlink endpoint", () => {
+    const { container } = render(
+      <ProfilePage
+        identities={[EMAIL]}
+        linkFlow={LINK_FLOW}
+        passkeys={[passkey({ nickname: "Laptop" })]}
+        passkeyClient={client}
+        allowRemove
+        removal={NO_REMOVAL}
+        authBasePath="/api/auth"
+      />,
+    )
+    expect(forms(container)).toEqual([
+      {
+        action: "/api/auth/email/unlink",
+        identifier: "user@example.com",
+        label: "Remove user@example.com",
+      },
+      {
+        action: "/api/auth/passkey/unlink",
+        identifier: "Y3JlZGVudGlhbA",
+        label: "Remove Laptop",
+      },
+    ])
+  })
+
+  it("reports a passkey removal in the passkeys block only", () => {
+    const { container } = render(
+      <ProfilePage
+        identities={[EMAIL]}
+        linkFlow={LINK_FLOW}
+        passkeys={[]}
+        passkeyClient={client}
+        allowRemove
+        removal={{ ...NO_REMOVAL, provider: "passkey", removed: true }}
+      />,
+    )
+    const passkeys = container.querySelector('[data-testid="passkeys"]')
+    expect(
+      passkeys?.querySelector('[data-testid="passkey-removed"]'),
+    ).not.toBeNull()
+    expect(container.querySelector('[data-testid="remove-success"]')).toBeNull()
+  })
+
+  it("reports a refused removal next to the method", () => {
+    const { container } = render(
+      <SignInMethods
+        identities={[EMAIL]}
+        linkFlow={LINK_FLOW}
+        allowRemove
+        removal={{
+          provider: "email",
+          removed: false,
+          error: "That is the last way to recover this account.",
+          errorCode: "LAST_SIGN_IN_METHOD",
+        }}
+      />,
+    )
+    const error = container.querySelector('[data-testid="remove-error"]')
+    expect(error?.getAttribute("role")).toBe("alert")
+    expect(textOf(error)).toBe(
+      "Error: That is the last way to recover this account.",
     )
   })
 })

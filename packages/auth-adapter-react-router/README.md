@@ -155,7 +155,7 @@ export const { signInLoader, profileAuthLoader } = createAuthPageLoaders(auth, {
 })
 ```
 
-`signInLoader(request)` returns `{ via, sent, error, errorCode, redirectTo, formToken, turnstileSiteKey }`: which provider's form to show, whether the message went out, the message for `?error=`, a same-origin `redirectTo` or null, and the signed form token the abuse checks expect under `FORM_TOKEN_FIELD`. `profileAuthLoader(userId, request)` returns `{ identities, passkeys, linkFlow }`, where `linkFlow` is the add-a-sign-in-method flow: the open form (`?add=`), `sent`, `linked`, `merged`, and `conflict`, the provider whose `link-merge` redeems the merge ticket after an `IDENTITY_CONFLICT`. It takes that provider from `?provider=`, else `?add=`, so put `?add=` in the verify step's `redirectTo`. `errorMessages` adds codes the library does not know, such as an initiate gate's, and rewords any it does; both loaders also take it per call.
+`signInLoader(request)` returns `{ via, sent, error, errorCode, redirectTo, formToken, turnstileSiteKey }`: which provider's form to show, whether the message went out, the message for `?error=`, a same-origin `redirectTo` or null, and the signed form token the abuse checks expect under `FORM_TOKEN_FIELD`. `profileAuthLoader(userId, request)` returns `{ identities, passkeys, linkFlow, removal }`, where `linkFlow` is the add-a-sign-in-method flow: the open form (`?add=`), `sent`, `linked`, `merged`, and `conflict`, the provider whose `link-merge` redeems the merge ticket after an `IDENTITY_CONFLICT`. It takes that provider from `?provider=`, else `?add=`, so put `?add=` in the verify step's `redirectTo`. `removal` is the outcome of a Remove button: the provider (`?removed=`, or `?provider=` with `?removeError=`), whether it went through, and the refusal's message. `errorMessages` adds codes the library does not know, such as an initiate gate's, and rewords any it does; both loaders also take it per call.
 
 The hooks are at the `./client` subpath and need React, not React Router:
 
@@ -208,7 +208,7 @@ export default function Profile({ loaderData }: Route.ComponentProps) {
 }
 ```
 
-`addMethods` is what the page offers to add, in the order the links appear; it offers nothing by default, and drops a provider the account already signs in with unless the entry sets `allowMultiple`. `callingCode` makes the field take a national number and submit the full E.164 one. `allowMerge` turns an `IDENTITY_CONFLICT` into an offer to merge the two accounts rather than an error, so set it only where your `UserStore.onMerge` merges.
+`addMethods` is what the page offers to add, in the order the links appear; it offers nothing by default, and drops a provider the account already signs in with unless the entry sets `allowMultiple`. `callingCode` makes the field take a national number and submit the full E.164 one. `allowMerge` turns an `IDENTITY_CONFLICT` into an offer to merge the two accounts rather than an error, so set it only where your `UserStore.onMerge` merges. `allowRemove` puts a Remove button on each sign-in method and passkey; it posts to core's `/auth/{provider}/unlink` (`@activescott/auth` 5.9.0 or later), which refuses the method the user is signed in with and the last one that can recover the account. Pass `removal` from the loader so the page reports the outcome.
 
 An application with sections of its own renders the blocks directly, in whatever order, with whatever between them:
 

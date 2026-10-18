@@ -52,6 +52,10 @@ function createAuth(identities: Identity[] = []): Auth {
   } as unknown as IdentityStore
   return {
     getProviders: () => [emailProvider, smsProvider, passkeyProvider],
+    getProvider: (id: string) =>
+      [emailProvider, smsProvider, passkeyProvider].find(
+        (candidate) => candidate.id === id,
+      ),
     getStores: () => ({ identityStore }),
     getSessionConfig: () => ({ secret: SECRET }),
     getLogger: () => undefined,
@@ -327,5 +331,52 @@ describe("profileAuthLoader", () => {
       conflict: null,
       error: AUTH_ERROR_MESSAGES.IDENTITY_CONFLICT,
     })
+  })
+})
+
+describe("profileAuthLoader removal", () => {
+  it("is empty when the page was not reached from a removal", async () => {
+    const { profileAuthLoader } = createAuthPageLoaders(createAuth())
+    const data = await profileAuthLoader("user-1", request("/profile"))
+    expect(data.removal).toEqual({
+      provider: null,
+      removed: false,
+      error: null,
+      errorCode: null,
+    })
+  })
+
+  it("reports which provider's identity was removed", async () => {
+    const { profileAuthLoader } = createAuthPageLoaders(createAuth())
+    const data = await profileAuthLoader(
+      "user-1",
+      request("/profile?removed=passkey"),
+    )
+    expect(data.removal).toMatchObject({ provider: "passkey", removed: true })
+  })
+
+  it("resolves a refusal to its message", async () => {
+    const { profileAuthLoader } = createAuthPageLoaders(createAuth())
+    const data = await profileAuthLoader(
+      "user-1",
+      request("/profile?removeError=LAST_SIGN_IN_METHOD&provider=email"),
+    )
+    expect(data.removal).toEqual({
+      provider: "email",
+      removed: false,
+      error: AUTH_ERROR_MESSAGES.LAST_SIGN_IN_METHOD,
+      errorCode: "LAST_SIGN_IN_METHOD",
+    })
+    // A refused removal is not a failed link
+    expect(data.linkFlow.error).toBeNull()
+  })
+
+  it("ignores a provider that is not configured", async () => {
+    const { profileAuthLoader } = createAuthPageLoaders(createAuth())
+    const data = await profileAuthLoader(
+      "user-1",
+      request("/profile?removed=toString"),
+    )
+    expect(data.removal.provider).toBeNull()
   })
 })

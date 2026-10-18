@@ -2,7 +2,7 @@ import type { ProfileClassNames } from "./profile-styles.js"
 
 /**
  * Bootstrap 5 classes for every profile slot, so an application on Bootstrap
- * gets a finished page from one prop instead of naming 34 slots itself.
+ * gets a finished page from one prop instead of naming 35 slots itself.
  *
  * Typed `Required<ProfileClassNames>`, which is what keeps it complete: a slot
  * added to the interface fails this file's build until it has a class here.
@@ -54,6 +54,7 @@ export const BOOTSTRAP_PROFILE_CLASS_NAMES: Required<ProfileClassNames> = {
   submitButton: "btn btn-primary",
   cancelButton: "btn btn-outline-secondary",
   mergeButton: "btn btn-warning",
+  removeButton: "btn btn-sm btn-outline-danger",
   success: "alert alert-success",
   error: "alert alert-danger",
   warning: "alert alert-warning",
