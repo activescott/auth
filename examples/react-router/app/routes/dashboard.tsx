@@ -20,6 +20,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   // redirect back with (?add=, ?sent=1, ?linked=1, ?merged=1, ?error=). Link
   // initiates post to the same abuse-guarded endpoints as sign-in, so
   // linkFlow carries the same anti-bot form token the login page gets.
+  // removal is the outcome of a Remove button (?removed=, ?removeError=).
   return { user, ...(await profileAuthLoader(user.id, request)) }
 }
 
@@ -36,8 +37,9 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
       <SignInMethods
         identities={loaderData.identities}
         linkFlow={loaderData.linkFlow}
+        removal={loaderData.removal}
       />
-      <Passkeys passkeys={loaderData.passkeys} />
+      <Passkeys passkeys={loaderData.passkeys} removal={loaderData.removal} />
 
       <Form method="post" action="/logout">
         <button
@@ -64,7 +66,8 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
 function SignInMethods({
   identities,
   linkFlow,
-}: Pick<LoaderData, "identities" | "linkFlow">) {
+  removal,
+}: Pick<LoaderData, "identities" | "linkFlow" | "removal">) {
   const { add, sent, merged, linked, conflict, error } = linkFlow
 
   return (
@@ -82,9 +85,18 @@ function SignInMethods({
             <span className="text-gray-500 whitespace-nowrap">
               {method.provider} · added {formatDate(method.createdAt)}
             </span>
+            <RemoveButton
+              provider={method.provider}
+              identifier={method.identifier}
+              label={method.identifier}
+            />
           </li>
         ))}
       </ul>
+
+      {removal.provider !== "passkey" && (
+        <RemovalOutcome removal={removal} what="Sign-in method" />
+      )}
 
       {merged && (
         <p className="text-green-700 mb-3" data-testid="merge-success">
@@ -280,7 +292,10 @@ function MergePrompt({ provider }: { provider: string }) {
   )
 }
 
-function Passkeys({ passkeys }: Pick<LoaderData, "passkeys">) {
+function Passkeys({
+  passkeys,
+  removal,
+}: Pick<LoaderData, "passkeys" | "removal">) {
   const revalidator = useRevalidator()
   const registration = useRegisterPasskey({
     client: passkeyClient,
@@ -314,9 +329,21 @@ function Passkeys({ passkeys }: Pick<LoaderData, "passkeys">) {
                 {passkey.lastUsedAt &&
                   ` · last used ${formatDate(passkey.lastUsedAt)}`}
               </span>
+              <RemoveButton
+                provider="passkey"
+                identifier={passkey.credentialId}
+                label={
+                  passkey.nickname ??
+                  abbreviateCredentialId(passkey.credentialId)
+                }
+              />
             </li>
           ))}
         </ul>
+      )}
+
+      {removal.provider === "passkey" && (
+        <RemovalOutcome removal={removal} what="Passkey" />
       )}
 
       <button
@@ -337,6 +364,61 @@ function Passkeys({ passkeys }: Pick<LoaderData, "passkeys">) {
       )}
     </section>
   )
+}
+
+/**
+ * Removing a sign-in method is a plain form post of its identifier to
+ * /auth/{provider}/unlink. The server only removes an identity of the
+ * signed-in user, and refuses the one this session signed in with
+ * (IDENTITY_IN_USE) and the last one that can recover the account
+ * (LAST_SIGN_IN_METHOD), so the button can always be shown; the refusal
+ * comes back as ?removeError= on this page.
+ */
+function RemoveButton({
+  provider,
+  identifier,
+  label,
+}: {
+  provider: string
+  identifier: string
+  label: string
+}) {
+  return (
+    <Form method="post" action={`/auth/${provider}/unlink`} reloadDocument>
+      <input type="hidden" name="identifier" value={identifier} />
+      <button
+        type="submit"
+        aria-label={`Remove ${label}`}
+        className="text-red-700 underline"
+      >
+        Remove
+      </button>
+    </Form>
+  )
+}
+
+function RemovalOutcome({
+  removal,
+  what,
+}: {
+  removal: LoaderData["removal"]
+  what: string
+}) {
+  if (removal.removed) {
+    return (
+      <p className="text-green-700 mb-3" data-testid="remove-success">
+        {what} removed.
+      </p>
+    )
+  }
+  if (removal.error) {
+    return (
+      <p className="text-red-700 mb-3" data-testid="remove-error">
+        Error: {removal.error}
+      </p>
+    )
+  }
+  return null
 }
 
 function abbreviateCredentialId(credentialId: string): string {
