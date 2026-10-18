@@ -30,6 +30,7 @@ import {
   isBrowserFormPost,
   MERGE_TICKET_COOKIE_NAME,
   MERGE_TICKET_TYPE,
+  parseRequestBody,
   readCookie,
 } from "./provider-util.js"
 
@@ -48,6 +49,19 @@ const DEFAULT_SENT_MESSAGE =
   "If that account exists, a sign-in message has been sent."
 
 /**
+ * Providers whose identities live on one authenticator. A passkey still signs
+ * in, but losing the device loses it, so it never counts as the way back into
+ * an account (see {@link Auth.unlinkIdentity}).
+ */
+const DEVICE_BOUND_PROVIDERS: ReadonlySet<string> = new Set(["passkey"])
+
+/** An identity named the way a request names it: its provider and identifier */
+export interface IdentityReference {
+  provider: string
+  identifier: string
+}
+
+/**
  * Best-effort name for a store implementation. Stores are usually plain object
  * literals, whose constructor is `Object` — report that plainly instead of
  * showing a misleading "Object".
@@ -55,6 +69,10 @@ const DEFAULT_SENT_MESSAGE =
 function describeStoreType(store: object): string {
   const name = store.constructor?.name
   return !name || name === "Object" ? "(object literal)" : name
+}
+
+function sameIdentity(a: IdentityReference, b: IdentityReference): boolean {
+  return a.provider === b.provider && a.identifier === b.identifier
 }
 
 /**
@@ -138,8 +156,8 @@ export class Auth {
    * (`getRoutes()`): the route's `handler` decides whether the abuse guard
    * runs (initiate), the verify path is taken, or `handleAction` is called.
    * A method+path with no declared route is 404 (405 when only the method
-   * differs). The core-owned `link-merge` action (account merging) is served
-   * for every provider.
+   * differs). The core-owned `link-merge` action (account merging) and
+   * `unlink` action (removing a sign-in method) are served for every provider.
    *
    * `responders` lets the caller (typically a framework adapter) turn
    * verify outcomes into its own responses — see {@link AuthResponders}.
@@ -177,6 +195,9 @@ export class Auth {
     try {
       if (action === "link-merge") {
         return await this.handleLinkMerge(request, providerId)
+      }
+      if (action === "unlink") {
+        return await this.handleUnlink(request, providerId)
       }
 
       const routePath = `/${providerId}/${action}`
@@ -337,6 +358,108 @@ export class Auth {
     await userStore.onMerge(fromUser, intoUser)
 
     return { fromUserId, intoUserId, movedIdentities }
+  }
+
+  /**
+   * Remove one of a user's identities, so it no longer signs in to the
+   * account. Refuses, leaving everything as it was, when:
+   *
+   * - the identity does not exist or belongs to another user
+   *   (IDENTITY_NOT_FOUND; the two are not told apart);
+   * - it is the identity `options.currentIdentity` names, normally the one
+   *   the caller's session is signed in with (IDENTITY_IN_USE). Removing it
+   *   would end that session mid-request;
+   * - removing it would leave the account with no identity of a registered
+   *   provider, or with passkeys only (LAST_SIGN_IN_METHOD). A passkey lives
+   *   on one device, so an account needs an email address, a phone number or
+   *   another identity that can be proven again from a new device. Passkeys
+   *   themselves can always be removed while such an identity remains.
+   *
+   * Two concurrent removals by the same user could each pass the check
+   * against the other's identity. After deleting, the check runs again on
+   * what the store now holds, and a removal that would strand the account
+   * puts its identity back (same provider, identifier and provider state; a
+   * new id) and refuses.
+   *
+   * Sessions on other devices that were signed in with the removed identity
+   * end on their next request: the session cache is cleared so they are
+   * re-read from the store.
+   *
+   * The built-in `POST /auth/{provider}/unlink` endpoint calls this for the
+   * signed-in user with their session's identity as `currentIdentity`.
+   *
+   * @returns The identity that was removed
+   * @throws AuthenticationError IDENTITY_NOT_FOUND, IDENTITY_IN_USE or
+   * LAST_SIGN_IN_METHOD as above
+   */
+  public async unlinkIdentity(
+    userId: string,
+    target: IdentityReference,
+    options: { currentIdentity?: IdentityReference } = {},
+  ): Promise<Identity> {
+    const { identityStore } = this.config
+    const identities = await identityStore.findByUserId(userId)
+    const identity = identities.find((candidate) =>
+      sameIdentity(candidate, target),
+    )
+    if (!identity) {
+      throw new AuthenticationError(
+        "IDENTITY_NOT_FOUND",
+        "No such identity on this account",
+      )
+    }
+    if (
+      options.currentIdentity &&
+      sameIdentity(identity, options.currentIdentity)
+    ) {
+      const error = AuthErrors.identityInUse()
+      throw new AuthenticationError(error.code, error.message)
+    }
+    this.assertAccountKeepsSignIn(identity, identities)
+
+    await identityStore.delete(identity.id)
+
+    const after = await identityStore.findByUserId(userId)
+    try {
+      this.assertAccountKeepsSignIn(identity, after)
+    } catch (error) {
+      await identityStore.create({
+        userId: identity.userId,
+        provider: identity.provider,
+        identifier: identity.identifier,
+        providerState: identity.providerState,
+      })
+      throw error
+    }
+
+    this.sessionCache.clear()
+    return identity
+  }
+
+  /**
+   * Throw LAST_SIGN_IN_METHOD unless the account still has a way in once
+   * `removing` is gone from `identities`: at least one identity of a
+   * registered provider, and, when `removing` is not device-bound, at least
+   * one remaining identity that is not either.
+   */
+  private assertAccountKeepsSignIn(
+    removing: Identity,
+    identities: Identity[],
+  ): void {
+    const remaining = identities.filter(
+      (candidate) =>
+        !sameIdentity(candidate, removing) &&
+        this.providers.has(candidate.provider),
+    )
+    const recoverable = (candidate: Identity) =>
+      !DEVICE_BOUND_PROVIDERS.has(candidate.provider)
+    if (
+      remaining.length === 0 ||
+      (recoverable(removing) && !remaining.some(recoverable))
+    ) {
+      const error = AuthErrors.lastSignInMethod()
+      throw new AuthenticationError(error.code, error.message)
+    }
   }
 
   /**
@@ -583,6 +706,85 @@ export class Auth {
   }
 
   /**
+   * Remove one of the signed-in user's identities: `POST
+   * /auth/{provider}/unlink` with the identity's `identifier` in the body
+   * (form or JSON). The provider comes from the path, so a form for one
+   * provider cannot remove another's identity. Browser form posts are
+   * answered with a redirect back to the submitting page, `?removed={provider}`
+   * on success and `?removeError={code}&provider={provider}` on refusal;
+   * fetch callers get JSON.
+   */
+  private async handleUnlink(
+    request: Request,
+    providerId: string,
+  ): Promise<Response> {
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 })
+    }
+
+    const browser = isBrowserFormPost(request)
+    const refuse = (error: AuthError): Response => {
+      if (!browser) return this.errorToResponse(error)
+      const returnUrl = new URL(
+        buildReturnUrl(
+          request,
+          { removeError: error.code, provider: providerId },
+          this.config.logger,
+        ),
+      )
+      returnUrl.searchParams.delete("removed")
+      return new Response(null, {
+        status: 302,
+        headers: { Location: returnUrl.toString() },
+      })
+    }
+
+    const session = await this.verifySession(request)
+    if (!session) {
+      return refuse(
+        AuthErrors.sessionInvalid({
+          reason: "Sign in to remove a sign-in method",
+        }),
+      )
+    }
+
+    const body = await parseRequestBody(request)
+    const identifier = body.identifier
+    if (typeof identifier !== "string" || identifier === "") {
+      return refuse(AuthErrors.identityNotFound())
+    }
+
+    try {
+      await this.unlinkIdentity(
+        session.user.id,
+        { provider: providerId, identifier },
+        { currentIdentity: session.identity },
+      )
+    } catch (error) {
+      if (error instanceof AuthenticationError) {
+        return refuse(error.toAuthError())
+      }
+      throw error
+    }
+
+    if (browser) {
+      const returnUrl = new URL(
+        buildReturnUrl(request, { removed: providerId }, this.config.logger),
+      )
+      returnUrl.searchParams.delete("removeError")
+      returnUrl.searchParams.delete("provider")
+      return new Response(null, {
+        status: 302,
+        headers: { Location: returnUrl.toString() },
+      })
+    }
+    return new Response(
+      JSON.stringify({ success: true, removed: { provider: providerId } }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    )
+  }
+
+  /**
    * Consult `gate.onVerified` about a successful verify. Returns undefined
    * when the session may be created, otherwise the response to send instead:
    * a redirect carrying no session, or the gate's error answered like any
@@ -774,6 +976,8 @@ export class Auth {
       USER_NOT_FOUND: 404,
       IDENTITY_NOT_FOUND: 404,
       IDENTITY_CONFLICT: 409,
+      LAST_SIGN_IN_METHOD: 409,
+      IDENTITY_IN_USE: 409,
       RATE_LIMITED: 429,
       BOT_CHECK_INCOMPLETE: 400,
       CONFIGURATION_ERROR: 500,

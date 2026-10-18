@@ -99,6 +99,15 @@ export class SessionCache {
   }
 
   /**
+   * Forget every entry, so the next request for each session reads the
+   * stores again. For writes the cache cannot key on, such as removing an
+   * identity that sessions on other devices are bound to.
+   */
+  public clear(): void {
+    this.cache.clear()
+  }
+
+  /**
    * Make room for one more entry: drop what has expired, and if that was not
    * enough, drop the front of the map. That is approximately oldest-first:
    * re-setting an existing key keeps its original position, so a rewritten

@@ -342,7 +342,25 @@ Once your `onMerge` deletes (or disables) the absorbed user, its outstanding ses
 
 The example app's dashboard implements the whole flow — method list, add-email/add-phone forms, and the merge prompt — in [`examples/react-router/app/routes/dashboard.tsx`](./examples/react-router/app/routes/dashboard.tsx).
 
-Unlinking (removing a sign-in method) is not built in yet; see [#71](https://github.com/activescott/auth/issues/71).
+### Removing a sign-in method
+
+A signed-in user removes one of their own identities (an email address, a phone number, a passkey) by posting its identifier to that provider's `unlink` action:
+
+```html
+<form method="post" action="/auth/passkey/unlink">
+  <input type="hidden" name="identifier" value="{credentialId}" />
+  <button>Remove</button>
+</form>
+```
+
+A browser form post comes back to the submitting page with `?removed={provider}`, or `?removeError={code}&provider={provider}` when the removal was refused; a JSON post gets `{ success: true }` or the error. The action only ever removes an identity of the signed-in user, of the provider named in the path, and refuses when:
+
+- the identity is the one the current session signed in with (`IDENTITY_IN_USE`): sign in another way first;
+- removing it would leave no way back into the account (`LAST_SIGN_IN_METHOD`). The account must keep at least one identity of a configured provider, and that has to include one that is not a passkey: a passkey lives on one device, so losing the device would strand a passkey-only account. Passkeys can always be removed while an email address or phone number remains.
+
+There is no re-verification step: removing a method grants no access, the session's own method cannot be removed, and the account always keeps one that can be proven again from a new device. Other sessions that signed in with the removed identity end on their next request.
+
+`Auth.unlinkIdentity(userId, { provider, identifier }, { currentIdentity })` applies the same checks server-side. The profile components show a Remove button for each method when given `allowRemove`.
 
 ## Architecture
 
