@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [5.9.0](https://github.com/activescott/auth/compare/auth@5.8.0...auth@5.9.0) (2026-10-19)
+
+### Features
+
+* remove a sign-in identity from an account ([8c5da09](https://github.com/activescott/auth/commit/8c5da09602749812fb1226529be0c465aa500a37)), closes [#71](https://github.com/activescott/auth/issues/71)
+
 ## [5.8.0](https://github.com/activescott/auth/compare/auth@5.7.0...auth@5.8.0) (2026-10-11)
 
 ### Features

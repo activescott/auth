@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.1.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@3.0.0...auth-adapter-react-router@3.1.0) (2026-10-19)
+
+### Features
+
+* remove buttons on the profile page ([f4ec490](https://github.com/activescott/auth/commit/f4ec4900c624712828767736e92d0ce0f3ba99db)), closes [#71](https://github.com/activescott/auth/issues/71)
+
 ## [3.0.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@2.6.0...auth-adapter-react-router@3.0.0) (2026-09-21)
 
 ### ⚠ BREAKING CHANGES
