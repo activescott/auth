@@ -16,6 +16,8 @@ export type {
   SignInWithPasskeyOptions,
 } from "./passkey-client.js"
 export { isConditionalUIAvailable } from "./webauthn-ceremony.js"
+export { describePasskeyError } from "./passkey-error.js"
+export type { PasskeyError, PasskeyErrorReason } from "./passkey-error.js"
 
 /**
  * Run the WebAuthn registration ceremony in the browser: converts the
