@@ -112,10 +112,23 @@ Registration model: **add-passkey-while-signed-in**. Users sign in with another 
 | `rpName`              | (required)                               | Relying party name shown in authenticator prompts                     |
 | `appUrl`              | (unset)                                  | Canonical app URL (e.g. `"https://myapp.example"`); set in production |
 | `rpID`                | `appUrl` hostname, else request hostname | Relying party ID; overrides `appUrl` (e.g. a parent domain)           |
-| `expectedOrigin`      | `appUrl` origin, else request origin     | Expected WebAuthn origin; overrides `appUrl`                          |
+| `expectedOrigin`      | `appUrl` origin, else request origin     | Expected WebAuthn origin, or a list of them; overrides `appUrl`       |
 | `challengeSecret`     | (required)                               | Signs the short-lived challenge cookie                                |
 | `challengeExpiry`     | `"5m"`                                   | Challenge lifetime                                                    |
 | `challengeCookieName` | `"auth_passkey_challenge"`               | Challenge cookie name                                                 |
+
+To accept passkeys on several hosts that share one relying party ID, such as a site and its preview subdomains, pass a list. A passkey stays bound to `rpID`, so one saved on `example.com` works on all of them:
+
+```ts
+new PasskeyProvider({
+  rpName: "MyApp",
+  appUrl: "https://example.com", // rpID "example.com"
+  expectedOrigin: ["https://example.com", "https://beta.example.com"],
+  challengeSecret: process.env.JWT_SECRET!,
+})
+```
+
+A list needs `rpID` or `appUrl` set. The constructor throws unless each http(s) origin is a bare origin (no path or trailing slash) on `rpID` or a subdomain of it, since browsers refuse a ceremony anywhere else. Non-web origins such as Android's `android:apk-key-hash:...` are passed through unchecked.
 
 ## Storage: passkeys are identities
 
