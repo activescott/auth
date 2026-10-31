@@ -52,6 +52,29 @@ location.assign("/dashboard") // session cookie is set
 
 Both throw when the user cancels or the server rejects the request. A server rejection's `Error.message` is the most specific text the response carries — the error's `details.reason` (e.g. `"Unknown credential"`, a passkey saved in a password manager whose identity the server no longer has), else its `message` — so it is fit to show the user.
 
+When the browser's passkey prompt ends without a credential (the user cancelled it, it timed out because the site has no passkey on this device, or another ceremony aborted it), the browser throws a `NotAllowedError`, `AbortError`, or `TimeoutError` whose text reads like a fault. `describePasskeyError` sorts a caught error into a typed result so you can show your own message instead:
+
+```ts
+import {
+  createPasskeyClient,
+  describePasskeyError,
+} from "@activescott/auth-provider-passkey/browser"
+
+try {
+  await passkeys.signInWithPasskey()
+} catch (caught) {
+  const failure = describePasskeyError(caught)
+  // { ok: false, reason: "no-credential-or-cancelled" | "error", message, error }
+  showError(
+    failure.reason === "no-credential-or-cancelled"
+      ? "No passkey for this site yet. Sign in with email, then add one."
+      : failure.message,
+  )
+}
+```
+
+Browsers deliberately don't say which of those happened, so a site can't probe for passkeys; one message has to cover them all.
+
 ### Fetch options before the tap
 
 Safari (iOS and macOS) shows the passkey sheet only while the tap that asked for it is still being handled. Called on its own, `signInWithPasskey()` fetches the options first and only then calls `navigator.credentials.get`, and Safari fails that with `NotAllowedError`. Call `prepareSignIn()` when the sign-in UI mounts, and `prepareRegistration()` on the page with the "Add a passkey" button:
