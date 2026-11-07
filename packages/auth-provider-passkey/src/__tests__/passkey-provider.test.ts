@@ -920,3 +920,110 @@ describe("appUrl", () => {
     expect(settings.expectedOrigin).toBe("https://app.example.com")
   })
 })
+
+describe("expectedOrigin", () => {
+  const ORIGINS = ["https://example.com", "https://beta.example.com"]
+
+  it("passes a list of origins to both verify calls, keeping the rpID", async () => {
+    const { provider, webauthn } = createProvider({
+      appUrl: "https://example.com",
+      expectedOrigin: ORIGINS,
+    })
+    const context = createContext()
+
+    const registerOptions = await provider.handleAction(
+      "register-options",
+      postRequest("register-options", {}),
+      context,
+    )
+    await provider.handleAction(
+      "register-verify",
+      postRequest(
+        "register-verify",
+        registrationBody(),
+        challengeCookieFrom(registerOptions),
+      ),
+      context,
+    )
+    const authenticateOptions = await provider.handleAction(
+      "authenticate-options",
+      postRequest("authenticate-options", {}),
+      context,
+    )
+    await provider.handleAction(
+      "authenticate-verify",
+      postRequest(
+        "authenticate-verify",
+        authenticationBody(),
+        challengeCookieFrom(authenticateOptions),
+      ),
+      context,
+    )
+
+    const expected = expect.objectContaining({
+      expectedOrigin: ORIGINS,
+      expectedRPID: "example.com",
+    })
+    expect(webauthn.verifyRegistrationResponse).toHaveBeenCalledWith(expected)
+    expect(webauthn.verifyAuthenticationResponse).toHaveBeenCalledWith(expected)
+  })
+
+  it("reports a list as one comma-separated setting", () => {
+    const settings = createProvider({
+      rpID: "example.com",
+      expectedOrigin: ORIGINS,
+    }).provider.describe().settings
+
+    expect(settings.expectedOrigin).toBe(
+      "https://example.com, https://beta.example.com",
+    )
+  })
+
+  it("accepts a port and a non-web origin", () => {
+    expect(() =>
+      createProvider({
+        rpID: "localhost",
+        expectedOrigin: ["http://localhost:5173", "android:apk-key-hash:abc"],
+      }),
+    ).not.toThrow()
+  })
+
+  it.each([
+    ["a different domain", "example.com", "https://example.org"],
+    ["a parent of the rpID", "app.example.com", "https://example.com"],
+    [
+      "a suffix that is not a subdomain",
+      "example.com",
+      "https://badexample.com",
+    ],
+    ["a path", "example.com", "https://example.com/app"],
+    ["a trailing slash", "example.com", "https://example.com/"],
+    ["not a URL", "example.com", "example.com"],
+  ])("throws at construction for an origin with %s", (_label, rpID, origin) => {
+    expect(() =>
+      createProvider({ rpID, expectedOrigin: ["https://example.com", origin] }),
+    ).toThrow(TypeError)
+    expect(() => createProvider({ rpID, expectedOrigin: origin })).toThrow(
+      TypeError,
+    )
+  })
+
+  it("checks the appUrl origin against an explicit rpID", () => {
+    expect(() =>
+      createProvider({ appUrl: "https://example.org", rpID: "example.com" }),
+    ).toThrow(TypeError)
+  })
+
+  it("throws for a list without rpID or appUrl, or an empty list", () => {
+    expect(() => createProvider({ expectedOrigin: ORIGINS })).toThrow(TypeError)
+    expect(() =>
+      createProvider({ rpID: "example.com", expectedOrigin: [] }),
+    ).toThrow(TypeError)
+  })
+
+  it("still accepts a single origin without rpID", () => {
+    expect(() =>
+      createProvider({ expectedOrigin: "https://example.com" }),
+    ).not.toThrow()
+  })
+})

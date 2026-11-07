@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.3.0](https://github.com/activescott/auth/compare/auth-provider-passkey@2.2.0...auth-provider-passkey@2.3.0) (2026-10-31)
+
+### Features
+
+* accept a list of expected origins ([#178](https://github.com/activescott/auth/issues/178)) ([2f2d323](https://github.com/activescott/auth/commit/2f2d323d6812c2e887ec464018114d1d05f6d404))
+* add describePasskeyError for no-credential or cancelled ceremonies ([#177](https://github.com/activescott/auth/issues/177)) ([4e17b3a](https://github.com/activescott/auth/commit/4e17b3af2a39d674927f5e5219774b999290bb05))
+
 ## [2.2.0](https://github.com/activescott/auth/compare/auth-provider-passkey@2.1.0...auth-provider-passkey@2.2.0) (2026-10-03)
 
 ### Features

@@ -30,6 +30,7 @@ import { signChallengeToken, verifyChallengeToken } from "./challenge-token.js"
 import { base64urlToUint8Array, uint8ArrayToBase64url } from "./base64url.js"
 import type { PasskeyCredentialMetadata } from "./credential-metadata.js"
 import { parsePasskeyCredentialMetadata } from "./credential-metadata.js"
+import { checkExpectedOrigin } from "./expected-origin.js"
 import { findPasskeyCredentials } from "./list-passkeys.js"
 import type { PasskeyProviderConfig, WebAuthnServer } from "./types.js"
 
@@ -82,6 +83,8 @@ export class PasskeyProvider implements AuthProvider {
   ) {
     this.appUrl =
       config.appUrl === undefined ? undefined : parseAppUrl(config.appUrl)
+    const origin = this.configuredOrigin()
+    if (origin !== undefined) checkExpectedOrigin(origin, this.configuredRpID())
   }
 
   /**
@@ -185,12 +188,16 @@ export class PasskeyProvider implements AuthProvider {
    * are not a configured value.
    */
   public describe(): ProviderDescription {
+    const origin = this.configuredOrigin()
     return {
       settings: {
         rpName: this.config.rpName,
         appUrl: this.config.appUrl ?? null,
         rpID: this.configuredRpID() ?? null,
-        expectedOrigin: this.configuredOrigin() ?? null,
+        // Settings are scalars, so a list reads as "https://a, https://b"
+        expectedOrigin: Array.isArray(origin)
+          ? origin.join(", ")
+          : (origin ?? null),
         challengeExpiry:
           this.config.challengeExpiry ?? DEFAULT_CHALLENGE_EXPIRY,
         challengeCookieName:
@@ -567,7 +574,7 @@ export class PasskeyProvider implements AuthProvider {
     return this.configuredRpID() ?? new URL(context.baseUrl).hostname
   }
 
-  private expectedOrigin(context: AuthContext): string {
+  private expectedOrigin(context: AuthContext): string | string[] {
     return this.configuredOrigin() ?? new URL(context.baseUrl).origin
   }
 
@@ -577,7 +584,7 @@ export class PasskeyProvider implements AuthProvider {
   }
 
   /** Explicit expectedOrigin, else the appUrl origin; undefined derives per request */
-  private configuredOrigin(): string | undefined {
+  private configuredOrigin(): string | string[] | undefined {
     return this.config.expectedOrigin ?? this.appUrl?.origin
   }
 

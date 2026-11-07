@@ -52,6 +52,29 @@ location.assign("/dashboard") // session cookie is set
 
 Both throw when the user cancels or the server rejects the request. A server rejection's `Error.message` is the most specific text the response carries — the error's `details.reason` (e.g. `"Unknown credential"`, a passkey saved in a password manager whose identity the server no longer has), else its `message` — so it is fit to show the user.
 
+When the browser's passkey prompt ends without a credential (the user cancelled it, it timed out because the site has no passkey on this device, or another ceremony aborted it), the browser throws a `NotAllowedError`, `AbortError`, or `TimeoutError` whose text reads like a fault. `describePasskeyError` sorts a caught error into a typed result so you can show your own message instead:
+
+```ts
+import {
+  createPasskeyClient,
+  describePasskeyError,
+} from "@activescott/auth-provider-passkey/browser"
+
+try {
+  await passkeys.signInWithPasskey()
+} catch (caught) {
+  const failure = describePasskeyError(caught)
+  // { ok: false, reason: "no-credential-or-cancelled" | "error", message, error }
+  showError(
+    failure.reason === "no-credential-or-cancelled"
+      ? "No passkey for this site yet. Sign in with email, then add one."
+      : failure.message,
+  )
+}
+```
+
+Browsers deliberately don't say which of those happened, so a site can't probe for passkeys; one message has to cover them all.
+
 ### Fetch options before the tap
 
 Safari (iOS and macOS) shows the passkey sheet only while the tap that asked for it is still being handled. Called on its own, `signInWithPasskey()` fetches the options first and only then calls `navigator.credentials.get`, and Safari fails that with `NotAllowedError`. Call `prepareSignIn()` when the sign-in UI mounts, and `prepareRegistration()` on the page with the "Add a passkey" button:
@@ -112,10 +135,23 @@ Registration model: **add-passkey-while-signed-in**. Users sign in with another 
 | `rpName`              | (required)                               | Relying party name shown in authenticator prompts                     |
 | `appUrl`              | (unset)                                  | Canonical app URL (e.g. `"https://myapp.example"`); set in production |
 | `rpID`                | `appUrl` hostname, else request hostname | Relying party ID; overrides `appUrl` (e.g. a parent domain)           |
-| `expectedOrigin`      | `appUrl` origin, else request origin     | Expected WebAuthn origin; overrides `appUrl`                          |
+| `expectedOrigin`      | `appUrl` origin, else request origin     | Expected WebAuthn origin, or a list of them; overrides `appUrl`       |
 | `challengeSecret`     | (required)                               | Signs the short-lived challenge cookie                                |
 | `challengeExpiry`     | `"5m"`                                   | Challenge lifetime                                                    |
 | `challengeCookieName` | `"auth_passkey_challenge"`               | Challenge cookie name                                                 |
+
+To accept passkeys on several hosts that share one relying party ID, such as a site and its preview subdomains, pass a list. A passkey stays bound to `rpID`, so one saved on `example.com` works on all of them:
+
+```ts
+new PasskeyProvider({
+  rpName: "MyApp",
+  appUrl: "https://example.com", // rpID "example.com"
+  expectedOrigin: ["https://example.com", "https://beta.example.com"],
+  challengeSecret: process.env.JWT_SECRET!,
+})
+```
+
+A list needs `rpID` or `appUrl` set. The constructor throws unless each http(s) origin is a bare origin (no path or trailing slash) on `rpID` or a subdomain of it, since browsers refuse a ceremony anywhere else. Non-web origins such as Android's `android:apk-key-hash:...` are passed through unchecked.
 
 ## Storage: passkeys are identities
 

@@ -30,8 +30,15 @@ export interface PasskeyProviderConfig {
   appUrl?: string
   /** Relying party ID; defaults to the appUrl hostname, else the request hostname */
   rpID?: string
-  /** Expected WebAuthn origin; defaults to the appUrl origin, else the request origin */
-  expectedOrigin?: string
+  /**
+   * Expected WebAuthn origin, or a list of them; defaults to the appUrl
+   * origin, else the request origin. A list lets one rpID serve several
+   * hosts, e.g. rpID "example.com" with
+   * ["https://example.com", "https://beta.example.com"], and needs rpID or
+   * appUrl set. Each http(s) entry must be a bare origin on the rpID or a
+   * subdomain of it; the constructor throws otherwise.
+   */
+  expectedOrigin?: string | string[]
   /** Secret for signing the short-lived challenge cookie */
   challengeSecret: string
   /** How long a challenge stays valid (default "5m") */
