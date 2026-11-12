@@ -37,7 +37,10 @@ interface Harness {
   logger: AuthLogger & { warn: ReturnType<typeof vi.fn> }
 }
 
-function createHarness(gate?: InitiateGate): Harness {
+function createHarness(
+  gate?: InitiateGate,
+  existingIdentity: Identity | null = null,
+): Harness {
   const provider = new EmailProvider(
     {
       smtp: { host: "smtp.test.com", port: 587, user: "user", pass: "pass" },
@@ -57,13 +60,13 @@ function createHarness(gate?: InitiateGate): Harness {
       cookie: { secure: false, sameSite: "lax" },
     },
     userStore: {
-      findById: vi.fn().mockResolvedValue({ id: "user-invitee" }),
+      findById: vi.fn().mockImplementation((id: string) => ({ id })),
       create: vi.fn().mockResolvedValue({ id: "user-invitee" }),
       onMerge: vi.fn(),
     },
     identityStore: {
-      // The invitee has no account yet: the link signs them up
-      findByProviderAndIdentifier: vi.fn().mockResolvedValue(null),
+      // By default the invitee has no account yet: the link signs them up
+      findByProviderAndIdentifier: vi.fn().mockResolvedValue(existingIdentity),
       findByUserId: vi.fn().mockResolvedValue([invitee]),
       create: vi.fn().mockResolvedValue(invitee),
       update: vi.fn().mockResolvedValue(invitee),
@@ -405,6 +408,50 @@ describe("EmailProvider.issueSignInLink behind an initiate gate", () => {
 
     expect(result.success).toBe(false)
     expect(createSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe("EmailProvider.issueSignInLink for an address that already has an account", () => {
+  let harness: Harness
+
+  beforeEach(() => {
+    harness = createHarness(
+      undefined,
+      identityFor(INVITEE_EMAIL, "user-existing"),
+    )
+  })
+
+  afterEach(() => {
+    harness.auth.destroy()
+    harness.challengeStore.destroy()
+  })
+
+  // The link would be a credential for someone else's account
+  it("refuses by default with IDENTITY_CONFLICT, creating no challenge", async () => {
+    const createSpy = vi.spyOn(harness.challengeStore, "create")
+
+    const result = await issue(harness, { email: " Invitee@Example.com" })
+
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error.code).toBe("IDENTITY_CONFLICT")
+    expect(createSpy).not.toHaveBeenCalled()
+  })
+
+  it('issues a link that signs in the existing user with existingAccount: "signIn"', async () => {
+    const link = await issueLink(harness, {
+      email: INVITEE_EMAIL,
+      existingAccount: "signIn",
+    })
+
+    const response = await harness.auth.handleRequest(
+      redeemFromAnotherBrowser(link),
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      success: true,
+      user: { id: "user-existing" },
+    })
   })
 })
 
