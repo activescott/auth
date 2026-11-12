@@ -63,6 +63,38 @@ Tuning: `expiry` (top-level, e.g. `"15m"`) and `otp: { length?, maxAttempts?, co
 
 `initiate` rejects an address whose domain has no dot (e.g. `scott@willeke`) before any store write or send, since it's almost always a missing TLD rather than a real destination. Set `allowDotlessDomain: true` for intranet or dev setups that sign in to a bare hostname like `user@localhost`.
 
+## Sign-in links for someone else (invites)
+
+`initiate` only works from the recipient's own browser: its link lasts 15 minutes and its code is bound to that browser's challenge cookie. To email a sign-in link to someone who did not ask for one, such as an invitee, mint it server-side from the inviter's request and send it in your own email:
+
+```ts
+const result = await emailProvider.issueSignInLink(
+  auth.createContext(request), // the inviter's request; its origin becomes the link's
+  {
+    email: invite.email,
+    redirectTo: `/invite/${game.id}`, // same-origin only
+    expiresIn: "7d", // default "7d", at most "30d"
+  },
+)
+if (result.success) {
+  await sendInviteEmail(invite.email, result.link, result.expiresAt) // your template, your mailer
+} else {
+  // result.error: INVALID_CREDENTIALS (bad address, or the gate refused), RATE_LIMITED
+}
+```
+
+The library returns the link rather than sending it: invite copy ("Scott invited you to play") is your app's mail, not a sign-in email, and the `EmailTransport` interface stays unchanged for existing custom transports.
+
+How it differs from `initiate`, and what keeps it safe:
+
+- **No challenge cookie and no code.** The link alone redeems it, from whichever browser opens the email, through the same confirm page (so mail scanners still can't consume it). It is single use: redemption deletes the challenge.
+- **Same checks as `initiate`.** The address is normalized and validated, the per-recipient abuse cap applies, the `AuthConfig.gate` is consulted in `"signin"` mode (a refusal, including a redirect, returns an error and creates nothing), and a `redirectTo` on another origin is dropped and reported to the logger. `gate.onVerified` (e.g. the waitlist) still runs when the link is used.
+- **Bounded lifetime.** `expiresIn` above 30 days, or not a duration, throws `CONFIGURATION_ERROR`.
+- **Logged.** `AuthConfig.logger.warn` gets `"Issued an email sign-in link"` (`challengeId`, `expiresAt`, `redirectTo`) and, on use, `"Redeemed an issued email sign-in link"` (`challengeId`, `userId`, `isNewUser`). Neither includes the address or the link.
+- **Rate-limit who can invite.** Anyone your app lets call this can make it mail arbitrary addresses; limit invites per inviter in your app, and use the gate if only invited addresses may sign up.
+
+A week-long link has to outlive deploys, so use a persistent `challengeStore`; with `InMemoryChallengeStore` a restart invalidates every unredeemed link.
+
 ## Dev mode (no SMTP needed)
 
 `NodemailerTransport` accepts an `isDevelopment` flag. When `true`, it buffers the email via Nodemailer's stream transport (no real SMTP connection) and prints the magic link to the server console — useful for local dev, examples, and CI:
