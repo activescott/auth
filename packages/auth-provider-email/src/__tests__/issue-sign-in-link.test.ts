@@ -114,9 +114,7 @@ async function issue(
   harness: Harness,
   options: Parameters<EmailProvider["issueSignInLink"]>[1],
 ): ReturnType<EmailProvider["issueSignInLink"]> {
-  const context = harness.auth.createContext(
-    await inviterRequest(harness.auth),
-  )
+  const context = harness.auth.createContext(await inviterRequest(harness.auth))
   return harness.provider.issueSignInLink(context, options)
 }
 

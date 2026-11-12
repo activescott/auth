@@ -10,6 +10,7 @@ import type {
 } from "@activescott/auth"
 import {
   AuthErrors,
+  AuthenticationError,
   generateOtpCode,
   hashOtpCode,
   verifyOtpChallenge,
@@ -27,13 +28,23 @@ import {
   authenticateWithIdentifier,
   initiateAccepted,
 } from "@activescott/auth"
-import type { EmailProviderConfig, EmailTransport } from "./types.js"
+import type {
+  EmailProviderConfig,
+  EmailTransport,
+  IssueSignInLinkOptions,
+  IssueSignInLinkResult,
+} from "./types.js"
 import { NodemailerTransport } from "./transports/nodemailer.js"
 
 const MS_PER_SECOND = 1000
 
 const CHALLENGE_TYPE = "email"
 const DEFAULT_EXPIRY = "15m"
+/** Default and ceiling for issueSignInLink: long enough for an invite to
+ * sit in an inbox for a week, short enough that a forgotten one dies */
+const DEFAULT_ISSUED_LINK_EXPIRY = "7d"
+const MAX_ISSUED_LINK_EXPIRY = "30d"
+const MAX_ISSUED_LINK_EXPIRY_SECONDS = parseDuration(MAX_ISSUED_LINK_EXPIRY)
 const DEFAULT_OTP_LENGTH = 6
 const DEFAULT_OTP_MAX_ATTEMPTS = 5
 const DEFAULT_OTP_COOKIE_NAME = "auth_challenge"
@@ -151,31 +162,21 @@ export class EmailProvider implements AuthProvider {
       )
       const redirectTo = resolvedRedirect || undefined
 
-      const challengeId = crypto.randomUUID()
-      const linkKey = this.generateLinkKey()
       const code = generateOtpCode(
         this.config.otp?.length ?? DEFAULT_OTP_LENGTH,
       )
       const expirySeconds = parseDuration(this.config.expiry ?? DEFAULT_EXPIRY)
 
-      await context.challengeStore.create({
-        id: challengeId,
-        type: CHALLENGE_TYPE,
-        identifier: email,
-        hashedCode: await hashOtpCode(challengeId, code),
-        data: {
-          hashedKey: await hashOtpCode(challengeId, linkKey),
-          ...(redirectTo ? { redirectTo } : {}),
-          ...(linkUserId ? { linkUserId } : {}),
+      const { challengeId, magicLink } = await this.createLinkChallenge(
+        context,
+        {
+          email,
+          redirectTo,
+          expirySeconds,
+          code,
+          data: linkUserId ? { linkUserId } : {},
         },
-        maxAttempts: this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
-        expiresAt: new Date(Date.now() + expirySeconds * MS_PER_SECOND),
-      })
-
-      let magicLink = `${context.baseUrl}/auth/email/verify?challenge=${challengeId}&key=${linkKey}`
-      if (redirectTo) {
-        magicLink += `&redirectTo=${encodeURIComponent(redirectTo)}`
-      }
+      )
 
       const sent = await this.transport.sendMagicLink(
         email,
@@ -217,6 +218,149 @@ export class EmailProvider implements AuthProvider {
         context.logger,
       )
     }
+  }
+
+  /**
+   * Mint a sign-in link for someone other than the requester, such as an
+   * invitee, and return it for the application to send in its own email
+   * ("Scott invited you to play"). Opening it signs that address in, creating
+   * the user if needed, then lands on `redirectTo`.
+   *
+   * Unlike `initiate`, the challenge is not bound to any browser: there is no
+   * challenge cookie and no one-time code, so the link alone redeems it, from
+   * whichever browser opens the email, once. Everything else matches
+   * `initiate`: the address is normalized and validated, the per-recipient
+   * abuse cap and the application's initiate gate (in `"signin"` mode) are
+   * consulted, and `redirectTo` must be on this app's origin. Redemption goes
+   * through the usual confirm page, so mail scanners cannot consume it.
+   *
+   * `context` comes from `auth.createContext(request)` for the request that
+   * triggered the invite; its origin becomes the link's origin. Issuing and
+   * redeeming are both reported through `AuthConfig.logger`, without the
+   * address or the link.
+   *
+   * @throws AuthenticationError (`CONFIGURATION_ERROR`) when `expiresIn` is
+   * not a duration or exceeds 30 days
+   *
+   * @example
+   * ```typescript
+   * const result = await emailProvider.issueSignInLink(
+   *   auth.createContext(request),
+   *   { email: invite.email, redirectTo: `/invite/${game.id}`, expiresIn: "7d" },
+   * )
+   * if (result.success) await sendInviteEmail(invite.email, result.link)
+   * ```
+   */
+  public async issueSignInLink(
+    context: AuthContext,
+    options: IssueSignInLinkOptions,
+  ): Promise<IssueSignInLinkResult> {
+    const expirySeconds = parseDuration(
+      options.expiresIn ?? DEFAULT_ISSUED_LINK_EXPIRY,
+    )
+    if (expirySeconds <= 0 || expirySeconds > MAX_ISSUED_LINK_EXPIRY_SECONDS) {
+      throw new AuthenticationError(
+        "CONFIGURATION_ERROR",
+        `issueSignInLink expiresIn must be a duration like "7d" of at most ${MAX_ISSUED_LINK_EXPIRY}; got ${JSON.stringify(options.expiresIn)}`,
+      )
+    }
+
+    const email = options.email.toLowerCase().trim()
+    if (!this.isValidEmail(email)) {
+      return {
+        success: false,
+        error: AuthErrors.invalidCredentials({
+          reason: "Invalid email format",
+        }),
+      }
+    }
+
+    const decision = await context.abuse?.checkIdentifier(this.id, email)
+    if (decision?.allowed === false) {
+      return { success: false, error: AuthErrors.rateLimited() }
+    }
+
+    const gated = await context.gate?.check({
+      provider: this.id,
+      identifier: email,
+      mode: "signin",
+    })
+    if (gated) {
+      // A redirect (e.g. to a waitlist) has no browser to send here: refused
+      return {
+        success: false,
+        error:
+          !(gated instanceof Response) && !gated.success
+            ? gated.error
+            : AuthErrors.invalidCredentials({
+                reason: "The initiate gate refused this address",
+              }),
+      }
+    }
+
+    const redirectTo =
+      resolveRedirectTarget(options.redirectTo, context.baseUrl, "", {
+        logger: context.logger,
+        source: "redirectTo",
+      }) || undefined
+
+    const { challengeId, magicLink, expiresAt } =
+      await this.createLinkChallenge(context, {
+        email,
+        redirectTo,
+        expirySeconds,
+        data: { issued: true },
+      })
+
+    context.logger?.warn("Issued an email sign-in link", {
+      provider: this.id,
+      challengeId,
+      expiresAt: expiresAt.toISOString(),
+      ...(redirectTo ? { redirectTo } : {}),
+    })
+
+    return { success: true, link: magicLink, expiresAt }
+  }
+
+  /**
+   * Store a magic-link challenge and build its link. With a `code` the
+   * challenge also redeems by one-time code (against the challenge cookie);
+   * without one, the link is the only way in.
+   */
+  private async createLinkChallenge(
+    context: AuthContext,
+    options: {
+      email: string
+      redirectTo: string | undefined
+      expirySeconds: number
+      code?: string
+      data: Record<string, unknown>
+    },
+  ): Promise<{ challengeId: string; magicLink: string; expiresAt: Date }> {
+    const { email, redirectTo, expirySeconds, code } = options
+    const challengeId = crypto.randomUUID()
+    const linkKey = this.generateLinkKey()
+    const expiresAt = new Date(Date.now() + expirySeconds * MS_PER_SECOND)
+
+    await context.challengeStore.create({
+      id: challengeId,
+      type: CHALLENGE_TYPE,
+      identifier: email,
+      ...(code ? { hashedCode: await hashOtpCode(challengeId, code) } : {}),
+      data: {
+        hashedKey: await hashOtpCode(challengeId, linkKey),
+        ...(redirectTo ? { redirectTo } : {}),
+        ...options.data,
+      },
+      maxAttempts: this.config.otp?.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS,
+      expiresAt,
+    })
+
+    let magicLink = `${context.baseUrl}/auth/email/verify?challenge=${challengeId}&key=${linkKey}`
+    if (redirectTo) {
+      magicLink += `&redirectTo=${encodeURIComponent(redirectTo)}`
+    }
+    return { challengeId, magicLink, expiresAt }
   }
 
   /**
@@ -355,7 +499,16 @@ export class EmailProvider implements AuthProvider {
     // Single use: consumed by redemption
     await context.challengeStore.delete(challenge.id)
 
-    return this.authenticateOrLink(challenge, request, context)
+    const result = await this.authenticateOrLink(challenge, request, context)
+    if (challenge.data?.issued === true && result.success) {
+      context.logger?.warn("Redeemed an issued email sign-in link", {
+        provider: this.id,
+        challengeId: challenge.id,
+        userId: result.user.id,
+        isNewUser: result.isNewUser ?? false,
+      })
+    }
+    return result
   }
 
   /**

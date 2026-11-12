@@ -1,3 +1,5 @@
+import type { AuthError } from "@activescott/auth"
+
 /**
  * Email provider configuration
  */
@@ -96,3 +98,27 @@ export interface SendMagicLinkOptions {
    */
   purpose?: "sign-in" | "link"
 }
+
+/**
+ * Options for {@link EmailProvider.issueSignInLink}
+ */
+export interface IssueSignInLinkOptions {
+  /** Address the link signs in (or signs up). Normalized and validated
+   * like the initiate form's `email` field. */
+  email: string
+  /** Same-origin path to land on after sign-in, e.g. `/invite/game-1`.
+   * Validated exactly as initiate validates it: a destination on another
+   * origin is dropped (and reported to the logger), not carried. */
+  redirectTo?: string
+  /** How long the link stays valid, as a duration like `"7d"` or `"12h"`
+   * (default `"7d"`, at most `"30d"`) */
+  expiresIn?: string
+}
+
+/**
+ * What {@link EmailProvider.issueSignInLink} returns: the link for the
+ * application to put in its own email, or why none was issued
+ */
+export type IssueSignInLinkResult =
+  | { success: true; link: string; expiresAt: Date }
+  | { success: false; error: AuthError }

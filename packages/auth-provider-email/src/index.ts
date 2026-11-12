@@ -12,6 +12,8 @@ export type {
   EmailTemplateConfig,
   EmailTransport,
   SendMagicLinkOptions,
+  IssueSignInLinkOptions,
+  IssueSignInLinkResult,
 } from "./types.js"
 
 // Transports
