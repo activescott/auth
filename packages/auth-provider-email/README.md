@@ -74,14 +74,24 @@ const result = await emailProvider.issueSignInLink(
     email: invite.email,
     redirectTo: `/invite/${game.id}`, // same-origin only
     expiresIn: "7d", // default "7d", at most "30d"
+    // existingAccount: "refuse" (default) | "signIn"
   },
 )
 if (result.success) {
   await sendInviteEmail(invite.email, result.link, result.expiresAt) // your template, your mailer
+} else if (result.error.code === "IDENTITY_CONFLICT") {
+  await sendSignInReminder(invite.email) // already has an account: invite them, no link
 } else {
   // result.error: INVALID_CREDENTIALS (bad address, or the gate refused), RATE_LIMITED
 }
 ```
+
+> [!WARNING]
+> The link is a credential: whoever opens it is signed in as the owner of that address. Send it only to that address, in the email. Never show it to the inviter, return it to the browser, put it in a "copy invite link" button, or write it to a log.
+
+**Existing accounts are refused by default.** If the address already has an email identity, the link would sign in to that existing account, so `issueSignInLink` returns `IDENTITY_CONFLICT` and creates nothing. Send that person a plain "you've been invited, sign in" email instead. Pass `existingAccount: "signIn"` only if your app emails the link to the address and nowhere else.
+
+**Don't show the inviter why it failed.** `IDENTITY_CONFLICT` tells you the address has an account, and `RATE_LIMITED` tells you someone has asked for it several times this hour. Both are fine for your app to act on, but telling the inviter leaks them; answer "invite sent" either way, as `initiate` does.
 
 The library returns the link rather than sending it: invite copy ("Scott invited you to play") is your app's mail, not a sign-in email, and the `EmailTransport` interface stays unchanged for existing custom transports.
 

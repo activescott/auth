@@ -234,6 +234,11 @@ export class EmailProvider implements AuthProvider {
    * consulted, and `redirectTo` must be on this app's origin. Redemption goes
    * through the usual confirm page, so mail scanners cannot consume it.
    *
+   * The link is a credential for the address: send it only to that address,
+   * never to the inviter, a page or a log. By default an address that
+   * already has an account is refused with `IDENTITY_CONFLICT`; see
+   * `existingAccount`.
+   *
    * `context` comes from `auth.createContext(request)` for the request that
    * triggered the invite; its origin becomes the link's origin. Issuing and
    * redeeming are both reported through `AuthConfig.logger`, without the
@@ -272,6 +277,21 @@ export class EmailProvider implements AuthProvider {
         error: AuthErrors.invalidCredentials({
           reason: "Invalid email format",
         }),
+      }
+    }
+
+    if ((options.existingAccount ?? "refuse") === "refuse") {
+      const existing = await context.identityStore.findByProviderAndIdentifier(
+        this.id,
+        email,
+      )
+      if (existing) {
+        return {
+          success: false,
+          error: AuthErrors.identityConflict({
+            reason: "The address already has an account",
+          }),
+        }
       }
     }
 

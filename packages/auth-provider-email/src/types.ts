@@ -113,6 +113,18 @@ export interface IssueSignInLinkOptions {
   /** How long the link stays valid, as a duration like `"7d"` or `"12h"`
    * (default `"7d"`, at most `"30d"`) */
   expiresIn?: string
+  /**
+   * What to do when the address already has an email identity. The link
+   * signs in whoever owns the address, so for an existing account it is
+   * that account's credential.
+   *
+   * - `"refuse"` (default): return an `IDENTITY_CONFLICT` error and create
+   *   no challenge. Send that person an ordinary "you've been invited, sign
+   *   in" email without a link that signs them in.
+   * - `"signIn"`: issue the link anyway. Only when your app sends it to
+   *   that address and nowhere else.
+   */
+  existingAccount?: "refuse" | "signIn"
 }
 
 /**
