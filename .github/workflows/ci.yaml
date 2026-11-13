@@ -14,7 +14,7 @@ jobs:
   validate:
     # Fork PRs stay on GitHub-hosted runners: this repo is public and the
     # self-hosted runner is a privileged dind pod on the cluster's only node.
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || 'auth-runners' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || 'auth-runners' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,7 +27,7 @@ jobs:
       - run: npm test
 
   example-e2e:
-    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || 'auth-runners' }}
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || 'auth-runners' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
