@@ -121,6 +121,16 @@ describe("rate-limited action routes", () => {
     )
   })
 
+  it("names abuse.clientIp in the block log when no client IP is known", async () => {
+    const { auth } = setup()
+
+    await statuses(auth, () => ({}))
+
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("ip=unknown (set abuse.clientIp)"),
+    )
+  })
+
   it("counts no-IP requests in the shared bucket when getClientIp returns null", async () => {
     const { auth } = setup({ clientIp: { getClientIp: () => null } })
 
