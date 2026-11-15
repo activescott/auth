@@ -320,6 +320,10 @@ describe("Auth.describeConfig", () => {
       { windowSeconds: 3600, max: 3 },
       { windowSeconds: 86_400, max: 10 },
     ])
+    expect(abuse.perIpAction).toEqual([
+      { windowSeconds: 60, max: 20 },
+      { windowSeconds: 3600, max: 200 },
+    ])
     expect(abuse.minFormFillSeconds).toBe(2)
     expect(abuse.botChecks).toEqual(["form-token"])
     expect(abuse.respondWith).toBe("generic")

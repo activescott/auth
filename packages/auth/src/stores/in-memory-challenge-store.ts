@@ -4,6 +4,23 @@ const MS_PER_SECOND = 1000
 const SECONDS_PER_MINUTE = 60
 /** Interval between sweeps of expired challenges in minutes */
 const SWEEP_INTERVAL_MINUTES = 5
+/** Default cap on stored challenges, live and expired together */
+const DEFAULT_MAX_CHALLENGES = 10_000
+
+/** Options for InMemoryChallengeStore */
+export interface InMemoryChallengeStoreOptions {
+  /** How often expired challenges are swept, in milliseconds (default 5 minutes) */
+  sweepIntervalMs?: number
+  /**
+   * Most challenges held at once (default 10,000). When a create would
+   * exceed it, expired challenges are dropped first, then the oldest live
+   * ones, so a loop of unauthenticated requests cannot grow memory without
+   * limit. Evicting a live challenge fails that sign-in attempt, so size this
+   * above the number of ceremonies you expect in flight within one
+   * challenge lifetime.
+   */
+  maxChallenges?: number
+}
 
 /**
  * In-memory ChallengeStore for single-instance deployments and development.
@@ -15,13 +32,26 @@ const SWEEP_INTERVAL_MINUTES = 5
 export class InMemoryChallengeStore implements ChallengeStore {
   private challenges = new Map<string, Challenge>()
   private sweepInterval: ReturnType<typeof setInterval> | null = null
+  private readonly maxChallenges: number
 
-  public constructor(
-    sweepIntervalMs: number = SWEEP_INTERVAL_MINUTES *
-      SECONDS_PER_MINUTE *
-      MS_PER_SECOND,
-  ) {
-    this.sweepInterval = setInterval(() => this.sweep(), sweepIntervalMs)
+  /**
+   * @param options Store options, or (for backwards compatibility) the sweep
+   * interval in milliseconds on its own
+   */
+  public constructor(options: InMemoryChallengeStoreOptions | number = {}) {
+    const resolved =
+      typeof options === "number" ? { sweepIntervalMs: options } : options
+    this.maxChallenges = resolved.maxChallenges ?? DEFAULT_MAX_CHALLENGES
+    this.sweepInterval = setInterval(
+      () => this.sweep(),
+      resolved.sweepIntervalMs ??
+        SWEEP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
+    )
+  }
+
+  /** Number of challenges currently held, expired ones included until swept */
+  public get size(): number {
+    return this.challenges.size
   }
 
   /**
@@ -42,6 +72,8 @@ export class InMemoryChallengeStore implements ChallengeStore {
       attempts: 0,
       createdAt: new Date(),
     }
+    this.challenges.delete(challenge.id)
+    if (this.challenges.size >= this.maxChallenges) this.makeRoom()
     this.challenges.set(challenge.id, challenge)
     return Promise.resolve(challenge)
   }
@@ -62,6 +94,18 @@ export class InMemoryChallengeStore implements ChallengeStore {
   public delete(id: string): Promise<void> {
     this.challenges.delete(id)
     return Promise.resolve()
+  }
+
+  /**
+   * Free at least one slot: sweep expired challenges, then evict the oldest
+   * live ones (Map iteration is insertion order)
+   */
+  private makeRoom(): void {
+    this.sweep()
+    for (const id of this.challenges.keys()) {
+      if (this.challenges.size < this.maxChallenges) break
+      this.challenges.delete(id)
+    }
   }
 
   private sweep(): void {

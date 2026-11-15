@@ -464,7 +464,8 @@ export interface AuthConfig {
    * single-instance deployments; back it with shared storage when running
    * multiple instances. */
   challengeStore: ChallengeStore
-  /** Abuse protection for the initiate endpoints. Protection is on by
+  /** Abuse protection for the initiate endpoints, and per-IP limits on
+   * action routes that opt in with `ProviderRoute.rateLimitByIp`. Protection is on by
    * default with sensible limits and an in-memory counter store, so this is
    * only needed to tune limits, supply shared storage, add a hosted bot check,
    * or turn it off. */
@@ -602,11 +603,20 @@ export interface ProviderRoute {
   /**
    * Which provider entry point serves the route. "initiate" runs the abuse
    * guard first and calls `initiate`; "verify" calls `verify`; "action"
-   * calls `handleAction` with the path's action segment (no abuse guard —
-   * declare "initiate" for anything that sends a message to a
-   * user-controlled address).
+   * calls `handleAction` with the path's action segment (no abuse guard
+   * unless `rateLimitByIp` is set; declare "initiate" for anything that
+   * sends a message to a user-controlled address).
    */
   handler: "initiate" | "verify" | "action"
+  /**
+   * For "action" routes: run the abuse guard's per-IP limits
+   * (`AbuseConfig.perIpAction`, using `AbuseConfig.clientIp`) before
+   * `handleAction`, and answer 429 RATE_LIMITED past them. Set it on routes
+   * that need no session and write server-side state on every call, such as
+   * a challenge. Ignored on other handlers and by versions of
+   * `@activescott/auth` that predate it.
+   */
+  rateLimitByIp?: boolean
 }
 
 /**

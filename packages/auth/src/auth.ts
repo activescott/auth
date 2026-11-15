@@ -154,7 +154,8 @@ export class Auth {
    *
    * Dispatch is driven by the provider's declared route table
    * (`getRoutes()`): the route's `handler` decides whether the abuse guard
-   * runs (initiate), the verify path is taken, or `handleAction` is called.
+   * runs (initiate), the verify path is taken, or `handleAction` is called
+   * (after the per-IP limits when the route sets `rateLimitByIp`).
    * A method+path with no declared route is 404 (405 when only the method
    * differs). The core-owned `link-merge` action (account merging) and
    * `unlink` action (removing a sign-in method) are served for every provider.
@@ -245,6 +246,16 @@ export class Auth {
         case "action": {
           if (!provider.handleAction) {
             return new Response("Not Found", { status: 404 })
+          }
+          if (route.rateLimitByIp) {
+            const decision = await this.abuseGuard.checkAction(
+              request,
+              providerId,
+              action,
+            )
+            if (!decision.allowed) {
+              return this.rateLimitedResponse(decision.retryAfterSeconds)
+            }
           }
           return await provider.handleAction(action, request, context)
         }
@@ -862,17 +873,7 @@ export class Auth {
     }
 
     if (this.abuseGuard.respondWith === "rateLimited") {
-      const response = this.errorToResponse(
-        AuthErrors.rateLimited(
-          decision.retryAfterSeconds
-            ? { retryAfterSeconds: decision.retryAfterSeconds }
-            : undefined,
-        ),
-      )
-      if (decision.retryAfterSeconds) {
-        response.headers.set("Retry-After", String(decision.retryAfterSeconds))
-      }
-      return response
+      return this.rateLimitedResponse(decision.retryAfterSeconds)
     }
 
     const accepted = initiateAccepted(
@@ -884,6 +885,21 @@ export class Auth {
     return accepted instanceof Response
       ? accepted
       : this.initResultToResponse(accepted)
+  }
+
+  /**
+   * 429 RATE_LIMITED JSON, with Retry-After when the limiter knows it
+   */
+  private rateLimitedResponse(retryAfterSeconds?: number): Response {
+    const response = this.errorToResponse(
+      AuthErrors.rateLimited(
+        retryAfterSeconds ? { retryAfterSeconds } : undefined,
+      ),
+    )
+    if (retryAfterSeconds) {
+      response.headers.set("Retry-After", String(retryAfterSeconds))
+    }
+    return response
   }
 
   /**

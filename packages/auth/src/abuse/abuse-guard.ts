@@ -25,6 +25,17 @@ const DEFAULT_PER_IP_RULES: RateLimitRule[] = [
   { windowSeconds: SECONDS_PER_HOUR, max: 10 },
 ]
 
+/**
+ * Per-IP defaults for action routes that opt in with `rateLimitByIp`, such as
+ * the passkey options endpoints. Looser than the initiate limits: these send
+ * nothing, and a browser fetches fresh options every few minutes per open tab
+ * and after each attempt, so a shared office IP makes many legitimate calls.
+ */
+const DEFAULT_PER_IP_ACTION_RULES: RateLimitRule[] = [
+  { windowSeconds: SECONDS_PER_MINUTE, max: 20 },
+  { windowSeconds: SECONDS_PER_HOUR, max: 200 },
+]
+
 /** Per-recipient defaults, enforced regardless of source IP */
 const DEFAULT_PER_IDENTIFIER_RULES: RateLimitRule[] = [
   { windowSeconds: SECONDS_PER_HOUR, max: 3 },
@@ -36,13 +47,19 @@ export type AbuseReason =
   "ip_rate_limited" | "identifier_rate_limited" | "bot_check_failed"
 
 /**
- * A blocked initiate attempt, as passed to `onBlocked` and written to the log
+ * A blocked initiate attempt, or a blocked call to a rate-limited action
+ * route, as passed to `onBlocked` and written to the log
  */
 export interface AbuseEvent {
   reason: AbuseReason
   /** Which check produced it (e.g. "too_fast", "turnstile:...") */
   detail?: string
   providerId: string
+  /**
+   * The action route that was refused (e.g. "authenticate-options"); unset
+   * for initiate blocks
+   */
+  action?: string
   ip: string | null
   /** The address/number the caller asked to send to, when known */
   identifier?: string
@@ -75,6 +92,15 @@ export interface AbuseConfig {
   perIp?: RateLimitRule[]
   /** Limits per recipient address/number (default: 3/hour and 10/day) */
   perIdentifier?: RateLimitRule[]
+  /**
+   * Limits per client IP on action routes a provider marks `rateLimitByIp`,
+   * such as the passkey options endpoints, which need no session and store a
+   * challenge on every call (default: 20/minute and 200/hour). Counted per
+   * provider, separately from `perIp`. A refused call gets 429 RATE_LIMITED
+   * whatever `respondWith` says: these are fetch/JSON endpoints with no
+   * "sent" answer to imitate.
+   */
+  perIpAction?: RateLimitRule[]
   /** Minimum seconds between form render and submit (default 2) */
   minFormFillSeconds?: number
   /**
@@ -105,6 +131,7 @@ export interface AbuseDescription {
   enabled: boolean
   perIp: RateLimitRule[]
   perIdentifier: RateLimitRule[]
+  perIpAction: RateLimitRule[]
   minFormFillSeconds: number
   /** Ids of every bot check in effect, including the built-in form-token one */
   botChecks: string[]
@@ -178,6 +205,7 @@ export class AbuseGuard {
       enabled: this.enabled,
       perIp: this.config.perIp ?? DEFAULT_PER_IP_RULES,
       perIdentifier: this.config.perIdentifier ?? DEFAULT_PER_IDENTIFIER_RULES,
+      perIpAction: this.config.perIpAction ?? DEFAULT_PER_IP_ACTION_RULES,
       minFormFillSeconds:
         this.config.minFormFillSeconds ?? DEFAULT_MIN_FORM_FILL_SECONDS,
       botChecks: this.botChecks.map((check) => check.id),
@@ -260,6 +288,40 @@ export class AbuseGuard {
   }
 
   /**
+   * Per-IP limits for an action route declared with `rateLimitByIp`. No bot
+   * checks: these are fetch ceremonies that carry no form token. Like
+   * checkInitiate, skipped when no client IP can be determined.
+   */
+  public async checkAction(
+    request: Request,
+    providerId: string,
+    action: string,
+  ): Promise<AbuseDecision> {
+    if (!this.enabled) return { allowed: true }
+
+    const ip = getClientIp(request, this.config.clientIp)
+    if (!ip) return { allowed: true }
+
+    const verdict = await this.limiter.check(
+      `ip-action:${providerId}:${ip}`,
+      this.config.perIpAction ?? DEFAULT_PER_IP_ACTION_RULES,
+    )
+    if (verdict.allowed) return { allowed: true }
+
+    return this.blocked(
+      {
+        reason: "ip_rate_limited",
+        providerId,
+        action,
+        ip,
+        rule: verdict.rule,
+        at: new Date(),
+      },
+      verdict.retryAfterSeconds,
+    )
+  }
+
+  /**
    * Per-recipient limits: caps how many messages one address or number
    * receives no matter how many IPs ask for them.
    */
@@ -312,6 +374,7 @@ export class AbuseGuard {
       `reason=${event.reason}`,
       event.detail ? `detail=${event.detail}` : null,
       `provider=${event.providerId}`,
+      event.action ? `action=${event.action}` : null,
       `ip=${event.ip ?? "unknown"}`,
       event.identifier ? `identifier=${event.identifier}` : null,
       event.rule ? `rule=${event.rule.max}/${event.rule.windowSeconds}s` : null,
@@ -319,7 +382,8 @@ export class AbuseGuard {
     ].filter(Boolean)
 
     // eslint-disable-next-line no-console
-    console.warn(`[auth] blocked initiate: ${parts.join(" ")}`)
+    const kind = event.action ? "action" : "initiate"
+    console.warn(`[auth] blocked ${kind}: ${parts.join(" ")}`)
 
     this.config.onBlocked?.(event)
 
