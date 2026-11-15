@@ -176,4 +176,24 @@ describe("rate-limited action routes", () => {
 
     expect(result).toEqual(Array<number>(ATTEMPTS).fill(HTTP_OK))
   })
+
+  it("counts IPv6 addresses in one /64 against one bucket", async () => {
+    const { auth } = setup()
+
+    expectLimited(
+      await statuses(auth, (index) => ({
+        "X-Forwarded-For": `2001:db8:0:0::${index + 1}`,
+      })),
+    )
+  })
+
+  it("counts one IPv4 client on rotating source ports against one bucket", async () => {
+    const { auth } = setup()
+
+    expectLimited(
+      await statuses(auth, (index) => ({
+        "X-Forwarded-For": `${PROXY_IP}:${50000 + index}`,
+      })),
+    )
+  })
 })
