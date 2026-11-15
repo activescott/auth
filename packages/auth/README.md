@@ -198,7 +198,11 @@ abuse: {
 
 `InMemoryRateLimitStore` counts per process, so a multi-instance deployment effectively multiplies every limit by the instance count. Implement the one-method `RateLimitStore` interface against Redis (`INCR` + `EXPIRE`) or your database to share counters.
 
-Client IPs come from `cf-connecting-ip`, then `x-forwarded-for` (rightmost hop; set `abuse.clientIp.trustedProxyHops` if more than one proxy appends), then `x-real-ip`. These headers are spoofable unless a proxy in front of your app rewrites them — supply `abuse.clientIp.getClientIp` when your runtime exposes the peer address. When no IP can be determined, per-IP limits are skipped and per-recipient limits still apply.
+Client IPs come from `x-forwarded-for` (rightmost hop; set `abuse.clientIp.trustedProxyHops` if more than one proxy appends), then `x-real-ip`. `cf-connecting-ip` is read first only with `abuse.clientIp.trustCloudflare: true`: any proxy other than Cloudflare (nginx, an ALB, Caddy) forwards that header exactly as the client sent it, so trusting it there lets a caller choose a new IP on every request. Set it only when all traffic reaches the app through Cloudflare. Cloudflare also appends the client to `x-forwarded-for`, so leaving it off is safe there as long as `trustedProxyHops` counts every proxy that appends.
+
+These headers are spoofable unless a proxy in front of your app rewrites them. Supply `abuse.clientIp.getClientIp` when your runtime exposes the peer address; it replaces header inspection entirely, so none of the above applies. When no IP can be determined, `initiate` routes skip their per-IP limits (per-recipient limits still apply), while `rateLimitByIp` action routes count the call against one shared `unknown` bucket, so leaving the headers off does not bypass the limit. A deployment that sees no IP headers at all therefore shares that one bucket across all its users: give it a `getClientIp`.
+
+With no proxy in front and no `getClientIp`, a caller can still send a fresh `x-forwarded-for` on every request, and no per-IP limit stops a deliberate attacker. The challenge store's cap is then the only control, and it fails real users' sign-ins once reached (see [ChallengeStore](#challengestore)).
 
 ### Form token
 
