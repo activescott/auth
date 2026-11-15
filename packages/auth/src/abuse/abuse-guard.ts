@@ -20,7 +20,8 @@ const SECONDS_PER_HOUR = 3600
 const SECONDS_PER_DAY = 86_400
 /**
  * Rate-limit key segment shared by every action-route request whose client IP
- * cannot be determined. Cannot collide with a real address.
+ * cannot be determined. A request sending `x-forwarded-for: unknown` lands in
+ * it too, which gains the sender nothing: it only joins the shared bucket.
  */
 const UNKNOWN_IP_BUCKET = "unknown"
 
@@ -381,7 +382,8 @@ export class AbuseGuard {
       event.detail ? `detail=${event.detail}` : null,
       `provider=${event.providerId}`,
       event.action ? `action=${event.action}` : null,
-      `ip=${event.ip ?? "unknown"}`,
+      // Name the setting, so an operator seeing this knows what to configure
+      event.ip ? `ip=${event.ip}` : "ip=unknown (set abuse.clientIp)",
       event.identifier ? `identifier=${event.identifier}` : null,
       event.rule ? `rule=${event.rule.max}/${event.rule.windowSeconds}s` : null,
       retryAfterSeconds ? `retryAfter=${retryAfterSeconds}s` : null,
