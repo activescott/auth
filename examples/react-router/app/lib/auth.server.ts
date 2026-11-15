@@ -398,6 +398,17 @@ export const auth = new Auth({
     // not pause two seconds before every sign-in. Keep the default (or
     // higher) in a real app.
     minFormFillSeconds: 1,
+    // The passkey options endpoints are limited per client IP (default 20
+    // per minute per route), and a request with no IP header counts against
+    // one shared "unknown" bucket. Behind a real proxy each user has their
+    // own bucket; the Playwright suite talks to the server directly with no
+    // proxy headers, and every login and dashboard page load fetches
+    // options, so it would hit the shared limit. Only e2e raises it. In a
+    // real app, set `clientIp` (e.g. `getClientIp`) so users get their own
+    // buckets instead.
+    ...(process.env.E2E_TEST_MODE === "true"
+      ? { perIpAction: [{ windowSeconds: 60, max: 10_000 }] }
+      : {}),
     // Where blocked attempts go beyond the library's own warn-level log.
     // A real app forwards these to its logger/metrics so an abuse burst is
     // visible: `logger.warn({ ...event }, "auth abuse blocked")`.
