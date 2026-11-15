@@ -15,9 +15,12 @@ export interface InMemoryChallengeStoreOptions {
    * Most challenges held at once (default 10,000). When a create would
    * exceed it, expired challenges are dropped first, then the oldest live
    * ones, so a loop of unauthenticated requests cannot grow memory without
-   * limit. Evicting a live challenge fails that sign-in attempt, so size this
-   * above the number of ceremonies you expect in flight within one
-   * challenge lifetime.
+   * limit. Evicting a live challenge fails that sign-in attempt, and the
+   * store is shared by every provider, so a flood through one endpoint fails
+   * other users' in-flight email, SMS, OIDC, and passkey sign-ins until it
+   * stops. The first live eviction in each sweep interval is logged with
+   * `console.warn`. Size this above the number of ceremonies you expect in
+   * flight within one challenge lifetime.
    */
   maxChallenges?: number
 }
@@ -33,6 +36,8 @@ export class InMemoryChallengeStore implements ChallengeStore {
   private challenges = new Map<string, Challenge>()
   private sweepInterval: ReturnType<typeof setInterval> | null = null
   private readonly maxChallenges: number
+  /** Whether a live eviction has been logged since the last scheduled sweep */
+  private warnedSinceSweep = false
 
   /**
    * @param options Store options, or (for backwards compatibility) the sweep
@@ -43,7 +48,10 @@ export class InMemoryChallengeStore implements ChallengeStore {
       typeof options === "number" ? { sweepIntervalMs: options } : options
     this.maxChallenges = resolved.maxChallenges ?? DEFAULT_MAX_CHALLENGES
     this.sweepInterval = setInterval(
-      () => this.sweep(),
+      () => {
+        this.sweep()
+        this.warnedSinceSweep = false
+      },
       resolved.sweepIntervalMs ??
         SWEEP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
     )
@@ -98,10 +106,22 @@ export class InMemoryChallengeStore implements ChallengeStore {
 
   /**
    * Free at least one slot: sweep expired challenges, then evict the oldest
-   * live ones (Map iteration is insertion order)
+   * live ones (Map iteration is insertion order). A live eviction fails a
+   * sign-in in progress, so the first one in each sweep window is logged.
    */
   private makeRoom(): void {
     this.sweep()
+    if (this.challenges.size < this.maxChallenges) return
+    if (!this.warnedSinceSweep) {
+      this.warnedSinceSweep = true
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[auth] InMemoryChallengeStore is full (maxChallenges=${this.maxChallenges}): ` +
+          "evicting live challenges, which fails those sign-ins. A flood of " +
+          "sign-in requests is the usual cause; check the per-IP limits and " +
+          "abuse.clientIp.",
+      )
+    }
     for (const id of this.challenges.keys()) {
       if (this.challenges.size < this.maxChallenges) break
       this.challenges.delete(id)
