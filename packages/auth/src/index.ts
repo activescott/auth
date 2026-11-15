@@ -72,6 +72,7 @@ export type { RateLimitRule, RateLimitVerdict } from "./abuse/rate-limiter.js"
 export { RateLimiter } from "./abuse/rate-limiter.js"
 export type { RateLimitHit, RateLimitStore } from "./abuse/rate-limit-store.js"
 export { InMemoryRateLimitStore } from "./stores/in-memory-rate-limit-store.js"
+export type { InMemoryRateLimitStoreOptions } from "./stores/in-memory-rate-limit-store.js"
 export type { ClientIpOptions } from "./abuse/client-ip.js"
 export { getClientIp } from "./abuse/client-ip.js"
 export type {
