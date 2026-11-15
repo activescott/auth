@@ -9,7 +9,7 @@ import {
   DEFAULT_MIN_FORM_FILL_SECONDS,
   FormTokenBotCheck,
 } from "./bot-check.js"
-import { getClientIp } from "./client-ip.js"
+import { getClientIp, ipRateLimitKey } from "./client-ip.js"
 import type { ClientIpOptions } from "./client-ip.js"
 import { RateLimiter } from "./rate-limiter.js"
 import type { RateLimitRule } from "./rate-limiter.js"
@@ -273,7 +273,7 @@ export class AbuseGuard {
 
     if (ip) {
       const verdict = await this.limiter.check(
-        `ip:${providerId}:${ip}`,
+        `ip:${providerId}:${ipRateLimitKey(ip)}`,
         this.config.perIp ?? DEFAULT_PER_IP_RULES,
       )
       if (!verdict.allowed) {
@@ -310,7 +310,7 @@ export class AbuseGuard {
     const ip = getClientIp(request, this.config.clientIp)
 
     const verdict = await this.limiter.check(
-      `ip-action:${providerId}:${action}:${ip ?? UNKNOWN_IP_BUCKET}`,
+      `ip-action:${providerId}:${action}:${ip ? ipRateLimitKey(ip) : UNKNOWN_IP_BUCKET}`,
       this.config.perIpAction ?? DEFAULT_PER_IP_ACTION_RULES,
     )
     if (verdict.allowed) return { allowed: true }
