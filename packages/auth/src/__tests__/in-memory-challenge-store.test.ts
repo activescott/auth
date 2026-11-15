@@ -163,6 +163,34 @@ describe("InMemoryChallengeStore", () => {
       expect(warn).toHaveBeenCalledTimes(2)
     })
 
+    it("sweeps at most once per interval while full", async () => {
+      // A full sweep per create would cost O(maxChallenges) each, under
+      // exactly the flood the cap guards against
+      vi.useFakeTimers()
+      store = new InMemoryChallengeStore({
+        maxChallenges: 100,
+        sweepIntervalMs: 1000,
+      })
+      vi.spyOn(console, "warn").mockImplementation(() => {})
+      for (let index = 0; index < 100; index++) {
+        await store.create(challengeData({ id: `fill-${index}` }))
+      }
+      const entries = vi.spyOn(Map.prototype, "entries")
+
+      for (let index = 0; index < 50; index++) {
+        await store.create(challengeData({ id: `flood-${index}` }))
+      }
+      expect(entries).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(1000)
+      expect(entries).toHaveBeenCalledTimes(2)
+      for (let index = 0; index < 50; index++) {
+        await store.create(challengeData({ id: `later-${index}` }))
+      }
+      expect(entries).toHaveBeenCalledTimes(2)
+      expect(store.size).toBe(100)
+    })
+
     it("does not warn when only expired challenges make room", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
       store = new InMemoryChallengeStore({ maxChallenges: 2 })
