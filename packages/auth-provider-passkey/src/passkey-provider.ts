@@ -159,16 +159,26 @@ export class PasskeyProvider implements AuthProvider {
    * All four actions are declared `handler: "action"` (not
    * initiate/verify): they are fetch/JSON ceremonies that carry no form
    * token, so the initiate abuse guard's bot checks would block them.
-   * WebAuthn's own challenge round trip is the abuse control here.
+   *
+   * The two options routes set `rateLimitByIp`: each call stores a challenge,
+   * and authenticate-options needs no session, so without a per-IP limit a
+   * loop could fill the challenge store. Verify routes only consume
+   * challenges and stay unthrottled.
    */
   public getRoutes(): ProviderRoute[] {
     return [
-      { method: "POST", path: "/passkey/register-options", handler: "action" },
+      {
+        method: "POST",
+        path: "/passkey/register-options",
+        handler: "action",
+        rateLimitByIp: true,
+      },
       { method: "POST", path: "/passkey/register-verify", handler: "action" },
       {
         method: "POST",
         path: "/passkey/authenticate-options",
         handler: "action",
+        rateLimitByIp: true,
       },
       {
         method: "POST",

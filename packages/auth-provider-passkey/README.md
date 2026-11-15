@@ -189,7 +189,9 @@ The markup is yours; `synced` is true for passkeys synced to a cloud keychain or
 
 The options endpoints set an HttpOnly, SameSite=Lax cookie containing a signed JWT (`challengeSecret`, 5-minute expiry) that binds the ceremony to the browser, and record the challenge in the core `challengeStore`. The verify endpoints require both and consume the stored challenge on the first redemption attempt — success or not — so every challenge is strictly single-use.
 
-`prepareSignIn()` and `prepareRegistration()` fetch options every few minutes while a page is open, and most of those challenges are never redeemed. `InMemoryChallengeStore` sweeps expired rows; a `ChallengeStore` you write has to delete rows past `expiresAt` itself.
+`prepareSignIn()` and `prepareRegistration()` fetch options every few minutes while a page is open, and most of those challenges are never redeemed. `InMemoryChallengeStore` sweeps expired rows and caps how many it holds; a `ChallengeStore` you write has to delete rows past `expiresAt` itself.
+
+Because `authenticate-options` needs no session and stores a challenge on every call, both options routes are rate limited per client IP by the core abuse guard: 20 per minute and 200 per hour by default, counted together. A refused call gets `429 RATE_LIMITED` with a `Retry-After` header and stores nothing. The limit reuses your `abuse.clientIp` setting; tune it with `abuse.perIpAction` (see the [core README](../auth/README.md#abuse-protection)). The verify routes are not limited, since they only consume challenges. This needs a version of `@activescott/auth` that honors `ProviderRoute.rateLimitByIp`; older versions serve the routes unthrottled.
 
 ## Cross-platform notes
 
