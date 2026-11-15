@@ -18,11 +18,15 @@ export interface InMemoryRateLimitStoreOptions {
   /** How often ended windows are swept, in milliseconds (default 5 minutes) */
   sweepIntervalMs?: number
   /**
-   * Most keys held at once (default 100,000). Starting a window for a new key
-   * past that evicts the oldest window, so a caller who rotates spoofed IPs
-   * cannot grow memory without limit. An evicted key starts counting from
-   * zero again, so under that kind of flood some limits reset early: size
-   * this well above the distinct IPs you expect within an hour.
+   * Most keys held per keyspace (default 100,000). A key's keyspace is its
+   * segment before the first `:` (`ip`, `ip-action`, `identifier`), so it
+   * must be a fixed name, never caller input. Starting a window for a new key
+   * in a full keyspace evicts that keyspace's oldest window, so a caller who
+   * rotates spoofed IPs cannot grow memory without limit, and cannot evict
+   * another keyspace's windows: a flood of new IPs never resets a
+   * per-recipient counter. An evicted key starts counting from zero again,
+   * so under that kind of flood some limits in the same keyspace reset
+   * early: size this well above the distinct IPs you expect within an hour.
    */
   maxKeys?: number
 }
@@ -37,7 +41,8 @@ export interface InMemoryRateLimitStoreOptions {
  * there instead.
  */
 export class InMemoryRateLimitStore implements RateLimitStore {
-  private windows = new Map<string, Window>()
+  /** Windows by keyspace, each Map in insertion (oldest-first) order */
+  private keyspaces = new Map<string, Map<string, Window>>()
   private sweepInterval: ReturnType<typeof setInterval> | null = null
   private readonly maxKeys: number
 
@@ -58,7 +63,9 @@ export class InMemoryRateLimitStore implements RateLimitStore {
 
   /** Number of windows currently held, ended ones included until swept */
   public get size(): number {
-    return this.windows.size
+    let total = 0
+    for (const windows of this.keyspaces.values()) total += windows.size
+    return total
   }
 
   /**
@@ -73,7 +80,8 @@ export class InMemoryRateLimitStore implements RateLimitStore {
 
   public hit(key: string, windowSeconds: number): Promise<RateLimitHit> {
     const now = Date.now()
-    const existing = this.windows.get(key)
+    const windows = this.keyspaceFor(key)
+    const existing = windows.get(key)
 
     if (!existing || existing.resetAtMs <= now) {
       const window = {
@@ -81,9 +89,9 @@ export class InMemoryRateLimitStore implements RateLimitStore {
         resetAtMs: now + windowSeconds * MS_PER_SECOND,
       }
       // Re-insert so Map order stays oldest-window-first for eviction
-      this.windows.delete(key)
-      if (this.windows.size >= this.maxKeys) this.evictOldest()
-      this.windows.set(key, window)
+      windows.delete(key)
+      if (windows.size >= this.maxKeys) this.evictOldest(windows)
+      windows.set(key, window)
       return Promise.resolve({
         count: window.count,
         resetAt: new Date(window.resetAtMs),
@@ -97,23 +105,36 @@ export class InMemoryRateLimitStore implements RateLimitStore {
     })
   }
 
+  /** The windows Map for the key's keyspace, created on first use */
+  private keyspaceFor(key: string): Map<string, Window> {
+    const separator = key.indexOf(":")
+    const name = separator === -1 ? "" : key.slice(0, separator)
+    let windows = this.keyspaces.get(name)
+    if (!windows) {
+      windows = new Map()
+      this.keyspaces.set(name, windows)
+    }
+    return windows
+  }
+
   /**
-   * Drop the oldest windows until there is room for one more (Map iteration
-   * is insertion order)
+   * Drop a keyspace's oldest windows until there is room for one more (Map
+   * iteration is insertion order)
    */
-  private evictOldest(): void {
-    for (const key of this.windows.keys()) {
-      if (this.windows.size < this.maxKeys) break
-      this.windows.delete(key)
+  private evictOldest(windows: Map<string, Window>): void {
+    for (const key of windows.keys()) {
+      if (windows.size < this.maxKeys) break
+      windows.delete(key)
     }
   }
 
   private sweep(): void {
     const now = Date.now()
-    for (const [key, window] of this.windows.entries()) {
-      if (window.resetAtMs <= now) {
-        this.windows.delete(key)
+    for (const [name, windows] of this.keyspaces.entries()) {
+      for (const [key, window] of windows.entries()) {
+        if (window.resetAtMs <= now) windows.delete(key)
       }
+      if (windows.size === 0) this.keyspaces.delete(name)
     }
   }
 }
