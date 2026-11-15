@@ -148,14 +148,14 @@ with `incrementAttempts` as `UPDATE challenges SET attempts = attempts + 1 WHERE
 
 The `initiate` endpoints send mail and texts to whatever address a caller submits, which makes them an attractive way to mail-bomb a third party or burn your sending reputation on bounces. Protection is **on by default** — you do not have to configure or implement anything:
 
-| Layer                   | Default                                                    |
-| ----------------------- | ---------------------------------------------------------- |
-| Per client IP           | 3 per minute, then 10 per hour                             |
-| Per recipient           | 3 per hour, then 10 per day                                |
-| Per IP, passkey options | 20 per minute, then 200 per hour (see below)               |
-| Minimum form-fill time  | 2 seconds (only enforced if the form posts a token, below) |
-| Counter storage         | `InMemoryRateLimitStore`                                   |
-| Blocked response        | identical to a successful send                             |
+| Layer                                  | Default                                                    |
+| -------------------------------------- | ---------------------------------------------------------- |
+| Per client IP                          | 3 per minute, then 10 per hour                             |
+| Per recipient                          | 3 per hour, then 10 per day                                |
+| Per IP, passkey options and OIDC start | 20 per minute, then 200 per hour (see below)               |
+| Minimum form-fill time                 | 2 seconds (only enforced if the form posts a token, below) |
+| Counter storage                        | `InMemoryRateLimitStore`                                   |
+| Blocked response                       | identical to a successful send                             |
 
 Blocked attempts are always logged (`console.warn`) with the reason, provider, IP, requested identifier, and rule, so an abuse burst is visible:
 
@@ -190,7 +190,7 @@ const auth = new Auth({
 
 ### Rate-limited action routes
 
-Some provider routes send nothing but still write server-side state on every call, with no session required: the passkey `authenticate-options` endpoint stores a WebAuthn challenge each time. A provider marks such a route `rateLimitByIp: true` in `getRoutes()`, and `Auth` then applies `abuse.perIpAction` (default 20 per minute, then 200 per hour) per client IP, provider, and route before calling `handleAction`. Bot checks do not run there, since these are fetch calls with no form token. The client IP comes from the same `abuse.clientIp` setting, blocks go to the same log line and `onBlocked` (with `action` set on the event), and `enabled: false` turns the limit off too. A refused call always gets `429 RATE_LIMITED` with `Retry-After`, whatever `respondWith` says, because a JSON options endpoint has no "sent" answer to imitate.
+Some provider routes send nothing but still write server-side state on every call, with no session required: the passkey `authenticate-options` endpoint stores a WebAuthn challenge each time, and the OIDC `start` routes store the state and PKCE verifier. A provider marks such a route `rateLimitByIp: true` in `getRoutes()`, and `Auth` then applies `abuse.perIpAction` (default 20 per minute, then 200 per hour) per client IP, provider, and route before calling `handleAction`. Bot checks do not run there, since these are fetch calls with no form token. The client IP comes from the same `abuse.clientIp` setting, blocks go to the same log line and `onBlocked` (with `action` set on the event), and `enabled: false` turns the limit off too. A refused call always gets `429 RATE_LIMITED` with `Retry-After`, whatever `respondWith` says, because a JSON options endpoint has no "sent" answer to imitate.
 
 ```ts
 abuse: {
