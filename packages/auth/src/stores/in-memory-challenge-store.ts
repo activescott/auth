@@ -13,8 +13,8 @@ export interface InMemoryChallengeStoreOptions {
   sweepIntervalMs?: number
   /**
    * Most challenges held at once (default 10,000). When a create would
-   * exceed it, expired challenges are dropped first, then the oldest live
-   * ones, so a loop of unauthenticated requests cannot grow memory without
+   * exceed it, expired challenges are dropped first (if no sweep has run in
+   * the last sweep interval), then the oldest live ones, so a loop of unauthenticated requests cannot grow memory without
    * limit. Evicting a live challenge fails that sign-in attempt, and the
    * store is shared by every provider, so a flood through one endpoint fails
    * other users' in-flight email, SMS, OIDC, and passkey sign-ins until it
@@ -38,6 +38,9 @@ export class InMemoryChallengeStore implements ChallengeStore {
   private readonly maxChallenges: number
   /** Whether a live eviction has been logged since the last scheduled sweep */
   private warnedSinceSweep = false
+  private readonly sweepIntervalMs: number
+  /** When the last sweep ran, or -Infinity before the first */
+  private lastSweepAt = Number.NEGATIVE_INFINITY
 
   /**
    * @param options Store options, or (for backwards compatibility) the sweep
@@ -47,14 +50,13 @@ export class InMemoryChallengeStore implements ChallengeStore {
     const resolved =
       typeof options === "number" ? { sweepIntervalMs: options } : options
     this.maxChallenges = resolved.maxChallenges ?? DEFAULT_MAX_CHALLENGES
-    this.sweepInterval = setInterval(
-      () => {
-        this.sweep()
-        this.warnedSinceSweep = false
-      },
+    this.sweepIntervalMs =
       resolved.sweepIntervalMs ??
-        SWEEP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND,
-    )
+      SWEEP_INTERVAL_MINUTES * SECONDS_PER_MINUTE * MS_PER_SECOND
+    this.sweepInterval = setInterval(() => {
+      this.sweep()
+      this.warnedSinceSweep = false
+    }, this.sweepIntervalMs)
   }
 
   /** Number of challenges currently held, expired ones included until swept */
@@ -106,11 +108,14 @@ export class InMemoryChallengeStore implements ChallengeStore {
 
   /**
    * Free at least one slot: sweep expired challenges, then evict the oldest
-   * live ones (Map iteration is insertion order). A live eviction fails a
-   * sign-in in progress, so the first one in each sweep window is logged.
+   * live ones (Map iteration is insertion order). The sweep walks the whole
+   * map, so it runs only if none has in the last sweep interval; otherwise a
+   * flood against a full store would pay O(maxChallenges) per create. A live
+   * eviction fails a sign-in in progress, so the first one in each sweep
+   * window is logged.
    */
   private makeRoom(): void {
-    this.sweep()
+    if (Date.now() - this.lastSweepAt >= this.sweepIntervalMs) this.sweep()
     if (this.challenges.size < this.maxChallenges) return
     if (!this.warnedSinceSweep) {
       this.warnedSinceSweep = true
@@ -130,6 +135,7 @@ export class InMemoryChallengeStore implements ChallengeStore {
 
   private sweep(): void {
     const now = Date.now()
+    this.lastSweepAt = now
     for (const [id, challenge] of this.challenges.entries()) {
       if (challenge.expiresAt.getTime() < now) {
         this.challenges.delete(id)
