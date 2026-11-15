@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest"
+import { describe, it, expect, afterEach, vi } from "vitest"
 import { InMemoryChallengeStore } from "../stores/in-memory-challenge-store.js"
 import type { Challenge } from "../types.js"
 
@@ -24,6 +24,8 @@ describe("InMemoryChallengeStore", () => {
 
   afterEach(() => {
     store?.destroy()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it("should create a challenge with zero attempts and a created date", async () => {
@@ -138,6 +140,39 @@ describe("InMemoryChallengeStore", () => {
       }
 
       expect(store.size).toBe(10_000)
+    })
+
+    it("warns once per sweep window when it evicts a live challenge", async () => {
+      vi.useFakeTimers()
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+      store = new InMemoryChallengeStore({
+        maxChallenges: 2,
+        sweepIntervalMs: 1000,
+      })
+
+      for (let index = 0; index < 5; index++) {
+        await store.create(challengeData({ id: `before-${index}` }))
+      }
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[0]).toMatch(/maxChallenges=2/)
+
+      vi.advanceTimersByTime(1000)
+      for (let index = 0; index < 5; index++) {
+        await store.create(challengeData({ id: `after-${index}` }))
+      }
+      expect(warn).toHaveBeenCalledTimes(2)
+    })
+
+    it("does not warn when only expired challenges make room", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+      store = new InMemoryChallengeStore({ maxChallenges: 2 })
+      const expiresAt = new Date(Date.now() - 1000)
+      await store.create(challengeData({ id: "expired-1", expiresAt }))
+      await store.create(challengeData({ id: "expired-2", expiresAt }))
+
+      await store.create(challengeData({ id: "live" }))
+
+      expect(warn).not.toHaveBeenCalled()
     })
 
     it("still accepts a sweep interval as its only argument", async () => {
