@@ -188,7 +188,7 @@ const auth = new Auth({
 
 ### Rate-limited action routes
 
-Some provider routes send nothing but still write server-side state on every call, with no session required: the passkey `authenticate-options` endpoint stores a WebAuthn challenge each time. A provider marks such a route `rateLimitByIp: true` in `getRoutes()`, and `Auth` then applies `abuse.perIpAction` (default 20 per minute, then 200 per hour) per client IP and provider before calling `handleAction`. Bot checks do not run there, since these are fetch calls with no form token. The client IP comes from the same `abuse.clientIp` setting, blocks go to the same log line and `onBlocked` (with `action` set on the event), and `enabled: false` turns the limit off too. A refused call always gets `429 RATE_LIMITED` with `Retry-After`, whatever `respondWith` says, because a JSON options endpoint has no "sent" answer to imitate.
+Some provider routes send nothing but still write server-side state on every call, with no session required: the passkey `authenticate-options` endpoint stores a WebAuthn challenge each time. A provider marks such a route `rateLimitByIp: true` in `getRoutes()`, and `Auth` then applies `abuse.perIpAction` (default 20 per minute, then 200 per hour) per client IP, provider, and route before calling `handleAction`. Bot checks do not run there, since these are fetch calls with no form token. The client IP comes from the same `abuse.clientIp` setting, blocks go to the same log line and `onBlocked` (with `action` set on the event), and `enabled: false` turns the limit off too. A refused call always gets `429 RATE_LIMITED` with `Retry-After`, whatever `respondWith` says, because a JSON options endpoint has no "sent" answer to imitate.
 
 ```ts
 abuse: {

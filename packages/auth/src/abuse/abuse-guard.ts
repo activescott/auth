@@ -101,7 +101,7 @@ export interface AbuseConfig {
    * Limits per client IP on action routes a provider marks `rateLimitByIp`,
    * such as the passkey options endpoints, which need no session and store a
    * challenge on every call (default: 20/minute and 200/hour). Counted per
-   * provider, separately from `perIp`. A refused call gets 429 RATE_LIMITED
+   * provider and per route, separately from `perIp`. A refused call gets 429 RATE_LIMITED
    * whatever `respondWith` says: these are fetch/JSON endpoints with no
    * "sent" answer to imitate.
    */
@@ -309,7 +309,7 @@ export class AbuseGuard {
     const ip = getClientIp(request, this.config.clientIp)
 
     const verdict = await this.limiter.check(
-      `ip-action:${providerId}:${ip ?? UNKNOWN_IP_BUCKET}`,
+      `ip-action:${providerId}:${action}:${ip ?? UNKNOWN_IP_BUCKET}`,
       this.config.perIpAction ?? DEFAULT_PER_IP_ACTION_RULES,
     )
     if (verdict.allowed) return { allowed: true }
