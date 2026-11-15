@@ -590,34 +590,50 @@ export interface AuthContext {
   logger?: AuthLogger
 }
 
-/**
- * Route definition for a provider. `Auth.handleRequest` dispatches strictly
- * from this table: a request whose method+path matches no declared route is
- * a 404 (405 when only the method differs).
- */
-export interface ProviderRoute {
+/** The method and path every provider route declares */
+export interface ProviderRouteBase {
   /** HTTP method */
   method: "GET" | "POST"
   /** Path pattern (relative to auth base path) */
   path: string
+}
+
+/**
+ * A route served by `initiate` or `verify`. "initiate" runs the abuse guard
+ * first and calls `initiate`; "verify" calls `verify`.
+ */
+export interface ProviderEntryRoute extends ProviderRouteBase {
+  /** Which provider entry point serves the route */
+  handler: "initiate" | "verify"
+  /** Only "action" routes take `rateLimitByIp` */
+  rateLimitByIp?: never
+}
+
+/**
+ * A route served by `handleAction` with the path's action segment. No abuse
+ * guard runs unless `rateLimitByIp` is set; declare an "initiate" route
+ * instead for anything that sends a message to a user-controlled address.
+ */
+export interface ProviderActionRoute extends ProviderRouteBase {
+  /** Served by `handleAction` */
+  handler: "action"
   /**
-   * Which provider entry point serves the route. "initiate" runs the abuse
-   * guard first and calls `initiate`; "verify" calls `verify`; "action"
-   * calls `handleAction` with the path's action segment (no abuse guard
-   * unless `rateLimitByIp` is set; declare "initiate" for anything that
-   * sends a message to a user-controlled address).
-   */
-  handler: "initiate" | "verify" | "action"
-  /**
-   * For "action" routes: run the abuse guard's per-IP limits
-   * (`AbuseConfig.perIpAction`, using `AbuseConfig.clientIp`) before
-   * `handleAction`, and answer 429 RATE_LIMITED past them. Set it on routes
-   * that need no session and write server-side state on every call, such as
-   * a challenge. Ignored on other handlers and by versions of
-   * `@activescott/auth` that predate it.
+   * Run the abuse guard's per-IP limits (`AbuseConfig.perIpAction`, using
+   * `AbuseConfig.clientIp`) before `handleAction`, and answer 429
+   * RATE_LIMITED past them. Set it on routes that need no session and write
+   * server-side state on every call, such as a challenge. Ignored by
+   * versions of `@activescott/auth` that predate it.
    */
   rateLimitByIp?: boolean
 }
+
+/**
+ * Route definition for a provider. `Auth.handleRequest` dispatches strictly
+ * from this table: a request whose method+path matches no declared route is
+ * a 404 (405 when only the method differs). Discriminated on `handler`, so
+ * `rateLimitByIp` type-checks only on "action" routes.
+ */
+export type ProviderRoute = ProviderEntryRoute | ProviderActionRoute
 
 /**
  * A provider's own account of how it is configured, for display on the admin
