@@ -140,6 +140,22 @@ describe("rate-limited action routes", () => {
     )
   })
 
+  it("counts each action route separately", async () => {
+    const { auth, onBlocked } = setup()
+    const sameIp = (): Record<string, string> => ({
+      "X-Forwarded-For": PROXY_IP,
+    })
+
+    // A burst of registrations must not lock the same IP out of sign-in
+    expectLimited(await statuses(auth, sameIp, "register-options"))
+    const signIn = await statuses(auth, sameIp, "authenticate-options")
+
+    expectLimited(signIn)
+    expect(onBlocked).toHaveBeenLastCalledWith(
+      expect.objectContaining({ action: "authenticate-options" }),
+    )
+  })
+
   it("keys by cf-connecting-ip when the app trusts Cloudflare", async () => {
     const { auth } = setup({ clientIp: { trustCloudflare: true } })
 
