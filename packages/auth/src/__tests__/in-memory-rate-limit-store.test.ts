@@ -56,4 +56,59 @@ describe("InMemoryRateLimitStore", () => {
 
     store.destroy()
   })
+
+  describe("size bound", () => {
+    it("caps the store at maxKeys, evicting the oldest window", async () => {
+      const store = new InMemoryRateLimitStore({ maxKeys: 2 })
+
+      await store.hit("a", 60)
+      await store.hit("b", 60)
+      await store.hit("b", 60)
+      await store.hit("c", 60)
+
+      expect(store.size).toBe(2)
+      // "a" was evicted, so its count restarts; "b" kept its window
+      expect((await store.hit("b", 60)).count).toBe(3)
+      expect((await store.hit("a", 60)).count).toBe(1)
+
+      store.destroy()
+    })
+
+    it("treats a restarted window as the newest", async () => {
+      vi.useFakeTimers()
+      const store = new InMemoryRateLimitStore({ maxKeys: 2 })
+
+      await store.hit("a", 1)
+      await store.hit("b", 60)
+      vi.advanceTimersByTime(2 * MS_PER_SECOND)
+      await store.hit("a", 60) // ended, so a new window starts
+      await store.hit("c", 60) // evicts "b", now the oldest
+
+      expect((await store.hit("a", 60)).count).toBe(2)
+      expect((await store.hit("b", 60)).count).toBe(1)
+
+      store.destroy()
+    })
+
+    it("holds at most 100,000 keys by default under a loop of distinct keys", async () => {
+      const store = new InMemoryRateLimitStore()
+
+      for (let index = 0; index < 100_500; index++) {
+        await store.hit(`ip:${index}`, 3600)
+      }
+
+      expect(store.size).toBe(100_000)
+
+      store.destroy()
+    })
+
+    it("still accepts the sweep interval as a bare number", async () => {
+      const store = new InMemoryRateLimitStore(1000)
+
+      expect((await store.hit("a", 60)).count).toBe(1)
+      expect(store.size).toBe(1)
+
+      store.destroy()
+    })
+  })
 })
