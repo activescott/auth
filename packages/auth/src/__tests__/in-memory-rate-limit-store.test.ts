@@ -102,6 +102,36 @@ describe("InMemoryRateLimitStore", () => {
       store.destroy()
     })
 
+    it("keeps a per-recipient window through a flood of rotating-IP keys", async () => {
+      const store = new InMemoryRateLimitStore({ maxKeys: 1000 })
+      const victim = "identifier:email:victim@example.com"
+
+      for (let index = 0; index < 11; index++) await store.hit(victim, 3600)
+      for (let index = 0; index < 5000; index++) {
+        await store.hit(`ip-action:fake:options:198.51.100.${index}`, 60)
+      }
+
+      expect((await store.hit(victim, 3600)).count).toBe(12)
+
+      store.destroy()
+    })
+
+    it("caps each keyspace at maxKeys on its own", async () => {
+      const store = new InMemoryRateLimitStore({ maxKeys: 2 })
+
+      await store.hit("ip:a", 60)
+      await store.hit("identifier:x", 60)
+      await store.hit("identifier:y", 60)
+      await store.hit("ip:b", 60)
+      await store.hit("ip:c", 60) // evicts "ip:a", not an identifier window
+
+      expect(store.size).toBe(4)
+      expect((await store.hit("identifier:x", 60)).count).toBe(2)
+      expect((await store.hit("ip:a", 60)).count).toBe(1)
+
+      store.destroy()
+    })
+
     it("still accepts the sweep interval as a bare number", async () => {
       const store = new InMemoryRateLimitStore(1000)
 
