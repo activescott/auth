@@ -18,6 +18,11 @@ import type { RateLimitStore } from "./rate-limit-store.js"
 const SECONDS_PER_MINUTE = 60
 const SECONDS_PER_HOUR = 3600
 const SECONDS_PER_DAY = 86_400
+/**
+ * Rate-limit key segment shared by every action-route request whose client IP
+ * cannot be determined. Cannot collide with a real address.
+ */
+const UNKNOWN_IP_BUCKET = "unknown"
 
 /** Per-IP defaults: a small burst, then a hard hourly cap */
 const DEFAULT_PER_IP_RULES: RateLimitRule[] = [
@@ -289,8 +294,10 @@ export class AbuseGuard {
 
   /**
    * Per-IP limits for an action route declared with `rateLimitByIp`. No bot
-   * checks: these are fetch ceremonies that carry no form token. Like
-   * checkInitiate, skipped when no client IP can be determined.
+   * checks: these are fetch ceremonies that carry no form token. Unlike
+   * checkInitiate, a request with no known client IP is not waved through:
+   * every such request counts against one shared "unknown" bucket, so
+   * leaving the headers off cannot bypass the limit.
    */
   public async checkAction(
     request: Request,
@@ -300,10 +307,9 @@ export class AbuseGuard {
     if (!this.enabled) return { allowed: true }
 
     const ip = getClientIp(request, this.config.clientIp)
-    if (!ip) return { allowed: true }
 
     const verdict = await this.limiter.check(
-      `ip-action:${providerId}:${ip}`,
+      `ip-action:${providerId}:${ip ?? UNKNOWN_IP_BUCKET}`,
       this.config.perIpAction ?? DEFAULT_PER_IP_ACTION_RULES,
     )
     if (verdict.allowed) return { allowed: true }
