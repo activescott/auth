@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { Auth, InMemoryChallengeStore } from "@activescott/auth"
-import type { AuthUser, InitiateGate } from "@activescott/auth"
+import type { AbuseConfig, AuthUser, InitiateGate } from "@activescott/auth"
 import { OidcProvider } from "../oidc-provider.js"
 import {
   MOCK_CLIENT_ID,
@@ -19,7 +19,7 @@ let challengeStore: InMemoryChallengeStore
 let stores: ReturnType<typeof createMemoryStores>
 let auth: Auth
 
-function createAuth(gate?: InitiateGate): Auth {
+function createAuth(gate?: InitiateGate, abuse?: AbuseConfig): Auth {
   return new Auth({
     session: {
       secret: "test-secret-that-is-at-least-32-characters",
@@ -43,6 +43,7 @@ function createAuth(gate?: InitiateGate): Auth {
       }),
     ],
     ...(gate ? { gate } : {}),
+    ...(abuse ? { abuse } : {}),
   })
 }
 
@@ -151,6 +152,31 @@ describe("OidcProvider start", () => {
 
     expect(new URL(location).searchParams.get("error")).toBe("SESSION_INVALID")
     expect(challengeCookie).toBe("")
+  })
+})
+
+describe("OidcProvider start rate limit", () => {
+  it("refuses GET and POST start past the per-IP action limit and stores nothing for them", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    auth.destroy()
+    auth = createAuth(undefined, {
+      perIpAction: [{ windowSeconds: 60, max: 2 }],
+    })
+    const startRequest = (method: "GET" | "POST"): Request =>
+      new Request(`${APP}/auth/okta/start`, {
+        method,
+        headers: { "X-Forwarded-For": "203.0.113.7" },
+      })
+
+    const statuses: number[] = []
+    for (const method of ["GET", "POST", "GET", "POST"] as const) {
+      statuses.push((await auth.handleRequest(startRequest(method))).status)
+    }
+
+    // A crawler following the start link cannot grow the challenge store
+    expect(statuses).toEqual([302, 302, 429, 429])
+    expect(challengeStore.size).toBe(2)
+    vi.restoreAllMocks()
   })
 })
 
