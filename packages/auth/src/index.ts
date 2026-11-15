@@ -47,6 +47,7 @@ export {
 } from "./otp.js"
 export type { OtpVerifyFailure, OtpChallengeResult } from "./otp.js"
 export { InMemoryChallengeStore } from "./stores/in-memory-challenge-store.js"
+export type { InMemoryChallengeStoreOptions } from "./stores/in-memory-challenge-store.js"
 
 // Abuse protection
 export type {
