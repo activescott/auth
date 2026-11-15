@@ -34,7 +34,7 @@ Register `https://your.app/auth/slack/callback` as a redirect URL in the Slack a
 | `GET/POST /auth/{id}/start` | Redirect to the provider. `mode=link` attaches the identity to the signed-in user; `redirectTo` for a link. |
 | `GET /auth/{id}/callback`   | The redirect URI. Checks state, redeems the code, validates the ID token, then signs in or links.           |
 
-A sign-in button can be a plain link to `/auth/slack/start`. State, nonce and the PKCE verifier are stored as a single-use challenge in your `ChallengeStore`, bound to the browser by an HttpOnly cookie, so a callback is accepted once and only in the browser that started it.
+A sign-in button can be a plain link to `/auth/slack/start`. State, nonce and the PKCE verifier are stored as a single-use challenge in your `ChallengeStore`, bound to the browser by an HttpOnly cookie, so a callback is accepted once and only in the browser that started it. Because `start` needs no session and stores a challenge on every call (and crawlers follow the link), both `start` routes are rate limited per client IP by the core abuse guard's `abuse.perIpAction` (default 20 per minute, then 200 per hour); a refused call gets `429 RATE_LIMITED` and stores nothing. See the [core README](../auth/README.md#rate-limited-action-routes) for how the client IP is found. Versions of `@activescott/auth` that predate `ProviderRoute.rateLimitByIp` serve the routes unthrottled.
 
 ## Linking without a new session
 

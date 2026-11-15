@@ -343,10 +343,25 @@ export class OidcProvider implements AuthProvider {
     }
   }
 
+  /**
+   * Both start routes set `rateLimitByIp`: they need no session and store a
+   * challenge on every call, and crawlers follow a GET link without trying.
+   * The callback only consumes a challenge, so it stays unthrottled.
+   */
   public getRoutes(): ProviderRoute[] {
     return [
-      { method: "GET", path: `/${this.id}/start`, handler: "action" },
-      { method: "POST", path: `/${this.id}/start`, handler: "action" },
+      {
+        method: "GET",
+        path: `/${this.id}/start`,
+        handler: "action",
+        rateLimitByIp: true,
+      },
+      {
+        method: "POST",
+        path: `/${this.id}/start`,
+        handler: "action",
+        rateLimitByIp: true,
+      },
       { method: "GET", path: `/${this.id}/callback`, handler: "verify" },
     ]
   }
