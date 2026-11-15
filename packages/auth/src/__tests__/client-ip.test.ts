@@ -9,14 +9,27 @@ function requestWith(headers: Record<string, string>): Request {
 }
 
 describe("getClientIp", () => {
-  it("prefers cf-connecting-ip", () => {
+  it("prefers cf-connecting-ip when trustCloudflare is set", () => {
     const request = requestWith({
       "cf-connecting-ip": "203.0.113.7",
       "x-forwarded-for": "198.51.100.1",
       "x-real-ip": "198.51.100.2",
     })
 
-    expect(getClientIp(request)).toBe("203.0.113.7")
+    expect(getClientIp(request, { trustCloudflare: true })).toBe("203.0.113.7")
+  })
+
+  it("ignores cf-connecting-ip by default", () => {
+    // Any proxy other than Cloudflare forwards the header as the client sent it
+    const request = requestWith({
+      "cf-connecting-ip": "203.0.113.7",
+      "x-forwarded-for": "198.51.100.1",
+    })
+
+    expect(getClientIp(request)).toBe("198.51.100.1")
+    expect(
+      getClientIp(requestWith({ "cf-connecting-ip": "203.0.113.7" })),
+    ).toBeNull()
   })
 
   it("takes the rightmost x-forwarded-for hop by default", () => {
