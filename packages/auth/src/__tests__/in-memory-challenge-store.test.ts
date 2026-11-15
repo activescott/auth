@@ -96,4 +96,59 @@ describe("InMemoryChallengeStore", () => {
     expect(await store.findById("expired")).toBeNull()
     expect(await store.findById("live")).not.toBeNull()
   })
+
+  describe("size bound", () => {
+    it("caps the store at maxChallenges under a loop of creates, evicting the oldest", async () => {
+      store = new InMemoryChallengeStore({ maxChallenges: 100 })
+
+      for (let index = 0; index < 1000; index++) {
+        await store.create(challengeData({ id: `challenge-${index}` }))
+        expect(store.size).toBeLessThanOrEqual(100)
+      }
+
+      expect(store.size).toBe(100)
+      expect(await store.findById("challenge-999")).not.toBeNull()
+      expect(await store.findById("challenge-900")).not.toBeNull()
+      expect(await store.findById("challenge-899")).toBeNull()
+    })
+
+    it("drops expired challenges before evicting live ones", async () => {
+      store = new InMemoryChallengeStore({ maxChallenges: 3 })
+      await store.create(challengeData({ id: "live-1" }))
+      await store.create(
+        challengeData({
+          id: "expired",
+          expiresAt: new Date(Date.now() - 1000),
+        }),
+      )
+      await store.create(challengeData({ id: "live-2" }))
+
+      await store.create(challengeData({ id: "live-3" }))
+
+      expect(store.size).toBe(3)
+      expect(await store.findById("expired")).toBeNull()
+      expect(await store.findById("live-1")).not.toBeNull()
+    })
+
+    it("is bounded by default, with no options", async () => {
+      store = new InMemoryChallengeStore()
+
+      for (let index = 0; index < 10_500; index++) {
+        await store.create(challengeData({ id: `challenge-${index}` }))
+      }
+
+      expect(store.size).toBe(10_000)
+    })
+
+    it("still accepts a sweep interval as its only argument", async () => {
+      store = new InMemoryChallengeStore(SHORT_SWEEP_MS)
+      await store.create(
+        challengeData({ expiresAt: new Date(Date.now() - 1000) }),
+      )
+
+      await new Promise((resolve) => setTimeout(resolve, SHORT_SWEEP_MS * 5))
+
+      expect(store.size).toBe(0)
+    })
+  })
 })
