@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.0.0](https://github.com/activescott/auth/compare/auth-provider-passkey@2.3.0...auth-provider-passkey@3.0.0) (2026-11-15)
+
+### ⚠ BREAKING CHANGES
+
+* requires @activescott/auth ^6.0.0. Upgrade auth to 6.x
+together with this release.
+
+### Features
+
+* require @activescott/auth ^6.0.0 as a peer ([fd42429](https://github.com/activescott/auth/commit/fd424299bfe65a10723ad3fae64ee068708cb9af))
+
+### Bug Fixes
+
+* throttle the options endpoints per client IP ([4abe919](https://github.com/activescott/auth/commit/4abe919eb0689ceca9e83fbab80eac7aace7e3a7))
+
 ## [2.3.0](https://github.com/activescott/auth/compare/auth-provider-passkey@2.2.0...auth-provider-passkey@2.3.0) (2026-10-31)
 
 ### Features

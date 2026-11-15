@@ -1,6 +1,6 @@
 {
   "name": "@activescott/auth-provider-oidc",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "OpenID Connect provider for @activescott/auth, with a Sign in with Slack adapter",
   "type": "module",
   "main": "./dist/index.js",

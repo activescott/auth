@@ -3,6 +3,42 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [6.0.0](https://github.com/activescott/auth/compare/auth@5.9.0...auth@6.0.0) (2026-11-15)
+
+### ⚠ BREAKING CHANGES
+
+* `cf-connecting-ip` is no longer read unless
+`abuse.clientIp.trustCloudflare` is true, because any proxy other than
+Cloudflare forwards it exactly as the client sent it. Apps directly
+behind Cloudflare, or that set `abuse.clientIp.getClientIp`, are
+unaffected. An app behind Cloudflare and a second proxy that appends to
+`x-forwarded-for` now keys every user on the Cloudflare edge address
+until it sets `trustCloudflare: true` or raises `trustedProxyHops`: its
+initiate limits block real users silently (no email or code arrives),
+and its `rateLimitByIp` routes, such as the passkey options endpoints,
+answer 429 once the users behind one edge make 20 calls in a minute.
+Also, `ProviderRoute` is now a union and `rateLimitByIp` is typed
+`never` on verify and initiate routes, so a third-party provider that
+extends `ProviderRoute` or sets the flag on such a route stops
+compiling.
+
+### Features
+
+* rate-limit opted-in action routes per IP and cap InMemoryChallengeStore ([a56c864](https://github.com/activescott/auth/commit/a56c864b6cff3f47815277c21aa7847f42ac33dc))
+* read cf-connecting-ip only with clientIp.trustCloudflare ([0a38fe8](https://github.com/activescott/auth/commit/0a38fe87c062d93e174d764044132b4a57e75f48))
+* trust cf-connecting-ip only with clientIp.trustCloudflare ([ae213de](https://github.com/activescott/auth/commit/ae213de3c8b2bd87b3afd3e622fceff46c35c909))
+
+### Bug Fixes
+
+* accept rateLimitByIp only on action routes ([c9cfccf](https://github.com/activescott/auth/commit/c9cfccf182a55d4676e34e5d585b1787af22aed5))
+* cap InMemoryRateLimitStore at maxKeys, evicting the oldest ([23e9195](https://github.com/activescott/auth/commit/23e9195428c96033b0010cea06620291b754b233))
+* cap InMemoryRateLimitStore per keyspace ([0010c8c](https://github.com/activescott/auth/commit/0010c8c358acd2956fedac0f658f372ee4f93196))
+* count a client under one per-IP key across ports and its IPv6 /64 ([dee1e71](https://github.com/activescott/auth/commit/dee1e7124e97bc29ec6adcd243a454542e78a24c))
+* count the per-IP action limit separately for each route ([b8b32fc](https://github.com/activescott/auth/commit/b8b32fc381e0537f010343cd7961123cbda78e9c))
+* say a caller can fill the shared unknown-IP bucket on purpose ([02148fa](https://github.com/activescott/auth/commit/02148faf3f2e21e6b5ff0243ec8e2e4c8fd02fac))
+* sweep a full InMemoryChallengeStore at most once per interval ([bb988cd](https://github.com/activescott/auth/commit/bb988cd686475b1c113baff0a5f313a74efbe036))
+* warn when InMemoryChallengeStore evicts a live challenge ([eb4616e](https://github.com/activescott/auth/commit/eb4616e23b338c1ebe0e1c4a070b83f1b7a9a84d))
+
 ## [5.9.0](https://github.com/activescott/auth/compare/auth@5.8.0...auth@5.9.0) (2026-10-19)
 
 ### Features

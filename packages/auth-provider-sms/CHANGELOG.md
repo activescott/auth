@@ -6,6 +6,12 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 <!-- gate.onInitiate support (#113) is republished by the commit below; it
 merged as part of a squash-merged commit scoped "auth" and never released. -->
 
+## [2.3.1](https://github.com/activescott/auth/compare/auth-provider-sms@2.3.0...auth-provider-sms@2.3.1) (2026-11-15)
+
+### Bug Fixes
+
+* accept @activescott/auth 6.x as a peer ([e7f83ed](https://github.com/activescott/auth/commit/e7f83ed5941565146df06e99455dc12bceba7c64))
+
 ## [2.3.0](https://github.com/activescott/auth/compare/auth-provider-sms@2.2.0...auth-provider-sms@2.3.0) (2026-10-07)
 
 ### Features

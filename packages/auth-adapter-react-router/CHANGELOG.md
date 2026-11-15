@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [3.1.1](https://github.com/activescott/auth/compare/auth-adapter-react-router@3.1.0...auth-adapter-react-router@3.1.1) (2026-11-15)
+
+### Bug Fixes
+
+* accept @activescott/auth 6.x as a peer ([6c02d2f](https://github.com/activescott/auth/commit/6c02d2f94d5864d72e64cacff384cb2a0d045e2f))
+
 ## [3.1.0](https://github.com/activescott/auth/compare/auth-adapter-react-router@3.0.0...auth-adapter-react-router@3.1.0) (2026-10-19)
 
 ### Features
